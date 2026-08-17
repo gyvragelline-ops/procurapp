@@ -15,6 +15,7 @@ import {
 } from "@/lib/procuracion/constants";
 import { loadPanel, PAQUETE_LINKS, ORGANO_EMOJI, type PanelContent } from "@/lib/procuracion/panels";
 import type { Donante, Familiar, EtapaEstadoRow, MuestraRow, OrganoRow } from "@/lib/procuracion/types";
+import PotencialPanel from "./potencial-panel";
 
 const supabase = createClient();
 
@@ -69,14 +70,16 @@ export default function Home() {
       ((etapasRes.data as EtapaEstadoRow[]) ?? []).forEach((r) => {
         map[r.etapa_key] = r.estado;
       });
-      if (donanteData) {
-        map.potencial = computePotencialEstado(donanteData);
-      }
       setEtapas(map);
       setJudicialAplica((judicialRes.data as { estado: string | null } | null)?.estado === "si");
       setLoadingDetail(false);
     });
   }, [selectedId]);
+
+  function getEtapaEstado(key: string): EstadoEtapa | undefined {
+    if (key === "potencial" && donante) return computePotencialEstado(donante);
+    return etapas[key];
+  }
 
   const visibleStages = useMemo(() => {
     const withoutJudicial = STAGES.filter((s) => s.key !== "judicial");
@@ -94,7 +97,7 @@ export default function Home() {
       return;
     }
     setOpenStage(key);
-    if (stageData[key] || !donante) return;
+    if (key === "potencial" || stageData[key] || !donante) return;
 
     if (key === "muestras") {
       setStageData((s) => ({ ...s, [key]: { kind: "muestras", loading: true } }));
@@ -216,7 +219,7 @@ export default function Home() {
             </div>
             <div className="stage-rail">
               {visibleStages.map((s, idx) => {
-                const st = etapas[s.key];
+                const st = getEtapaEstado(s.key);
                 const open = openStage === s.key;
                 const num = idx + 1 < 10 ? "0" + (idx + 1) : String(idx + 1);
                 const data = stageData[s.key];
@@ -235,7 +238,16 @@ export default function Home() {
 
                     {open && (
                       <div className="stage-panel">
-                        {data?.loading && <div className="tiny">Cargando…</div>}
+                        {s.key === "potencial" && donante && (
+                          <PotencialPanel
+                            donante={donante}
+                            judicialAplica={judicialAplica}
+                            onDonanteChange={setDonante}
+                            onJudicialChange={setJudicialAplica}
+                          />
+                        )}
+
+                        {s.key !== "potencial" && data?.loading && <div className="tiny">Cargando…</div>}
 
                         {data?.kind === "panel" && !data.loading && data.content && (
                           <>
