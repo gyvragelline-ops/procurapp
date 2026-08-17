@@ -74,6 +74,14 @@ export function stageLabel(s: EstadoEtapa | undefined) {
   return { green: "Completo", amber: "En curso", red: "Crítico", gray: "Sin iniciar" }[s ?? "gray"];
 }
 
+export function computePotencialEstado(donante: {
+  servicio: string | null;
+  pd_numero: string | null;
+  fecha_ingreso: string | null;
+}): EstadoEtapa {
+  return donante.servicio && donante.pd_numero && donante.fecha_ingreso ? "green" : "gray";
+}
+
 export function humanizeCampo(campo: string) {
   return campo
     .replace(/_/g, " ")

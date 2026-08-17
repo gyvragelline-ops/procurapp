@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
   STAGES,
@@ -10,6 +10,7 @@ import {
   chipClass,
   stageLabel,
   humanizeCampo,
+  computePotencialEstado,
   type EstadoEtapa,
 } from "@/lib/procuracion/constants";
 import { loadPanel, PAQUETE_LINKS, ORGANO_EMOJI, type PanelContent } from "@/lib/procuracion/panels";
@@ -28,6 +29,7 @@ export default function Home() {
   const [donante, setDonante] = useState<Donante | null>(null);
   const [familiar, setFamiliar] = useState<Familiar | null>(null);
   const [etapas, setEtapas] = useState<Record<string, EstadoEtapa>>({});
+  const [judicialAplica, setJudicialAplica] = useState(false);
   const [openStage, setOpenStage] = useState<string | null>(null);
   const [stageData, setStageData] = useState<Record<string, StageData>>({});
   const [loadingDetail, setLoadingDetail] = useState(false);
@@ -52,17 +54,39 @@ export default function Home() {
       supabase.from("donantes").select("*").eq("id", selectedId).single(),
       supabase.from("familiares").select("*").eq("donante_id", selectedId).limit(1).maybeSingle(),
       supabase.from("etapas_estado").select("etapa_key, estado").eq("donante_id", selectedId),
-    ]).then(([donanteRes, familiarRes, etapasRes]) => {
-      setDonante((donanteRes.data as Donante) ?? null);
+      supabase
+        .from("documentacion_estado")
+        .select("estado")
+        .eq("donante_id", selectedId)
+        .eq("categoria", "judicial")
+        .eq("item_key", "aplica")
+        .maybeSingle(),
+    ]).then(([donanteRes, familiarRes, etapasRes, judicialRes]) => {
+      const donanteData = (donanteRes.data as Donante) ?? null;
+      setDonante(donanteData);
       setFamiliar((familiarRes.data as Familiar) ?? null);
       const map: Record<string, EstadoEtapa> = {};
       ((etapasRes.data as EtapaEstadoRow[]) ?? []).forEach((r) => {
         map[r.etapa_key] = r.estado;
       });
+      if (donanteData) {
+        map.potencial = computePotencialEstado(donanteData);
+      }
       setEtapas(map);
+      setJudicialAplica((judicialRes.data as { estado: string | null } | null)?.estado === "si");
       setLoadingDetail(false);
     });
   }, [selectedId]);
+
+  const visibleStages = useMemo(() => {
+    const withoutJudicial = STAGES.filter((s) => s.key !== "judicial");
+    if (!judicialAplica) return withoutJudicial;
+    const judicialStage = STAGES.find((s) => s.key === "judicial");
+    if (!judicialStage) return withoutJudicial;
+    const withJudicial = [...withoutJudicial];
+    withJudicial.splice(withJudicial.length - 1, 0, judicialStage);
+    return withJudicial;
+  }, [judicialAplica]);
 
   async function handleOpenStage(key: string) {
     if (openStage === key) {
@@ -191,7 +215,7 @@ export default function Home() {
               Línea de tiempo del caso
             </div>
             <div className="stage-rail">
-              {STAGES.map((s, idx) => {
+              {visibleStages.map((s, idx) => {
                 const st = etapas[s.key];
                 const open = openStage === s.key;
                 const num = idx + 1 < 10 ? "0" + (idx + 1) : String(idx + 1);
