@@ -106,6 +106,20 @@ export function computePotencialEstado(donante: {
   return donante.servicio && donante.pd_numero && donante.fecha_ingreso ? "green" : "gray";
 }
 
+export type MeCampos = {
+  tipo_diagnostico: string | null;
+  hora_evaluacion_1: string | null;
+  hora_evaluacion_2: string | null;
+};
+
+export function computeMeEstado(campos: MeCampos): EstadoEtapa {
+  if (!campos.tipo_diagnostico) return "gray";
+  if (campos.tipo_diagnostico === "neurologica") {
+    return campos.hora_evaluacion_1 && campos.hora_evaluacion_2 ? "green" : "amber";
+  }
+  return campos.hora_evaluacion_1 ? "green" : "amber";
+}
+
 export function humanizeCampo(campo: string) {
   return campo
     .replace(/_/g, " ")

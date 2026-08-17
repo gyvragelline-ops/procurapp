@@ -10,14 +10,19 @@ import {
   stageLabel,
   humanizeCampo,
   computePotencialEstado,
+  computeMeEstado,
   stagesForTipo,
   stripStagesForTipo,
   type EstadoEtapa,
+  type MeCampos,
 } from "@/lib/procuracion/constants";
 import { loadPanel, PAQUETE_LINKS, ORGANO_EMOJI, type PanelContent } from "@/lib/procuracion/panels";
 import type { Donante, Familiar, EtapaEstadoRow, MuestraRow, OrganoRow } from "@/lib/procuracion/types";
 import PotencialPanel from "./potencial-panel";
+import MePanel from "./me-panel";
 import NuevoDonante from "./nuevo-donante";
+
+const EMPTY_ME_CAMPOS: MeCampos = { tipo_diagnostico: null, hora_evaluacion_1: null, hora_evaluacion_2: null };
 
 const supabase = createClient();
 
@@ -33,6 +38,7 @@ export default function Home() {
   const [familiar, setFamiliar] = useState<Familiar | null>(null);
   const [etapas, setEtapas] = useState<Record<string, EstadoEtapa>>({});
   const [judicialAplica, setJudicialAplica] = useState(false);
+  const [meCampos, setMeCampos] = useState<MeCampos>(EMPTY_ME_CAMPOS);
   const [openStage, setOpenStage] = useState<string | null>(null);
   const [stageData, setStageData] = useState<Record<string, StageData>>({});
   const [loadingDetail, setLoadingDetail] = useState(false);
@@ -69,7 +75,13 @@ export default function Home() {
         .eq("categoria", "judicial")
         .eq("item_key", "aplica")
         .maybeSingle(),
-    ]).then(([donanteRes, familiarRes, etapasRes, judicialRes]) => {
+      supabase
+        .from("planilla_valores")
+        .select("campo_pdf, valor")
+        .eq("donante_id", selectedId)
+        .eq("planilla_key", "neuro")
+        .in("campo_pdf", ["tipo_diagnostico", "hora_evaluacion_1", "hora_evaluacion_2"]),
+    ]).then(([donanteRes, familiarRes, etapasRes, judicialRes, meRes]) => {
       const donanteData = (donanteRes.data as Donante) ?? null;
       setDonante(donanteData);
       setFamiliar((familiarRes.data as Familiar) ?? null);
@@ -79,12 +91,18 @@ export default function Home() {
       });
       setEtapas(map);
       setJudicialAplica((judicialRes.data as { estado: string | null } | null)?.estado === "si");
+      const meMap = { ...EMPTY_ME_CAMPOS };
+      ((meRes.data as { campo_pdf: string; valor: string | null }[]) ?? []).forEach((r) => {
+        (meMap as Record<string, string | null>)[r.campo_pdf] = r.valor;
+      });
+      setMeCampos(meMap);
       setLoadingDetail(false);
     });
   }, [selectedId]);
 
   function getEtapaEstado(key: string): EstadoEtapa | undefined {
     if (key === "potencial" && donante) return computePotencialEstado(donante);
+    if (key === "me") return computeMeEstado(meCampos);
     return etapas[key];
   }
 
@@ -106,7 +124,7 @@ export default function Home() {
       return;
     }
     setOpenStage(key);
-    if (key === "potencial" || stageData[key] || !donante) return;
+    if (key === "potencial" || key === "me" || stageData[key] || !donante) return;
 
     if (key === "muestras") {
       setStageData((s) => ({ ...s, [key]: { kind: "muestras", loading: true } }));
@@ -279,7 +297,11 @@ export default function Home() {
                           />
                         )}
 
-                        {s.key !== "potencial" && data?.loading && <div className="tiny">Cargando…</div>}
+                        {s.key === "me" && donante && (
+                          <MePanel donanteId={donante.id} campos={meCampos} onChange={setMeCampos} />
+                        )}
+
+                        {s.key !== "potencial" && s.key !== "me" && data?.loading && <div className="tiny">Cargando…</div>}
 
                         {data?.kind === "panel" && !data.loading && data.content && (
                           <>

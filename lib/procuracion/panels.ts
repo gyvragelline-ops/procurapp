@@ -138,18 +138,6 @@ export async function loadPanel(
     };
   }
 
-  if (key === "me") {
-    const campos = await getCampos(supabase, donanteId, "neuro", ["cumple_me_si", "cumple_me_no", "causa_coma"], donante, familiar);
-    return {
-      rows: [
-        { label: "Diagnóstico", chip: { text: stageLabel(etapas[key]), tone: etapas[key] ?? "gray" } },
-        { label: "Hora", value: donante.me_hora },
-        { label: "Cumple criterios de ME", value: campos.cumple_me_si ? "Sí" : campos.cumple_me_no ? "No" : null },
-        { label: "Causa del coma", value: campos.causa_coma },
-      ],
-    };
-  }
-
   if (key === "certificacion") {
     const [checklist, test] = await Promise.all([
       getDocEstado(supabase, donanteId, "certificacion"),
