@@ -1,0 +1,1208 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Procuración · Sistema operativo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#10141A;
+  --bg-elev:#181F27;
+  --bg-elev-2:#202A34;
+  --bg-elev-3:#28323D;
+  --border:#2A3340;
+  --border-soft:#232B36;
+  --text:#EBF0F4;
+  --text-dim:#8E99A6;
+  --text-faint:#576270;
+  --accent:#5FC9C0;
+  --accent-dim:rgba(95,201,192,.14);
+  --accent-strong:#7FDCD4;
+  --green:#6FCF97;
+  --green-dim:rgba(111,207,151,.14);
+  --amber:#F0B94C;
+  --amber-dim:rgba(240,185,76,.14);
+  --red:#E2705C;
+  --red-dim:rgba(226,112,92,.14);
+  --gray:#4A5462;
+  --gray-dim:rgba(74,84,98,.18);
+  --font-display:'Space Grotesk',Inter,sans-serif;
+  --font-body:'Inter',sans-serif;
+  --font-mono:'IBM Plex Mono',monospace;
+  --radius:14px;
+}
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{
+  background:var(--bg);
+  color:var(--text);
+  font-family:var(--font-body);
+  -webkit-font-smoothing:antialiased;
+  min-height:100vh;
+}
+button{font-family:inherit;cursor:pointer;}
+::selection{background:var(--accent-dim);}
+
+/* ---------- topbar ---------- */
+.topbar{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:14px 22px;border-bottom:1px solid var(--border-soft);
+  position:sticky;top:0;background:rgba(16,20,26,.92);backdrop-filter:blur(8px);z-index:50;
+}
+.brand{display:flex;align-items:center;gap:10px;}
+.brand-mark{
+  width:28px;height:28px;border-radius:8px;background:var(--accent-dim);
+  display:flex;align-items:center;justify-content:center;color:var(--accent);
+  border:1px solid rgba(95,201,192,.35);
+}
+.brand-text{font-family:var(--font-display);font-weight:600;font-size:15px;letter-spacing:.2px;}
+.brand-sub{font-size:11px;color:var(--text-faint);margin-top:1px;font-family:var(--font-mono);}
+.role-switch{display:flex;gap:4px;background:var(--bg-elev);padding:4px;border-radius:11px;border:1px solid var(--border-soft);}
+.role-btn{
+  border:none;background:transparent;color:var(--text-dim);font-size:12.5px;font-weight:600;
+  padding:8px 13px;border-radius:8px;transition:all .15s ease;letter-spacing:.1px;
+}
+.role-btn.active{background:var(--accent);color:#0B1216;}
+.role-btn:not(.active):hover{color:var(--text);background:var(--bg-elev-2);}
+
+/* ---------- layout shells ---------- */
+.app-shell{padding:26px 22px 60px;max-width:1320px;margin:0 auto;}
+.section-label{
+  font-family:var(--font-mono);font-size:11px;color:var(--text-faint);
+  text-transform:uppercase;letter-spacing:1.2px;margin-bottom:10px;
+}
+
+/* ---------- phone frame (procurador) ---------- */
+.phone-wrap{display:flex;justify-content:center;padding-top:8px;}
+.phone{
+  width:412px;max-width:100%;background:var(--bg-elev);border-radius:34px;
+  border:1px solid var(--border);box-shadow:0 30px 60px -20px rgba(0,0,0,.6);
+  padding:10px;position:relative;
+}
+.phone-notch{
+  width:120px;height:18px;background:var(--bg);border-radius:0 0 14px 14px;
+  margin:0 auto 6px;
+}
+.phone-screen{
+  background:var(--bg);border-radius:26px;overflow:hidden;min-height:640px;
+  display:flex;flex-direction:column;
+}
+.phone-scroll{overflow-y:auto;max-height:78vh;padding:0 0 20px;}
+
+/* ---------- vitals / status strip (signature element) ---------- */
+.status-strip{
+  display:flex;gap:0;border-radius:12px;overflow:hidden;border:1px solid var(--border-soft);
+}
+.status-cell{
+  flex:1;padding:9px 6px 8px;text-align:center;border-right:1px solid var(--border-soft);
+  background:var(--bg-elev);position:relative;
+}
+.status-cell:last-child{border-right:none;}
+.status-dot{width:8px;height:8px;border-radius:50%;margin:0 auto 5px;}
+.status-cell .lbl{font-size:8.5px;color:var(--text-faint);letter-spacing:.3px;text-transform:uppercase;font-family:var(--font-mono);line-height:1.2;}
+.dot-green{background:var(--green);box-shadow:0 0 0 3px var(--green-dim);}
+.dot-amber{background:var(--amber);box-shadow:0 0 0 3px var(--amber-dim);animation:pulse 2s infinite;}
+.dot-red{background:var(--red);box-shadow:0 0 0 3px var(--red-dim);animation:pulse 1.4s infinite;}
+.dot-gray{background:var(--gray);}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}
+
+/* ---------- cards ---------- */
+.card{
+  background:var(--bg-elev);border:1px solid var(--border-soft);border-radius:var(--radius);
+  padding:16px;margin-bottom:12px;
+}
+.card-title{font-family:var(--font-display);font-weight:600;font-size:14.5px;margin:0 0 4px;}
+.card-sub{font-size:12px;color:var(--text-dim);margin:0 0 10px;}
+.donor-head{
+  display:flex;align-items:baseline;justify-content:space-between;padding:16px 16px 10px;
+}
+.donor-id{font-family:var(--font-mono);font-size:19px;font-weight:600;letter-spacing:.3px;}
+.donor-meta{font-size:12px;color:var(--text-dim);margin-top:2px;}
+.chip{
+  display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:100px;
+  font-size:11px;font-weight:600;font-family:var(--font-mono);
+}
+.chip-green{background:var(--green-dim);color:var(--green);}
+.chip-amber{background:var(--amber-dim);color:var(--amber);}
+.chip-red{background:var(--red-dim);color:var(--red);}
+.chip-gray{background:var(--gray-dim);color:var(--text-dim);}
+
+/* ---------- timeline stepper (nav) ---------- */
+.stage-rail{padding:2px 16px 14px;}
+.stage-item{
+  display:flex;align-items:center;gap:11px;padding:11px 10px;border-radius:10px;
+  cursor:pointer;transition:background .12s;border:1px solid transparent;
+}
+.stage-item:hover{background:var(--bg-elev-2);}
+.stage-item.open{background:var(--accent-dim);border-color:rgba(95,201,192,.3);}
+.stage-num{
+  width:22px;height:22px;border-radius:7px;font-family:var(--font-mono);font-size:10.5px;
+  display:flex;align-items:center;justify-content:center;font-weight:600;flex-shrink:0;
+  background:var(--bg-elev-3);color:var(--text-dim);
+}
+.stage-item.done .stage-num{background:var(--green-dim);color:var(--green);}
+.stage-item.attn .stage-num{background:var(--amber-dim);color:var(--amber);}
+.stage-name{font-size:13.5px;font-weight:500;flex:1;}
+.stage-status-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+.stage-panel{
+  margin:0 16px 12px;padding:14px;background:var(--bg-elev-2);border:1px solid var(--border-soft);
+  border-radius:12px;
+}
+.field-row{display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border-soft);font-size:12.5px;}
+.field-row:last-child{border-bottom:none;}
+.field-label{color:var(--text-dim);}
+.field-value{font-family:var(--font-mono);font-weight:500;}
+.mini-input{
+  width:64px;background:var(--bg-elev-3);border:1px solid var(--border);border-radius:6px;
+  padding:4px 7px;font-family:var(--font-mono);font-size:12px;color:var(--text);text-align:right;
+}
+.mini-input:focus{outline:none;border-color:var(--accent);}
+
+/* ---------- buttons ---------- */
+.btn{
+  border-radius:9px;padding:9px 14px;font-size:12.5px;font-weight:600;border:1px solid var(--border);
+  background:var(--bg-elev-3);color:var(--text);transition:all .12s;
+}
+.btn:hover{background:var(--bg-elev-2);border-color:var(--text-faint);}
+.btn-accent{background:var(--accent);color:#0B1216;border-color:var(--accent);}
+.btn-accent:hover{background:var(--accent-strong);}
+.btn-ghost{background:transparent;}
+.btn-sm{padding:6px 10px;font-size:11.5px;border-radius:7px;}
+.btn-block{width:100%;}
+.btn-row{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;}
+.mic-btn{
+  width:38px;height:38px;border-radius:50%;background:var(--accent-dim);border:1px solid rgba(95,201,192,.4);
+  color:var(--accent);display:flex;align-items:center;justify-content:center;flex-shrink:0;
+}
+.mic-btn:hover{background:rgba(95,201,192,.24);}
+
+/* ---------- checklist / est ---------- */
+.check-row{display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border-soft);font-size:12.5px;}
+.check-row:last-child{border-bottom:none;}
+
+/* ---------- timeline list ---------- */
+.tl-item{display:flex;gap:12px;padding:8px 0;}
+.tl-time{font-family:var(--font-mono);font-size:11px;color:var(--text-faint);width:40px;flex-shrink:0;padding-top:1px;}
+.tl-dotcol{display:flex;flex-direction:column;align-items:center;}
+.tl-dot{width:6px;height:6px;border-radius:50%;background:var(--accent);margin-top:5px;}
+.tl-line{width:1px;flex:1;background:var(--border);margin-top:2px;}
+.tl-label{font-size:12.5px;color:var(--text);padding-bottom:2px;}
+
+/* ---------- toast / mic sim ---------- */
+.toast-wrap{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);z-index:200;display:flex;flex-direction:column;gap:8px;align-items:center;}
+.toast{
+  background:var(--bg-elev-3);border:1px solid var(--border);border-radius:11px;padding:11px 15px;
+  font-size:12.5px;box-shadow:0 12px 30px -10px rgba(0,0,0,.5);max-width:360px;
+  display:flex;align-items:center;gap:9px;animation:toastin .2s ease;
+}
+@keyframes toastin{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+.mic-sheet{
+  position:fixed;left:0;right:0;bottom:0;z-index:210;display:flex;justify-content:center;
+  animation:sheetin .18s ease;
+}
+@keyframes sheetin{from{transform:translateY(100%)}to{transform:translateY(0)}}
+.mic-sheet-inner{
+  width:412px;max-width:100%;background:var(--bg-elev-2);border:1px solid var(--border);
+  border-radius:20px 20px 0 0;padding:18px;
+}
+.mic-listen{display:flex;align-items:center;gap:10px;color:var(--accent);font-size:13px;font-weight:600;}
+.mic-wave{display:flex;gap:2px;align-items:center;height:16px;}
+.mic-wave span{width:2.5px;background:var(--accent);border-radius:2px;animation:wave 1s infinite ease-in-out;}
+.mic-wave span:nth-child(1){height:6px;animation-delay:0s}
+.mic-wave span:nth-child(2){height:14px;animation-delay:.15s}
+.mic-wave span:nth-child(3){height:9px;animation-delay:.3s}
+.mic-wave span:nth-child(4){height:16px;animation-delay:.45s}
+.mic-wave span:nth-child(5){height:7px;animation-delay:.6s}
+@keyframes wave{0%,100%{transform:scaleY(.4)}50%{transform:scaleY(1)}}
+.transcript{font-family:var(--font-mono);font-size:12.5px;color:var(--text-dim);margin:12px 0;line-height:1.6;background:var(--bg);border-radius:9px;padding:11px;border:1px solid var(--border-soft);}
+.extract-row{display:flex;justify-content:space-between;padding:6px 0;font-size:12.5px;border-bottom:1px solid var(--border-soft);}
+.extract-row:last-child{border-bottom:none;}
+
+/* ---------- desktop dashboard (base / equipo) ---------- */
+.dash-grid{display:grid;grid-template-columns:300px 1fr;gap:18px;align-items:start;}
+.donor-list{display:flex;flex-direction:column;gap:8px;}
+.donor-row{
+  background:var(--bg-elev);border:1px solid var(--border-soft);border-radius:12px;padding:12px 13px;
+  cursor:pointer;transition:all .12s;
+}
+.donor-row:hover{border-color:var(--text-faint);}
+.donor-row.selected{border-color:var(--accent);background:var(--accent-dim);}
+.donor-row-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;}
+.donor-row-id{font-family:var(--font-mono);font-weight:600;font-size:13.5px;}
+.donor-row-stage{font-size:11.5px;color:var(--text-dim);}
+.alert-count{font-size:10.5px;font-family:var(--font-mono);padding:1px 6px;border-radius:100px;}
+.detail-card{background:var(--bg-elev);border:1px solid var(--border-soft);border-radius:16px;padding:20px;}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+.grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;}
+
+/* ---------- organ panel ---------- */
+.organ-card{
+  background:var(--bg-elev-2);border:1px solid var(--border-soft);border-radius:12px;padding:14px;
+  cursor:pointer;transition:all .12s;
+}
+.organ-card:hover{border-color:var(--accent);}
+.organ-card.selected{border-color:var(--accent);background:var(--accent-dim);}
+.organ-top{display:flex;justify-content:space-between;align-items:center;}
+.organ-emoji{font-size:20px;}
+.organ-pct{font-family:var(--font-mono);font-size:13px;font-weight:600;color:var(--accent);}
+.organ-bar{height:4px;background:var(--bg-elev-3);border-radius:3px;margin-top:8px;overflow:hidden;}
+.organ-bar-fill{height:100%;background:var(--accent);border-radius:3px;transition:width .3s;}
+.organ-name{font-size:12.5px;font-weight:600;margin-top:8px;}
+
+/* ---------- request cards ---------- */
+.req-card{
+  background:var(--bg-elev-2);border:1px solid var(--border-soft);border-radius:11px;padding:12px 13px;margin-bottom:9px;
+}
+.req-top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;}
+.req-title{font-size:13px;font-weight:600;}
+.req-meta{font-size:11px;color:var(--text-faint);margin-top:2px;font-family:var(--font-mono);}
+
+/* ---------- alerts ---------- */
+.alert-row{display:flex;gap:9px;align-items:flex-start;padding:8px 0;border-bottom:1px solid var(--border-soft);font-size:12.5px;}
+.alert-row:last-child{border-bottom:none;}
+.alert-dot{width:7px;height:7px;border-radius:50%;margin-top:5px;flex-shrink:0;}
+
+/* ---------- modal ---------- */
+.modal-bg{position:fixed;inset:0;background:rgba(8,10,13,.7);z-index:300;display:flex;align-items:center;justify-content:center;padding:20px;}
+.modal{background:var(--bg-elev);border:1px solid var(--border);border-radius:16px;max-width:640px;width:100%;max-height:85vh;overflow-y:auto;padding:24px;}
+.modal h2{font-family:var(--font-display);margin:0 0 4px;font-size:19px;}
+.modal-close{position:absolute;}
+.summary-block{margin-bottom:16px;}
+.summary-block h4{font-size:12px;text-transform:uppercase;letter-spacing:.8px;color:var(--text-faint);font-family:var(--font-mono);margin:0 0 8px;}
+
+/* ---------- misc ---------- */
+.muted{color:var(--text-dim);}
+.tiny{font-size:11px;color:var(--text-faint);}
+.empty-hint{font-size:12.5px;color:var(--text-faint);padding:20px;text-align:center;}
+svg{display:block;}
+.mobile-hint{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text-faint);justify-content:center;margin-top:10px;font-family:var(--font-mono);}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div class="brand">
+    <div class="brand-mark">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M12 21s-7.5-4.6-10-9.5C.3 7.8 2.6 4 6.2 4c2 0 3.4 1 4.8 2.6C12.4 5 13.8 4 15.8 4c3.6 0 5.9 3.8 4.2 7.5C17.5 16.4 12 21 12 21z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
+    </div>
+    <div>
+      <div class="brand-text">Procuración · Sistema operativo</div>
+      <div class="brand-sub">preview interactiva — datos ficticios</div>
+    </div>
+  </div>
+  <div class="role-switch" id="roleSwitch"></div>
+</div>
+<div class="app-shell" id="app"></div>
+<div class="toast-wrap" id="toastWrap"></div>
+<div id="overlayRoot"></div>
+
+<script>
+/* =========================================================
+   DATOS DE DEMOSTRACIÓN
+========================================================= */
+const STAGES = [
+  {key:'potencial', label:'Potencial donante'},
+  {key:'me', label:'Diagnóstico ME'},
+  {key:'certificacion', label:'Certificación'},
+  {key:'comMuerte', label:'Comunicación de muerte'},
+  {key:'comDonacion', label:'Comunicación de donación'},
+  {key:'muestras', label:'Muestras'},
+  {key:'documentacion', label:'Documentación'},
+  {key:'estudios', label:'Estudios'},
+  {key:'judicial', label:'Intervención judicial'},
+  {key:'mantenimiento', label:'Mantenimiento'},
+  {key:'organos', label:'Evaluación multiorgánica'},
+  {key:'quirofano', label:'Quirófano'},
+];
+const STRIP_STAGES = ['me','certificacion','comMuerte','muestras','documentacion','estudios','mantenimiento','organos','quirofano'];
+const STRIP_LABELS = {me:'ME',certificacion:'Cert',comMuerte:'Fam',muestras:'Mstr',documentacion:'Doc',estudios:'Est',mantenimiento:'Mant',organos:'Órg',quirofano:'Qx'};
+
+const PAQUETES_MUESTRA = [
+  {key:'hla', nombre:'HLA', tubos:'a definir', link:'https://www.cucaiba.gba.gov.ar/wp-content/uploads/2017/07/FPrO-75-04-02-Solicitud-HLA-1.pdf'},
+  {key:'lab', nombre:'Laboratorio', tubos:'a definir', link:'https://www.cucaiba.gba.gov.ar/wp-content/uploads/2017/07/FPrO-75-04-03-Solicitud-laboratorio-1.pdf'},
+  {key:'bacterio', nombre:'Bacteriología (hemocultivos + urocultivo)', tubos:'a definir', link:'https://www.cucaiba.gba.gov.ar/wp-content/uploads/2017/07/FPrO-75-04-04-Solicitud-bacteriologia-1.pdf'},
+  {key:'serologia', nombre:'Serología', tubos:'a definir', link:'https://www.cucaiba.gba.gov.ar/wp-content/uploads/2017/07/FPrO-75-04-05-Solicitud-serologia-1.pdf'},
+  {key:'preablacion', nombre:'Laboratorio pre-ablación', tubos:'a definir', link:'https://www.cucaiba.gba.gov.ar/wp-content/uploads/2017/07/FPrO-75-04-06-Solicitud-laboratorio-Pre_ablacion-1.pdf'},
+  {key:'grupors', nombre:'Grupo sanguíneo y factor RH', tubos:'a definir', link:'https://www.cucaiba.gba.gov.ar/wp-content/uploads/2017/07/Solicitud-Grupo-Sanguineo-y-Factor-RH-1.pdf'},
+  {key:'covid', nombre:'Hisopado COVID', tubos:'1 hisopado', link:null},
+];
+
+function makeDonor(id, over){
+  return Object.assign({
+    id, edad:0, sexo:'—', grupo:'—', peso:0, talla:0,
+    institucion:'—', servicio:'UTI 3', meHora:'—', pdNumero:'—', fechaIngreso:'—',
+    stage:{potencial:'green',me:'green',certificacion:'green',comMuerte:'green',comDonacion:'green',
+      muestras:'green',documentacion:'amber',estudios:'amber',judicial:'gray',mantenimiento:'amber',organos:'amber',quirofano:'gray'},
+    timeline:[],
+    muestraPaquetes: PAQUETES_MUESTRA.map(p=>({...p, obtenida:false})),
+    muestrasRetiradas:false,
+    mantenimientoLog:[],
+    fotoDni:false, fotoGrupoFactor:false,
+    documentos:{}, estudios:{}, certEstudios:{},
+    certConfirmacion:{tipo:'apnea', estado:'pendiente', co2Inicial:'', co2Final:'', fcInicial:'', fcFinal:''},
+    docEstudioConfirmatorio:{tipo:'doppler', estado:'amber'},
+    tacTorax:{aplica:false, estado:'amber'},
+    judicial:{aplica:false, fotoPrecario:false, autorizacion:'pendiente'},
+    comMuerteRealizada:false, comMuerteHora:null,
+    organos:{}, quirofanoInfo:{},
+  }, over);
+}
+
+const state = {
+  role:'procurador',
+  openStage:'mantenimiento',
+  baseSelected:'0247',
+  equipoSelected:'0247',
+  equipoOrgan:'corazon',
+  requests:[],
+  reqSeq:1,
+  donors:{},
+};
+
+function seed(){
+  state.donors['0247'] = makeDonor('0247', {
+    edad:43, sexo:'Masculino', grupo:'O+', peso:82, talla:178, meHora:'08:42',
+    institucion:'Htal. San Martín — La Plata', servicio:'UTI 3',
+    pdNumero:'482913', fechaIngreso:'10/08 22:15',
+    timeline:[
+      {time:'08:42', label:'Potencial donante registrado'},
+      {time:'09:10', label:'ME diagnosticada'},
+      {time:'10:00', label:'Certificación iniciada'},
+      {time:'10:45', label:'Certificación completada'},
+      {time:'11:15', label:'Comunicación familiar'},
+      {time:'12:00', label:'Donación'},
+      {time:'12:30', label:'Muestras obtenidas'},
+      {time:'13:00', label:'Mantenimiento iniciado'},
+      {time:'13:20', label:'Hepatograma solicitado por Base'},
+    ],
+    muestraPaquetes: PAQUETES_MUESTRA.map((p,i)=>({...p, obtenida: i<5})),
+    muestrasRetiradas:false,
+    mantenimientoLog:[
+      {hora:'08:00', diuresis:'80', drogas:[
+        {nombre:'Noradrenalina', tipo:'vasopresor', ml:3, concMg:16, concMl:100},
+        {nombre:'Dobutamina', tipo:'inotrópico', ml:0, concMg:null, concMl:null},
+      ]},
+      {hora:'12:00', diuresis:'60', drogas:[
+        {nombre:'Noradrenalina', tipo:'vasopresor', ml:5, concMg:16, concMl:100},
+        {nombre:'Dobutamina', tipo:'inotrópico', ml:6, concMg:null, concMl:null},
+      ]},
+    ],
+    certEstudios:{
+      'Potenciales evocados':'pendiente','AngioTC 4 vasos':'no_corresponde',
+    },
+    certConfirmacion:{tipo:'apnea', estado:'completo', co2Inicial:'38', co2Final:'64', fcInicial:'', fcFinal:''},
+    fotoDni:true, fotoGrupoFactor:false,
+    documentos:{'Comunicación familiar':'green','Certificado de fallecimiento':'green','Historia clínica neurológica':'green'},
+    docEstudioConfirmatorio:{tipo:'doppler', estado:'green'},
+    estudios:{'Rx tórax':'green','Ecocardiograma':'green','Ecografía abdominal':'amber'},
+    tacTorax:{aplica:false, estado:'amber'},
+    judicial:{aplica:true, fotoPrecario:false, autorizacion:'pendiente'},
+    comMuerteRealizada:true, comMuerteHora:'11:15',
+    organos:{
+      corazon:{nombre:'Corazón', emoji:'❤️', pct:92, labs:['Hemograma ✓','Ionograma ✓','Enzimas cardíacas ✓'], img:['ECG ✓','Ecocardiograma ✓'], faltante:[]},
+      pulmones:{nombre:'Pulmones', emoji:'🫁', pct:74, labs:['Gasometría ✓','Cultivo de secreciones —'], img:['Rx tórax ✓'], faltante:['Broncoscopía']},
+      higado:{nombre:'Hígado', emoji:'🫀', pct:88, labs:['Hepatograma —','Coagulograma ✓'], img:['Ecografía abdominal ✓'], faltante:['Hepatograma actualizado']},
+      rinones:{nombre:'Riñones', emoji:'🫘', pct:95, labs:['Urea ✓','Creatinina ✓','Sedimento ✓'], img:['Ecografía renal ✓'], faltante:[]},
+    },
+    quirofanoInfo:{horarioBase:null, confirmProcurador:false},
+  });
+  state.donors['0251'] = makeDonor('0251', {edad:29, sexo:'Femenino', grupo:'A-', institucion:'Htal. Evita — Lanús', pdNumero:'511072', fechaIngreso:'12/08 03:20', stage:{potencial:'green',me:'green',certificacion:'amber',comMuerte:'amber',comDonacion:'gray',muestras:'gray',documentacion:'gray',judicial:'gray',mantenimiento:'red',organos:'gray',quirofano:'gray'}});
+  state.donors['0253'] = makeDonor('0253', {edad:51, sexo:'Masculino', grupo:'B+', institucion:'Htal. Rossi — La Plata', pdNumero:'397240', fechaIngreso:'09/08 14:05', stage:{potencial:'green',me:'green',certificacion:'green',comMuerte:'green',comDonacion:'green',muestras:'green',documentacion:'green',judicial:'gray',mantenimiento:'green',organos:'green',quirofano:'green'}});
+  state.donors['0254'] = makeDonor('0254', {edad:37, sexo:'Femenino', grupo:'AB+', institucion:'Htal. Gutiérrez — Quilmes', pdNumero:'605518', fechaIngreso:'08/08 09:40', stage:{potencial:'green',me:'green',certificacion:'green',comMuerte:'green',comDonacion:'green',muestras:'green',documentacion:'green',judicial:'gray',mantenimiento:'green',organos:'green',quirofano:'green'}});
+
+  state.requests = [
+    {id:1, donorId:'0247', title:'Hepatograma', origin:'base', target:'procurador', status:'pendiente', time:'13:20', parentId:null, organKey:'higado'},
+    {id:2, donorId:'0247', title:'Solicitar nuevo ecocardiograma', origin:'equipo', target:'base', status:'pendiente', time:'14:05', parentId:null, organKey:'corazon'},
+  ];
+  state.reqSeq = 3;
+}
+seed();
+
+/* =========================================================
+   HELPERS
+========================================================= */
+function donor(id){ return state.donors[id]; }
+function dotClass(s){ return {green:'dot-green',amber:'dot-amber',red:'dot-red',gray:'dot-gray'}[s]||'dot-gray'; }
+function chipClass(s){ return {green:'chip-green',amber:'chip-amber',red:'chip-red',gray:'chip-gray'}[s]||'chip-gray'; }
+function stageLabel(s){ return {green:'Completo',amber:'En curso',red:'Crítico',gray:'Sin iniciar'}[s]||''; }
+function esc(s){ return (s+'').replace(/[&<>]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c])); }
+
+function pushTimeline(donorId, label){
+  const d = donor(donorId);
+  const now = new Date();
+  const time = now.getHours().toString().padStart(2,'0')+':'+now.getMinutes().toString().padStart(2,'0');
+  d.timeline.push({time, label});
+}
+function toast(msg, tone){
+  const wrap = document.getElementById('toastWrap');
+  const el = document.createElement('div');
+  el.className = 'toast';
+  const color = tone==='green'?'var(--green)':tone==='amber'?'var(--amber)':'var(--accent)';
+  el.innerHTML = `<span style="width:7px;height:7px;border-radius:50%;background:${color};flex-shrink:0;"></span><span>${esc(msg)}</span>`;
+  wrap.appendChild(el);
+  setTimeout(()=>{ el.style.transition='opacity .3s'; el.style.opacity='0'; setTimeout(()=>el.remove(),300); }, 2600);
+}
+function computeAlerts(d){
+  const alerts = [];
+  const criticalReq = state.requests.find(r=>r.donorId===d.id && r.status==='pendiente' && r.target==='procurador');
+  if(criticalReq) alerts.push({tone:'red', text:`Solicitud pendiente: ${criticalReq.title}`});
+  const pendCert = Object.entries(d.certEstudios||{}).find(([k,v])=>v==='pendiente');
+  if(pendCert) alerts.push({tone:'amber', text:`Falta estudio: ${pendCert[0]}`});
+  if(d.certConfirmacion && d.certConfirmacion.estado==='pendiente') alerts.push({tone:'amber', text:`Falta completar test de confirmación (${d.certConfirmacion.tipo})`});
+  const amberDoc = Object.entries(d.documentos||{}).find(([k,v])=>v==='amber');
+  if(amberDoc) alerts.push({tone:'amber', text:`Documentación incompleta: ${amberDoc[0]}`});
+  if(!d.fotoDni) alerts.push({tone:'amber', text:'Falta foto de DNI del potencial donante'});
+  if(!d.fotoGrupoFactor) alerts.push({tone:'amber', text:'Falta foto de grupo y factor'});
+  const amberEst = Object.entries(d.estudios||{}).find(([k,v])=>v==='amber');
+  if(amberEst) alerts.push({tone:'amber', text:`Estudio pendiente: ${amberEst[0]}`});
+  if(d.judicial && d.judicial.aplica && d.judicial.autorizacion==='pendiente') alerts.push({tone:'amber', text:'Intervención judicial: autorización pendiente'});
+  const paquetes = d.muestraPaquetes||[];
+  const completos = paquetes.filter(p=>p.obtenida).length;
+  if(paquetes.length && completos===paquetes.length && !d.muestrasRetiradas) alerts.push({tone:'blue', text:`Paquete de muestras completo (${completos}/${paquetes.length}) — listo para retiro`});
+  return alerts;
+}
+function toneDot(tone){ return tone==='red'?'var(--red)':tone==='amber'?'var(--amber)':'var(--accent)'; }
+function gammaOf(concMg, concMl, rateMlHr, pesoKg){
+  if(!concMg || !concMl || !rateMlHr || !pesoKg) return null;
+  return (concMg/concMl*1000*rateMlHr)/(pesoKg*60);
+}
+function fmtGamma(g){ return g==null ? null : g.toFixed(2).replace('.',','); }
+
+/* =========================================================
+   RENDER: TOPBAR ROLES
+========================================================= */
+function renderRoleSwitch(){
+  const roles = [['procurador','Procurador'],['base','Base Operativa'],['equipo','Equipo de Trasplante']];
+  document.getElementById('roleSwitch').innerHTML = roles.map(([k,l])=>
+    `<button class="role-btn ${state.role===k?'active':''}" data-role="${k}">${l}</button>`
+  ).join('');
+}
+
+/* =========================================================
+   RENDER: STATUS STRIP (elemento firma, común a los 3 roles)
+========================================================= */
+function statusStrip(d){
+  return `<div class="status-strip">${STRIP_STAGES.map(k=>`
+    <div class="status-cell">
+      <div class="status-dot ${dotClass(d.stage[k])}"></div>
+      <div class="lbl">${STRIP_LABELS[k]}</div>
+    </div>`).join('')}</div>`;
+}
+
+/* =========================================================
+   RENDER: PROCURADOR (mobile-first)
+========================================================= */
+function renderProcurador(){
+  const d = donor('0247');
+  const myRequests = state.requests.filter(r=>r.donorId===d.id && r.target==='procurador');
+  return `
+  <div class="phone-wrap">
+    <div class="phone">
+      <div class="phone-notch"></div>
+      <div class="phone-screen">
+        <div class="phone-scroll">
+          <div class="donor-head">
+            <div>
+              <div class="donor-id">#${d.id}</div>
+              <div class="donor-meta">${d.institucion} · PD Nº ${d.pdNumero}</div>
+              <div class="donor-meta">Ingreso ${d.fechaIngreso} · ${d.edad} años · ${d.sexo} · ${d.grupo}</div>
+            </div>
+            <span class="chip ${chipClass(d.stage.mantenimiento)}">${stageLabel(d.stage.mantenimiento)}</span>
+          </div>
+          <div style="padding:0 16px 14px;">${statusStrip(d)}</div>
+
+          ${myRequests.length ? `
+          <div style="padding:0 16px 6px;">
+            <div class="section-label">Solicitudes de base — acción requerida</div>
+            ${myRequests.map(r=>`
+              <div class="req-card" style="border-color:${r.status==='pendiente'?'rgba(226,112,92,.4)':'var(--border-soft)'}">
+                <div class="req-top">
+                  <div>
+                    <div class="req-title">${esc(r.title)}</div>
+                    <div class="req-meta">Solicitado ${r.time} · Base Operativa</div>
+                  </div>
+                  ${r.status==='pendiente' ? `<span class="chip chip-red">Pendiente</span>` : `<span class="chip chip-green">Completado</span>`}
+                </div>
+                ${r.status==='pendiente' ? `<div class="btn-row">
+                  <button class="btn btn-accent btn-sm" data-action="completeRequest" data-id="${r.id}">Marcar completada</button>
+                </div>` : ''}
+              </div>`).join('')}
+          </div>` : ''}
+
+          <div class="section-label" style="padding:6px 16px 0;">Línea de tiempo del caso</div>
+          <div class="stage-rail">
+            ${(() => {
+              const visible = STAGES.filter(s => s.key!=='judicial' || d.judicial.aplica);
+              return visible.map((s, idx) => {
+                const st = d.stage[s.key];
+                const open = state.openStage===s.key;
+                const num = idx+1 < 10 ? '0'+(idx+1) : (idx+1);
+                return `
+                <div class="stage-item ${st==='green'?'done':''} ${st==='amber'||st==='red'?'attn':''} ${open?'open':''}" data-action="openStage" data-stage="${s.key}">
+                  <div class="stage-num">${num}</div>
+                  <div class="stage-name">${s.label}</div>
+                  <div class="stage-status-dot ${dotClass(st)}" style="background:var(--${st==='green'?'green':st==='amber'?'amber':st==='red'?'red':'gray'})"></div>
+                </div>
+                ${open ? stagePanel(s.key, d) : ''}
+                `;
+              }).join('');
+            })()}
+          </div>
+
+          <div style="padding:4px 16px 18px;">
+            <button class="btn btn-block" data-action="openSummary">Generar resumen de procuración</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="mobile-hint">◐ vista optimizada para uso a una mano, bajo presión</div>
+  `;
+}
+
+function stagePanel(key, d){
+  if(key==='potencial'){
+    return `<div class="stage-panel">
+      <div class="field-row"><span class="field-label">Servicio</span><span class="field-value">${d.servicio}</span></div>
+      <div class="field-row"><span class="field-label">PD Nº</span><span class="field-value">${d.pdNumero}</span></div>
+      <div class="field-row"><span class="field-label">Fecha de ingreso</span><span class="field-value">${d.fechaIngreso}</span></div>
+      <div class="field-row"><span class="field-label">SINTRA</span><span class="chip chip-green">Cargado en SINTRA ✓</span></div>
+      <div class="field-row">
+        <span class="field-label">Intervención judicial</span>
+        ${d.judicial.aplica
+          ? `<span class="chip chip-amber">Corresponde</span>`
+          : `<button class="btn btn-sm" data-action="toggleJudicialAplica">Marcar que corresponde</button>`}
+      </div>
+    </div>`;
+  }
+  if(key==='me'){
+    return `<div class="stage-panel">
+      <div class="field-row"><span class="field-label">Diagnóstico</span><span class="field-value">Confirmado</span></div>
+      <div class="field-row"><span class="field-label">Hora</span><span class="field-value">${d.meHora}</span></div>
+      <div class="field-row"><span class="field-label">Profesional</span><span class="field-value">Dr. Neurólogo</span></div>
+    </div>`;
+  }
+  if(key==='certificacion'){
+    const cf = d.certConfirmacion;
+    return `<div class="stage-panel">
+      ${Object.entries(d.certEstudios).map(([k,v])=>`
+        <div class="check-row">
+          <span>${k}</span>
+          <span class="chip ${v==='completo'?'chip-green':v==='pendiente'?'chip-amber':v==='en_proceso'?'chip-amber':'chip-gray'}">${
+            v==='completo'?'Completo':v==='pendiente'?'Pendiente':v==='en_proceso'?'En proceso':'No corresponde'}</span>
+        </div>`).join('')}
+      <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border-soft);">
+        <div class="tiny" style="margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px;">Test de confirmación</div>
+        <div class="btn-row" style="margin-top:0;">
+          <button class="btn btn-sm ${cf.tipo==='apnea'?'btn-accent':''}" data-action="setConfirmTipo" data-tipo="apnea">Apnea</button>
+          <button class="btn btn-sm ${cf.tipo==='atropina'?'btn-accent':''}" data-action="setConfirmTipo" data-tipo="atropina">Atropina</button>
+        </div>
+        <div class="field-row" style="margin-top:6px;">
+          <span class="field-label">Estado</span>
+          ${cf.estado==='completo'
+            ? `<span class="chip chip-green">Completo</span>`
+            : `<button class="btn btn-sm" data-action="toggleConfirmEstado">Marcar completo</button>`}
+        </div>
+        ${cf.tipo==='apnea' ? `
+        <div class="field-row"><span class="field-label">CO2 inicial</span><input type="text" inputmode="numeric" class="mini-input" data-field="co2Inicial" value="${cf.co2Inicial}" placeholder="mmHg"></div>
+        <div class="field-row"><span class="field-label">CO2 final</span><input type="text" inputmode="numeric" class="mini-input" data-field="co2Final" value="${cf.co2Final}" placeholder="mmHg"></div>
+        ` : `
+        <div class="field-row"><span class="field-label">FC inicial</span><input type="text" inputmode="numeric" class="mini-input" data-field="fcInicial" value="${cf.fcInicial}" placeholder="lpm"></div>
+        <div class="field-row"><span class="field-label">FC final</span><input type="text" inputmode="numeric" class="mini-input" data-field="fcFinal" value="${cf.fcFinal}" placeholder="lpm"></div>
+        `}
+      </div>
+    </div>`;
+  }
+  if(key==='comMuerte'){
+    return `<div class="stage-panel">
+      ${d.comMuerteRealizada
+        ? `<div class="field-row"><span class="field-label">Realizada</span><span class="chip chip-green">${d.comMuerteHora}</span></div>`
+        : `<button class="btn btn-accent btn-block" data-action="marcarComMuerte">Marcar como realizada</button>`}
+    </div>`;
+  }
+  if(key==='comDonacion'){
+    return `<div class="stage-panel">
+      <div class="tiny" style="margin-bottom:8px;">Espacio preparado para recursos y estrategias de comunicación de donación — se cargará el protocolo institucional próximamente.</div>
+      <div class="btn-row">
+        <button class="btn btn-sm" data-action="noop" disabled style="opacity:.5;">Ver recursos para el procurador (próximamente)</button>
+      </div>
+    </div>`;
+  }
+  if(key==='muestras'){
+    const completos = d.muestraPaquetes.filter(p=>p.obtenida).length;
+    return `<div class="stage-panel">
+      ${d.muestraPaquetes.map(p=>`
+        <div class="field-row">
+          <span class="field-label">${p.nombre}<br><span class="tiny">${p.tubos}${p.link?` · <a href="${p.link}" target="_blank" rel="noopener" style="color:var(--accent);">ver formulario</a>`:''}</span></span>
+          <button class="chip ${p.obtenida?'chip-green':'chip-gray'}" data-action="toggleMuestraPaquete" data-key="${p.key}" style="border:none;cursor:pointer;">${p.obtenida?'Obtenida ✓':'Marcar obtenida'}</button>
+        </div>`).join('')}
+      <div class="tiny" style="margin-top:8px;">${completos}/${d.muestraPaquetes.length} paquetes obtenidos · se retiran todos juntos, en una sola vez.</div>
+    </div>`;
+  }
+  if(key==='judicial'){
+    const j = d.judicial;
+    return `<div class="stage-panel">
+      <div class="field-row"><span class="field-label">Foto del precario</span><span class="chip ${j.fotoPrecario?'chip-green':'chip-amber'}">${j.fotoPrecario?'Cargada':'Pendiente'}</span></div>
+      <div class="btn-row"><button class="btn btn-sm" data-action="cargarFotoPrecario">📷 Cargar foto del precario</button></div>
+      <div class="tiny" style="margin-top:8px;">La autorización del juez la gestiona y registra Base Operativa.</div>
+    </div>`;
+  }
+  if(key==='mantenimiento'){
+    const last = d.mantenimientoLog[d.mantenimientoLog.length-1];
+    return `<div class="stage-panel">
+      <div class="tiny" style="margin-bottom:6px;">Última actualización ${last.hora} · registro de enfermería (OP2)</div>
+      ${last.drogas.map(g=>{
+        const gamma = gammaOf(g.concMg, g.concMl, g.ml, d.peso);
+        return `<div class="field-row"><span class="field-label">${g.nombre} <span class="tiny">(${g.tipo})</span></span>
+          <span class="field-value">${g.ml} ml/h ${gamma!=null?`· ${fmtGamma(gamma)} γ`:'· definir dilución para γ'}</span></div>`;
+      }).join('')}
+      <div class="field-row"><span class="field-label">Diuresis</span><span class="field-value">${last.diuresis} ml/h</span></div>
+      <div class="btn-row">
+        <button class="btn btn-accent btn-sm" data-action="mic" data-ctx="mantenimiento">🎙 Actualizar por voz</button>
+        <button class="btn btn-sm" data-action="foto" data-ctx="mantenimiento">📷 Cargar foto de planilla</button>
+      </div>
+    </div>`;
+  }
+  if(key==='documentacion'){
+    const de = d.docEstudioConfirmatorio;
+    return `<div class="stage-panel">
+      <div class="check-row">
+        <span>Foto de DNI del potencial donante</span>
+        ${d.fotoDni ? `<span class="chip chip-green">Cargada</span>` : `<button class="btn btn-sm" data-action="cargarFotoDni">📷 Cargar foto</button>`}
+      </div>
+      <div class="check-row">
+        <span>Foto de grupo y factor</span>
+        ${d.fotoGrupoFactor ? `<span class="chip chip-green">Cargada</span>` : `<button class="btn btn-sm" data-action="cargarFotoGrupoFactor">📷 Cargar foto</button>`}
+      </div>
+      ${Object.entries(d.documentos).map(([k,v])=>`
+        <div class="check-row"><span>${k}</span><span class="chip ${chipClass(v)}">${v==='green'?'Completa':v==='amber'?'Incompleta':'Crítica'}</span></div>
+      `).join('')}
+      <div class="check-row">
+        <span>${de.tipo==='doppler'?'Doppler transcraneal':'EEG'}
+          <br><span class="tiny">aplica: <a href="#" data-action="setDocEstudioTipo" data-tipo="doppler" style="color:${de.tipo==='doppler'?'var(--accent)':'var(--text-faint)'};">doppler</a> · <a href="#" data-action="setDocEstudioTipo" data-tipo="eeg" style="color:${de.tipo==='eeg'?'var(--accent)':'var(--text-faint)'};">eeg</a></span>
+        </span>
+        <span class="chip ${chipClass(de.estado)}">${de.estado==='green'?'Completa':de.estado==='amber'?'Incompleta':'Crítica'}</span>
+      </div>
+    </div>`;
+  }
+  if(key==='estudios'){
+    return `<div class="stage-panel">
+      ${Object.entries(d.estudios).map(([k,v])=>`
+        <div class="check-row"><span>${k}</span><span class="chip ${chipClass(v)}">${v==='green'?'Completo':v==='amber'?'Pendiente':'Crítico'}</span></div>
+      `).join('')}
+      <div class="check-row">
+        <span>TAC de tórax <span class="tiny">(si aplica)</span></span>
+        ${d.tacTorax.aplica
+          ? `<span class="chip ${chipClass(d.tacTorax.estado)}">${d.tacTorax.estado==='green'?'Completo':'Pendiente'}</span>`
+          : `<button class="btn btn-sm" data-action="toggleTacTorax">Marcar que aplica</button>`}
+      </div>
+    </div>`;
+  }
+  if(key==='organos'){
+    return `<div class="stage-panel">
+      ${Object.values(d.organos).map(o=>`
+        <div class="field-row"><span class="field-label">${o.emoji} ${o.nombre}</span><span class="field-value">${o.pct}% información</span></div>
+      `).join('')}
+      <div class="tiny" style="margin-top:6px;">Porcentaje de completitud de información — no representa aptitud del órgano.</div>
+    </div>`;
+  }
+  if(key==='quirofano'){
+    return `<div class="stage-panel">
+      <div class="field-row"><span class="field-label">Horario informado por Base</span><span class="field-value">${d.quirofanoInfo.horarioBase||'—'}</span></div>
+      <div class="btn-row">
+        <button class="btn btn-accent btn-sm" data-action="confirmQuirofano">Confirmar quirófano</button>
+      </div>
+    </div>`;
+  }
+  return '';
+}
+
+/* =========================================================
+   MIC SIMULATION
+========================================================= */
+function mantenimientoCapture(peso, nora_ml, dobu_ml, diuresis, hora){
+  const gNora = gammaOf(16, 100, nora_ml, peso);
+  const fields = [
+    ['Hora', hora],
+    ['Noradrenalina (vasopresor)', `${nora_ml} ml/h · ${fmtGamma(gNora)} γ (dilución 16mg/100ml)`],
+    ['Dobutamina (inotrópico)', `${dobu_ml} ml/h · dilución no configurada`],
+    ['Diuresis', `${diuresis} ml/h`],
+  ];
+  const apply = (d)=>{
+    d.mantenimientoLog.push({hora, diuresis, drogas:[
+      {nombre:'Noradrenalina', tipo:'vasopresor', ml:nora_ml, concMg:16, concMl:100},
+      {nombre:'Dobutamina', tipo:'inotrópico', ml:dobu_ml, concMg:null, concMl:null},
+    ]});
+    pushTimeline(d.id, `Mantenimiento actualizado (${hora}) — Nora ${fmtGamma(gNora)} γ`);
+  };
+  return {fields, apply, donorId:'0247'};
+}
+
+const MIC_SCRIPTS = {
+  mantenimiento:{
+    mode:'voz',
+    phrase:'"Vasopresor a 5 mililitros hora, inotrópico a 6 mililitros hora, diuresis 60, son las 14 horas."',
+    ...mantenimientoCapture(82, 5, 6, '60', '14:00'),
+  },
+};
+const PHOTO_SCRIPTS = {
+  mantenimiento:{
+    mode:'foto',
+    phrase:'Extrayendo de la foto de la planilla OP2 (última hoja, enfermería)…',
+    ...mantenimientoCapture(82, 4, 5, '55', '18:00'),
+  },
+};
+
+function openCaptureSheet(ctx, mode){
+  const script = (mode==='foto' ? PHOTO_SCRIPTS[ctx] : MIC_SCRIPTS[ctx]) || MIC_SCRIPTS.mantenimiento;
+  const root = document.getElementById('overlayRoot');
+  const listenLabel = mode==='foto'
+    ? `<div class="mic-listen">📷 Leyendo la foto…</div>`
+    : `<div class="mic-listen"><div class="mic-wave"><span></span><span></span><span></span><span></span><span></span></div> Escuchando…</div>`;
+  root.innerHTML = `
+  <div class="mic-sheet">
+    <div class="mic-sheet-inner" id="micInner">${listenLabel}</div>
+  </div>`;
+  setTimeout(()=>{
+    document.getElementById('micInner').innerHTML = `
+      <div style="font-size:12px;color:var(--text-faint);font-family:var(--font-mono);margin-bottom:6px;">${mode==='foto'?'LECTURA DE FOTO':'TRANSCRIPCIÓN'}</div>
+      <div class="transcript">${script.phrase}</div>
+      <div style="font-size:12px;color:var(--text-faint);font-family:var(--font-mono);margin:12px 0 4px;">CAMPOS DETECTADOS</div>
+      ${script.fields.map(([k,v])=>`<div class="extract-row"><span class="muted">${k}</span><span class="field-value">${v}</span></div>`).join('')}
+      <div class="btn-row">
+        <button class="btn btn-ghost btn-sm" data-action="micCancel">Cancelar</button>
+        <button class="btn btn-accent btn-sm" data-action="micConfirm" data-ctx="${ctx}" data-mode="${mode}" style="flex:1;">Confirmar carga</button>
+      </div>
+    `;
+  }, 900);
+}
+function openMicSheet(ctx){ openCaptureSheet(ctx, 'voz'); }
+function openPhotoSheet(ctx){ openCaptureSheet(ctx, 'foto'); }
+
+/* =========================================================
+   RENDER: BASE OPERATIVA (desktop)
+========================================================= */
+function renderBase(){
+  const list = Object.values(state.donors);
+  const sel = donor(state.baseSelected);
+  const alerts = computeAlerts(sel);
+  const requestsForDonor = state.requests.filter(r=>r.donorId===sel.id);
+  const fromEquipo = requestsForDonor.filter(r=>r.origin==='equipo' && r.status!=='completado');
+  const toProc = requestsForDonor.filter(r=>r.target==='procurador');
+
+  return `
+  <div class="dash-grid">
+    <div>
+      <div class="section-label">Donantes activos</div>
+      <div class="donor-list">
+        ${list.map(d=>{
+          const a = computeAlerts(d);
+          const worst = a.find(x=>x.tone==='red') ? 'red' : a.find(x=>x.tone==='amber') ? 'amber' : null;
+          return `<div class="donor-row ${d.id===state.baseSelected?'selected':''}" data-action="selectBase" data-id="${d.id}">
+            <div class="donor-row-top">
+              <span class="donor-row-id">#${d.id}</span>
+              ${a.length ? `<span class="alert-count" style="background:${worst==='red'?'var(--red-dim)':'var(--amber-dim)'};color:${worst==='red'?'var(--red)':'var(--amber)'}">${a.length}</span>` : ''}
+            </div>
+            <div class="donor-row-stage">${d.edad} años · ${d.grupo}</div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>
+    <div class="detail-card">
+      <div class="donor-head" style="padding:0 0 10px;">
+        <div>
+          <div class="donor-id">#${sel.id}</div>
+          <div class="donor-meta">${sel.institucion} · PD Nº ${sel.pdNumero}</div>
+          <div class="donor-meta">Ingreso ${sel.fechaIngreso} · ${sel.edad} años · ${sel.sexo} · ${sel.grupo}</div>
+        </div>
+        <button class="btn btn-sm" data-action="openSummary">Generar resumen</button>
+      </div>
+      ${statusStrip(sel)}
+
+      <div style="margin-top:18px;" class="grid-2">
+        <div class="card">
+          <div class="card-title">Alertas</div>
+          ${alerts.length ? alerts.map(a=>`<div class="alert-row"><span class="alert-dot" style="background:${toneDot(a.tone)}"></span><span>${a.text}</span></div>`).join('') : `<div class="tiny">Sin alertas activas.</div>`}
+        </div>
+        <div class="card">
+          <div class="card-title">Muestras (paquete único)</div>
+          ${(()=>{ const p=sel.muestraPaquetes; const c=p.filter(x=>x.obtenida).length;
+            return `<div class="tiny" style="margin-bottom:8px;">${c}/${p.length} paquetes obtenidos</div>` +
+            (sel.muestrasRetiradas
+              ? `<span class="chip chip-green">Todas retiradas</span>`
+              : c===p.length
+                ? `<button class="btn btn-accent btn-block btn-sm" data-action="retirarTodasMuestras">Confirmar retiro de todas las muestras (${p.length})</button>`
+                : `<div class="tiny">Se habilita el retiro cuando estén los ${p.length} paquetes obtenidos.</div>`);
+          })()}
+        </div>
+      </div>
+
+      ${sel.judicial.aplica ? `
+      <div style="margin-top:14px;" class="card">
+        <div class="card-title">Intervención judicial</div>
+        <div class="field-row"><span class="field-label">Foto del precario</span><span class="chip ${sel.judicial.fotoPrecario?'chip-green':'chip-amber'}">${sel.judicial.fotoPrecario?'Cargada':'Pendiente'}</span></div>
+        <div class="field-row"><span class="field-label">Autorización del juez</span>
+          <span class="chip ${sel.judicial.autorizacion==='si'?'chip-green':sel.judicial.autorizacion==='no'?'chip-red':'chip-amber'}">${sel.judicial.autorizacion==='si'?'Autorizado':sel.judicial.autorizacion==='no'?'No autorizado':'Pendiente'}</span>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-sm" data-action="setAutorizacionJudicial" data-val="si">Autorizado</button>
+          <button class="btn btn-sm" data-action="setAutorizacionJudicial" data-val="no">No autorizado</button>
+        </div>
+      </div>` : ''}
+
+      <div style="margin-top:14px;" class="card">
+        <div class="card-title">Solicitudes de equipos de trasplante</div>
+        ${fromEquipo.length ? fromEquipo.map(r=>`
+          <div class="req-card">
+            <div class="req-top">
+              <div><div class="req-title">${esc(r.title)}</div><div class="req-meta">Equipo de trasplante · ${r.time} · órgano: ${sel.organos[r.organKey]?.nombre||'—'}</div></div>
+              <span class="chip ${r.status==='pendiente'?'chip-red':r.status==='derivada'?'chip-amber':'chip-green'}">${r.status==='pendiente'?'Pendiente':r.status==='derivada'?'Derivada':'Completada'}</span>
+            </div>
+            ${r.status==='pendiente' ? `<div class="btn-row"><button class="btn btn-accent btn-sm" data-action="derivar" data-id="${r.id}">Derivar a Procurador</button></div>` : ''}
+          </div>`).join('') : `<div class="tiny">Sin solicitudes de equipos.</div>`}
+      </div>
+
+      <div style="margin-top:14px;" class="grid-2">
+        <div class="card">
+          <div class="card-title">Enviar solicitud al Procurador</div>
+          <select id="newReqSelect" style="width:100%;background:var(--bg-elev-2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px;font-size:12.5px;margin-bottom:8px;">
+            <option>Nuevo ionograma</option>
+            <option>Actualizar hepatograma</option>
+            <option>Confirmar peso y talla</option>
+            <option>Nueva radiografía de tórax</option>
+          </select>
+          <button class="btn btn-accent btn-block btn-sm" data-action="newBaseRequest">Enviar solicitud</button>
+        </div>
+        <div class="card">
+          <div class="card-title">Coordinación de quirófano</div>
+          <div class="field-row"><span class="field-label">Horario</span><span class="field-value">${sel.quirofanoInfo.horarioBase||'Sin definir'}</span></div>
+          <button class="btn btn-sm" data-action="setQuirofanoHorario" style="margin-top:8px;">Confirmar horario 16:30</button>
+        </div>
+      </div>
+
+      <div style="margin-top:14px;" class="card">
+        <div class="card-title">Línea de tiempo</div>
+        ${timelineHtml(sel)}
+      </div>
+    </div>
+  </div>`;
+}
+
+function timelineHtml(d){
+  const items = d.timeline.slice().reverse();
+  return items.map((t,i)=>`
+    <div class="tl-item">
+      <div class="tl-time">${t.time}</div>
+      <div class="tl-dotcol"><div class="tl-dot"></div>${i<items.length-1?'<div class="tl-line"></div>':''}</div>
+      <div class="tl-label">${esc(t.label)}</div>
+    </div>`).join('');
+}
+
+/* =========================================================
+   RENDER: EQUIPO DE TRASPLANTE (desktop)
+========================================================= */
+function renderEquipo(){
+  const list = Object.values(state.donors);
+  const sel = donor(state.equipoSelected);
+  const organKey = state.equipoOrgan;
+  const organ = sel.organos[organKey];
+  const relatedReq = state.requests.filter(r=>r.donorId===sel.id && r.organKey===organKey && r.origin==='equipo');
+
+  return `
+  <div class="dash-grid">
+    <div>
+      <div class="section-label">Donantes con evaluación activa</div>
+      <div class="donor-list">
+        ${list.filter(d=>Object.keys(d.organos).length).map(d=>`
+          <div class="donor-row ${d.id===state.equipoSelected?'selected':''}" data-action="selectEquipo" data-id="${d.id}">
+            <div class="donor-row-top"><span class="donor-row-id">#${d.id}</span></div>
+            <div class="donor-row-stage">${d.edad} años · ${d.grupo}</div>
+          </div>`).join('')}
+      </div>
+    </div>
+    <div class="detail-card">
+      <div class="donor-head" style="padding:0 0 10px;">
+        <div><div class="donor-id">#${sel.id}</div><div class="donor-meta">${sel.edad} años · ${sel.sexo} · ${sel.grupo}</div></div>
+      </div>
+      <div class="section-label">Panel de órganos — completitud de información</div>
+      <div class="grid-3" style="margin-bottom:16px;">
+        ${Object.entries(sel.organos).map(([k,o])=>`
+          <div class="organ-card ${k===organKey?'selected':''}" data-action="selectOrgan" data-organ="${k}">
+            <div class="organ-top"><span class="organ-emoji">${o.emoji}</span><span class="organ-pct">${o.pct}%</span></div>
+            <div class="organ-name">${o.nombre}</div>
+            <div class="organ-bar"><div class="organ-bar-fill" style="width:${o.pct}%"></div></div>
+          </div>`).join('')}
+      </div>
+
+      ${organ ? `
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-title">${organ.emoji} ${organ.nombre} — laboratorio</div>
+          ${organ.labs.map(l=>`<div class="field-row"><span class="field-label">${l.replace(' ✓','').replace(' —','')}</span><span class="chip ${l.includes('✓')?'chip-green':'chip-amber'}">${l.includes('✓')?'Recibido':'Pendiente'}</span></div>`).join('')}
+        </div>
+        <div class="card">
+          <div class="card-title">${organ.emoji} Imágenes y estudios</div>
+          ${organ.img.map(l=>`<div class="field-row"><span class="field-label">${l.replace(' ✓','')}</span><span class="chip chip-green">Recibido</span></div>`).join('')}
+        </div>
+      </div>
+      <div class="grid-2" style="margin-top:14px;">
+        <div class="card">
+          <div class="card-title">Información faltante</div>
+          ${organ.faltante.length ? organ.faltante.map(f=>`<div class="field-row"><span class="field-label">${f}</span><span class="chip chip-amber">Falta</span></div>`).join('') : `<div class="tiny">Sin faltantes registrados.</div>`}
+        </div>
+        <div class="card">
+          <div class="card-title">Solicitar a Base Operativa</div>
+          <select id="equipoReqSelect" style="width:100%;background:var(--bg-elev-2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px;font-size:12.5px;margin-bottom:8px;">
+            <option>Solicitar nuevo ecocardiograma</option>
+            <option>Solicitar hepatograma actualizado</option>
+            <option>Solicitar nueva gasometría</option>
+            <option>Solicitar broncoscopía</option>
+          </select>
+          <button class="btn btn-accent btn-block btn-sm" data-action="newEquipoRequest" data-organ="${organKey}">Enviar solicitud a Base</button>
+        </div>
+      </div>
+      <div class="card" style="margin-top:14px;">
+        <div class="card-title">Solicitudes enviadas para este órgano</div>
+        ${relatedReq.length ? relatedReq.map(r=>`
+          <div class="req-card">
+            <div class="req-top">
+              <div><div class="req-title">${esc(r.title)}</div><div class="req-meta">${r.time}</div></div>
+              <span class="chip ${r.status==='completado'?'chip-green':r.status==='derivada'?'chip-amber':'chip-red'}">${r.status==='completado'?'Completada':r.status==='derivada'?'En proceso':'Pendiente'}</span>
+            </div>
+          </div>`).join('') : `<div class="tiny">Sin solicitudes enviadas.</div>`}
+      </div>
+      ` : ''}
+    </div>
+  </div>`;
+}
+
+/* =========================================================
+   RESUMEN MODAL
+========================================================= */
+function openSummary(){
+  const d = donor(state.role==='base'?state.baseSelected:'0247');
+  document.getElementById('overlayRoot').innerHTML = `
+  <div class="modal-bg" data-action="closeModal">
+    <div class="modal" onclick="event.stopPropagation()">
+      <h2>Resumen de procuración — #${d.id}</h2>
+      <div class="tiny" style="margin-bottom:16px;">Generado automáticamente a partir del expediente del caso.</div>
+      <div class="summary-block">
+        <h4>Identificación</h4>
+        <div class="field-row"><span class="field-label">Institución</span><span class="field-value">${d.institucion}</span></div>
+        <div class="field-row"><span class="field-label">PD Nº</span><span class="field-value">${d.pdNumero}</span></div>
+        <div class="field-row"><span class="field-label">Fecha de ingreso</span><span class="field-value">${d.fechaIngreso}</span></div>
+        <div class="field-row"><span class="field-label">Edad / Sexo / Grupo</span><span class="field-value">${d.edad} · ${d.sexo} · ${d.grupo}</span></div>
+      </div>
+      <div class="summary-block">
+        <h4>Estado general</h4>
+        ${statusStrip(d)}
+      </div>
+      <div class="summary-block">
+        <h4>Cronología</h4>
+        ${timelineHtml(d)}
+      </div>
+      <div class="summary-block">
+        <h4>Órganos — completitud de información</h4>
+        ${Object.values(d.organos).map(o=>`<div class="field-row"><span class="field-label">${o.emoji} ${o.nombre}</span><span class="field-value">${o.pct}%</span></div>`).join('')}
+      </div>
+      <button class="btn btn-block" data-action="closeModal">Cerrar</button>
+    </div>
+  </div>`;
+}
+
+/* =========================================================
+   RENDER DISPATCH
+========================================================= */
+function render(){
+  renderRoleSwitch();
+  const app = document.getElementById('app');
+  if(state.role==='procurador') app.innerHTML = renderProcurador();
+  else if(state.role==='base') app.innerHTML = renderBase();
+  else app.innerHTML = renderEquipo();
+}
+
+/* =========================================================
+   EVENTOS (delegación)
+========================================================= */
+document.addEventListener('click', (e)=>{
+  const t = e.target.closest('[data-action]');
+  if(!t) return;
+  const action = t.dataset.action;
+
+  if(action==='noop') return;
+
+  if(t.closest('.role-btn')){
+    state.role = t.dataset.role; render(); return;
+  }
+  if(action==='openStage'){
+    state.openStage = state.openStage===t.dataset.stage ? null : t.dataset.stage;
+    render(); return;
+  }
+  if(action==='mic'){
+    openMicSheet(t.dataset.ctx); return;
+  }
+  if(action==='foto'){
+    openPhotoSheet(t.dataset.ctx); return;
+  }
+  if(action==='micCancel'){
+    document.getElementById('overlayRoot').innerHTML=''; return;
+  }
+  if(action==='micConfirm'){
+    const ctx = t.dataset.ctx;
+    const mode = t.dataset.mode;
+    const script = (mode==='foto' ? PHOTO_SCRIPTS[ctx] : MIC_SCRIPTS[ctx]);
+    const d = donor(script.donorId);
+    script.apply(d);
+    document.getElementById('overlayRoot').innerHTML='';
+    toast('Información cargada correctamente', 'green');
+    render();
+    return;
+  }
+  if(action==='toggleMuestraPaquete'){
+    const d = donor('0247');
+    const p = d.muestraPaquetes.find(p=>p.key===t.dataset.key);
+    if(p){ p.obtenida = !p.obtenida; if(p.obtenida) pushTimeline(d.id, `Muestra obtenida: ${p.nombre}`); }
+    render(); return;
+  }
+  if(action==='marcarComMuerte'){
+    const d = donor('0247');
+    d.comMuerteRealizada = true; d.comMuerteHora = nowStr(); d.stage.comMuerte='green';
+    pushTimeline(d.id, 'Comunicación de muerte realizada');
+    toast('Registrado','green'); render(); return;
+  }
+  if(action==='setConfirmTipo'){
+    const d = donor('0247');
+    d.certConfirmacion.tipo = t.dataset.tipo;
+    render(); return;
+  }
+  if(action==='toggleConfirmEstado'){
+    const d = donor('0247');
+    d.certConfirmacion.estado = 'completo';
+    pushTimeline(d.id, `Test de confirmación (${d.certConfirmacion.tipo}) completado`);
+    toast('Marcado como completo','green'); render(); return;
+  }
+  if(action==='setDocEstudioTipo'){
+    e.preventDefault();
+    const d = donor('0247');
+    d.docEstudioConfirmatorio.tipo = t.dataset.tipo;
+    render(); return;
+  }
+  if(action==='toggleTacTorax'){
+    const d = donor('0247');
+    d.tacTorax.aplica = true;
+    render(); return;
+  }
+  if(action==='toggleJudicialAplica'){
+    const d = donor('0247');
+    d.judicial.aplica = true; d.stage.judicial='amber';
+    pushTimeline(d.id, 'Se marca que corresponde intervención judicial');
+    render(); return;
+  }
+  if(action==='cargarFotoDni'){
+    const d = donor('0247');
+    d.fotoDni = true;
+    pushTimeline(d.id, 'Foto de DNI cargada');
+    toast('Foto de DNI cargada','green'); render(); return;
+  }
+  if(action==='cargarFotoGrupoFactor'){
+    const d = donor('0247');
+    d.fotoGrupoFactor = true;
+    pushTimeline(d.id, 'Foto de grupo y factor cargada');
+    toast('Foto cargada','green'); render(); return;
+  }
+  if(action==='cargarFotoPrecario'){
+    const d = donor('0247');
+    d.judicial.fotoPrecario = true;
+    pushTimeline(d.id, 'Foto del precario cargada');
+    toast('Foto cargada — Base gestiona la autorización','accent'); render(); return;
+  }
+  if(action==='setAutorizacionJudicial'){
+    const d = donor(state.baseSelected);
+    d.judicial.autorizacion = t.dataset.val;
+    d.stage.judicial = t.dataset.val==='si' ? 'green' : t.dataset.val==='no' ? 'red' : 'amber';
+    pushTimeline(d.id, `Base registra autorización judicial: ${t.dataset.val}`);
+    toast('Autorización registrada','accent'); render(); return;
+  }
+  if(action==='retirarTodasMuestras'){
+    const d = donor(state.baseSelected);
+    d.muestrasRetiradas = true;
+    pushTimeline(d.id, 'Base retira el paquete completo de muestras');
+    toast('Retiro de todas las muestras confirmado','green'); render(); return;
+  }
+  if(action==='completeRequest'){
+    const id = Number(t.dataset.id);
+    const req = state.requests.find(r=>r.id===id);
+    req.status = 'completado';
+    const d = donor(req.donorId);
+    pushTimeline(d.id, `Resultado recibido: ${req.title}`);
+    if(req.parentId){
+      const parent = state.requests.find(r=>r.id===req.parentId);
+      if(parent){
+        parent.status='completado';
+        pushTimeline(d.id, `Derivado a Equipo de Trasplante: ${parent.title}`);
+        if(parent.organKey && d.organos[parent.organKey]){
+          d.organos[parent.organKey].pct = Math.min(100, d.organos[parent.organKey].pct+5);
+        }
+      }
+    }
+    toast('Solicitud completada y registrada en la timeline', 'green');
+    render();
+    return;
+  }
+  if(action==='selectBase'){ state.baseSelected = t.dataset.id; render(); return; }
+  if(action==='selectEquipo'){ state.equipoSelected = t.dataset.id; state.equipoOrgan='corazon'; render(); return; }
+  if(action==='selectOrgan'){ state.equipoOrgan = t.dataset.organ; render(); return; }
+  if(action==='derivar'){
+    const id = Number(t.dataset.id);
+    const parent = state.requests.find(r=>r.id===id);
+    parent.status = 'derivada';
+    const child = {id: state.reqSeq++, donorId:parent.donorId, title:parent.title, origin:'base', target:'procurador', status:'pendiente', time: nowStr(), parentId: parent.id, organKey: parent.organKey};
+    state.requests.push(child);
+    pushTimeline(parent.donorId, `Solicitud derivada al Procurador: ${parent.title}`);
+    toast('Solicitud derivada al Procurador','amber'); render(); return;
+  }
+  if(action==='newBaseRequest'){
+    const sel = document.getElementById('newReqSelect');
+    const title = sel.value;
+    state.requests.push({id: state.reqSeq++, donorId: state.baseSelected, title, origin:'base', target:'procurador', status:'pendiente', time: nowStr(), parentId:null});
+    pushTimeline(state.baseSelected, `Solicitud enviada al Procurador: ${title}`);
+    toast('Solicitud enviada al Procurador','accent'); render(); return;
+  }
+  if(action==='newEquipoRequest'){
+    const sel = document.getElementById('equipoReqSelect');
+    const title = sel.value;
+    state.requests.push({id: state.reqSeq++, donorId: state.equipoSelected, title, origin:'equipo', target:'base', status:'pendiente', time: nowStr(), parentId:null, organKey: t.dataset.organ});
+    pushTimeline(state.equipoSelected, `Equipo de Trasplante solicitó: ${title}`);
+    toast('Solicitud enviada a Base Operativa','accent'); render(); return;
+  }
+  if(action==='setQuirofanoHorario'){
+    const d = donor(state.baseSelected);
+    d.quirofanoInfo.horarioBase = '16:30';
+    pushTimeline(d.id, 'Base confirma horario de quirófano: 16:30');
+    toast('Horario informado al Procurador','accent'); render(); return;
+  }
+  if(action==='confirmQuirofano'){
+    const d = donor('0247');
+    d.stage.quirofano = 'green';
+    pushTimeline(d.id, 'Procurador confirma quirófano');
+    toast('Quirófano confirmado','green'); render(); return;
+  }
+  if(action==='openSummary'){ openSummary(); return; }
+  if(action==='closeModal'){ document.getElementById('overlayRoot').innerHTML=''; return; }
+});
+
+function nowStr(){ const n=new Date(); return n.getHours().toString().padStart(2,'0')+':'+n.getMinutes().toString().padStart(2,'0'); }
+
+document.addEventListener('change', (e)=>{
+  const t = e.target;
+  if(t.matches('.mini-input[data-field]')){
+    const d = donor('0247');
+    d.certConfirmacion[t.dataset.field] = t.value;
+  }
+});
+
+render();
+</script>
+</body>
+</html>
