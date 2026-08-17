@@ -42,7 +42,7 @@ export default function HoraInput({
       type="text"
       inputMode="numeric"
       className="mini-input"
-      style={{ width: 100, ...style }}
+      style={{ width: 68, ...style }}
       value={value}
       placeholder="HH:MM"
       autoFocus={autoFocus}

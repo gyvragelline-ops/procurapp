@@ -142,7 +142,7 @@ export default function MePanel({
         style={{ cursor: "pointer" }}
         onClick={() => setReflejosOpen((v) => !v)}
       >
-        <span>Reflejos troncoencefálicos {reflejosOpen ? "▾" : "▸"}</span>
+        <span>Reflejos {reflejosOpen ? "▾" : "▸"}</span>
         <span className={`chip ${reflejosDefinidos === 12 ? "chip-green" : "chip-gray"}`}>
           {reflejosDefinidos}/12
         </span>
@@ -154,26 +154,7 @@ export default function MePanel({
             Marcar todos ausentes
           </button>
 
-          <div className="tiny" style={{ marginTop: 10, textTransform: "uppercase", letterSpacing: ".5px" }}>
-            Troncoencefálicos — presente bloquea el verde
-          </div>
-          {REFLEJOS_ME.filter((r) => r.grupo === "B").map((r) => (
-            <div className="field-row" key={r.key}>
-              <span className="field-label">{r.label}</span>
-              <button
-                className={`chip ${campos[r.key] === "ausente" ? "chip-green" : campos[r.key] === "presente" ? "chip-red" : "chip-gray"}`}
-                style={{ border: "none", cursor: "pointer" }}
-                onClick={() => toggleReflejo(r.key)}
-              >
-                {campos[r.key] === "ausente" ? "Ausente" : campos[r.key] === "presente" ? "Presente" : "Sin marcar"}
-              </button>
-            </div>
-          ))}
-
-          <div className="tiny" style={{ marginTop: 10, textTransform: "uppercase", letterSpacing: ".5px" }}>
-            Espinales — presente no bloquea el verde
-          </div>
-          {REFLEJOS_ME.filter((r) => r.grupo === "A").map((r) => (
+          {REFLEJOS_ME.map((r) => (
             <div className="field-row" key={r.key}>
               <span className="field-label">{r.label}</span>
               <button
