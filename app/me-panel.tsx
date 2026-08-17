@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { REFLEJOS_ME, type MeCampos } from "@/lib/procuracion/constants";
+import HoraInput from "./hora-input";
 
 const supabase = createClient();
 
@@ -49,15 +50,10 @@ export default function MePanel({
       <div className="field-row" key={field}>
         <span className="field-label">{label}</span>
         {editingField === field ? (
-          <input
-            type="text"
-            inputMode="numeric"
-            className="mini-input"
-            style={{ width: 100 }}
+          <HoraInput
             value={draft}
-            placeholder="HH:MM"
+            onChangeValue={setDraft}
             autoFocus
-            onChange={(e) => setDraft(e.target.value)}
             onBlur={() => saveField(field)}
             onKeyDown={(e) => {
               if (e.key === "Enter") saveField(field);
