@@ -13,6 +13,7 @@ import {
   computeMeEstado,
   stagesForTipo,
   stripStagesForTipo,
+  ME_CAMPO_KEYS,
   type EstadoEtapa,
   type MeCampos,
 } from "@/lib/procuracion/constants";
@@ -22,7 +23,7 @@ import PotencialPanel from "./potencial-panel";
 import MePanel from "./me-panel";
 import NuevoDonante from "./nuevo-donante";
 
-const EMPTY_ME_CAMPOS: MeCampos = { tipo_diagnostico: null, hora_evaluacion_1: null, hora_evaluacion_2: null };
+const EMPTY_ME_CAMPOS: MeCampos = Object.fromEntries(ME_CAMPO_KEYS.map((k) => [k, null]));
 
 const supabase = createClient();
 
@@ -80,7 +81,7 @@ export default function Home() {
         .select("campo_pdf, valor")
         .eq("donante_id", selectedId)
         .eq("planilla_key", "neuro")
-        .in("campo_pdf", ["tipo_diagnostico", "hora_evaluacion_1", "hora_evaluacion_2"]),
+        .in("campo_pdf", ME_CAMPO_KEYS),
     ]).then(([donanteRes, familiarRes, etapasRes, judicialRes, meRes]) => {
       const donanteData = (donanteRes.data as Donante) ?? null;
       setDonante(donanteData);

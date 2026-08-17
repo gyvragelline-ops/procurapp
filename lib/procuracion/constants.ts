@@ -106,18 +106,50 @@ export function computePotencialEstado(donante: {
   return donante.servicio && donante.pd_numero && donante.fecha_ingreso ? "green" : "gray";
 }
 
-export type MeCampos = {
-  tipo_diagnostico: string | null;
-  hora_evaluacion_1: string | null;
-  hora_evaluacion_2: string | null;
-};
+export const REFLEJOS_ME: { key: string; label: string }[] = [
+  { key: "reflejo_fotomotor", label: "Fotomotor" },
+  { key: "reflejo_corneano", label: "Corneano" },
+  { key: "reflejo_oculocefalico", label: "Oculocefálico" },
+  { key: "reflejo_oculovestibular", label: "Oculovestibular" },
+  { key: "reflejo_nauseoso", label: "Nauseoso" },
+  { key: "reflejo_deglutorio", label: "Deglutorio" },
+  { key: "reflejo_maseterino", label: "Maseterino" },
+  { key: "reflejo_dolor", label: "Respuesta al dolor" },
+  { key: "reflejo_osteotendinosos", label: "Osteotendinosos" },
+  { key: "reflejo_plantar", label: "Plantar" },
+  { key: "reflejo_cremasteriano", label: "Cremasteriano" },
+  { key: "reflejo_cutaneoabdominal", label: "Cutáneo-abdominales" },
+];
+
+export const ME_CAMPO_KEYS = [
+  "hora_evaluacion_1",
+  "hora_evaluacion_2",
+  "tipo_test_confirmacion",
+  "apneica1_pco2_inicial",
+  "apneica1_pco2_final",
+  "fc_inicial",
+  "fc_final",
+  ...REFLEJOS_ME.map((r) => r.key),
+];
+
+export type MeCampos = Record<string, string | null>;
 
 export function computeMeEstado(campos: MeCampos): EstadoEtapa {
-  if (!campos.tipo_diagnostico) return "gray";
-  if (campos.tipo_diagnostico === "neurologica") {
-    return campos.hora_evaluacion_1 && campos.hora_evaluacion_2 ? "green" : "amber";
+  const horasOk = !!campos.hora_evaluacion_1 && !!campos.hora_evaluacion_2;
+  const reflejosOk = REFLEJOS_ME.every((r) => campos[r.key] === "ausente" || campos[r.key] === "presente");
+  let testOk = false;
+  if (campos.tipo_test_confirmacion === "apnea") {
+    testOk = !!campos.apneica1_pco2_inicial && !!campos.apneica1_pco2_final;
+  } else if (campos.tipo_test_confirmacion === "atropina") {
+    testOk = !!campos.fc_inicial && !!campos.fc_final;
   }
-  return campos.hora_evaluacion_1 ? "green" : "amber";
+  if (horasOk && reflejosOk && testOk) return "green";
+  const algoCargado =
+    campos.hora_evaluacion_1 ||
+    campos.hora_evaluacion_2 ||
+    campos.tipo_test_confirmacion ||
+    REFLEJOS_ME.some((r) => campos[r.key]);
+  return algoCargado ? "amber" : "gray";
 }
 
 export function humanizeCampo(campo: string) {

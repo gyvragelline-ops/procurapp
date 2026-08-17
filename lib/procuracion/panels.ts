@@ -139,26 +139,12 @@ export async function loadPanel(
   }
 
   if (key === "certificacion") {
-    const [checklist, test] = await Promise.all([
-      getDocEstado(supabase, donanteId, "certificacion"),
-      getCampos(
-        supabase,
-        donanteId,
-        "neuro",
-        ["apneica1_pco2_inicial", "apneica1_pco2_final", "apneica1_duracion", "apneica1_positiva", "apneica1_negativa", "apneica1_indeterminada"],
-        donante,
-        familiar
-      ),
-    ]);
-    const resultado = test.apneica1_positiva ? "Positiva" : test.apneica1_negativa ? "Negativa" : test.apneica1_indeterminada ? "Indeterminada" : null;
+    const checklist = await getDocEstado(supabase, donanteId, "certificacion");
     return {
-      rows: [
-        ...checklist.map((c) => ({ label: humanizeCampo(c.item_key), chip: chipFromEstado(c.estado, { text: "Pendiente", tone: "amber" as const }) })),
-        { label: "Test de apnea — CO2 inicial", value: test.apneica1_pco2_inicial ? `${test.apneica1_pco2_inicial} mmHg` : null },
-        { label: "Test de apnea — CO2 final", value: test.apneica1_pco2_final ? `${test.apneica1_pco2_final} mmHg` : null },
-        { label: "Duración", value: test.apneica1_duracion },
-        { label: "Resultado", value: resultado },
-      ],
+      rows: checklist.map((c) => ({
+        label: humanizeCampo(c.item_key),
+        chip: chipFromEstado(c.estado, { text: "Pendiente", tone: "amber" as const }),
+      })),
       note: checklist.length === 0 ? "Sin estudios de certificación cargados todavía." : undefined,
     };
   }
