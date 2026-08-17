@@ -1,49 +1,26 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
   STAGES,
   STRIP_STAGES,
   STRIP_LABELS,
-  ETAPA_PLANILLAS,
   dotClass,
   chipClass,
   stageLabel,
   humanizeCampo,
   type EstadoEtapa,
 } from "@/lib/procuracion/constants";
-import type {
-  Donante,
-  Familiar,
-  EtapaEstadoRow,
-  CampoMapeoRow,
-  PlanillaValorRow,
-  MuestraRow,
-  OrganoRow,
-  CampoDisplay,
-} from "@/lib/procuracion/types";
+import { loadPanel, PAQUETE_LINKS, ORGANO_EMOJI, type PanelContent } from "@/lib/procuracion/panels";
+import type { Donante, Familiar, EtapaEstadoRow, MuestraRow, OrganoRow } from "@/lib/procuracion/types";
 
 const supabase = createClient();
 
-function resolveCanonico(
-  fuente: string,
-  donante: Donante,
-  familiar: Familiar | null
-): string | null {
-  const [tabla, columna] = fuente.split(".");
-  const source =
-    tabla === "donantes"
-      ? (donante as unknown as Record<string, unknown>)
-      : tabla === "familiares" && familiar
-        ? (familiar as unknown as Record<string, unknown>)
-        : null;
-  if (!source) return null;
-  const val = source[columna];
-  if (val === null || val === undefined || val === "") return null;
-  if (typeof val === "boolean") return val ? "Sí" : "No";
-  return String(val);
-}
+type StageData =
+  | { kind: "panel"; loading: boolean; content?: PanelContent }
+  | { kind: "muestras"; loading: boolean; muestras?: MuestraRow[] }
+  | { kind: "organos"; loading: boolean; organos?: OrganoRow[] };
 
 export default function Home() {
   const [donantes, setDonantes] = useState<Donante[] | null>(null);
@@ -52,9 +29,7 @@ export default function Home() {
   const [familiar, setFamiliar] = useState<Familiar | null>(null);
   const [etapas, setEtapas] = useState<Record<string, EstadoEtapa>>({});
   const [openStage, setOpenStage] = useState<string | null>(null);
-  const [stageData, setStageData] = useState<
-    Record<string, { loading: boolean; campos?: CampoDisplay[]; muestras?: MuestraRow[]; organos?: OrganoRow[] }>
-  >({});
+  const [stageData, setStageData] = useState<Record<string, StageData>>({});
   const [loadingDetail, setLoadingDetail] = useState(false);
 
   useEffect(() => {
@@ -98,61 +73,29 @@ export default function Home() {
     if (stageData[key] || !donante) return;
 
     if (key === "muestras") {
-      setStageData((s) => ({ ...s, [key]: { loading: true } }));
+      setStageData((s) => ({ ...s, [key]: { kind: "muestras", loading: true } }));
       const { data } = await supabase
         .from("muestras")
         .select("paquete_key, nombre, tubos, obtenida, retirada")
         .eq("donante_id", donante.id);
-      setStageData((s) => ({ ...s, [key]: { loading: false, muestras: (data as MuestraRow[]) ?? [] } }));
+      setStageData((s) => ({ ...s, [key]: { kind: "muestras", loading: false, muestras: (data as MuestraRow[]) ?? [] } }));
       return;
     }
 
     if (key === "organos") {
-      setStageData((s) => ({ ...s, [key]: { loading: true } }));
+      setStageData((s) => ({ ...s, [key]: { kind: "organos", loading: true } }));
       const { data } = await supabase
         .from("organos")
         .select("organo_key, pct, labs, imagenes, faltante")
         .eq("donante_id", donante.id);
-      setStageData((s) => ({ ...s, [key]: { loading: false, organos: (data as OrganoRow[]) ?? [] } }));
+      setStageData((s) => ({ ...s, [key]: { kind: "organos", loading: false, organos: (data as OrganoRow[]) ?? [] } }));
       return;
     }
 
-    const planillas = ETAPA_PLANILLAS[key] ?? [];
-    if (planillas.length === 0) {
-      setStageData((s) => ({ ...s, [key]: { loading: false, campos: [] } }));
-      return;
-    }
-
-    setStageData((s) => ({ ...s, [key]: { loading: true } }));
-    const [mapeoRes, valoresRes] = await Promise.all([
-      supabase
-        .from("campo_mapeo")
-        .select("planilla_key, campo_pdf, tipo_campo, fuente_canonica")
-        .in("planilla_key", planillas)
-        .order("campo_pdf"),
-      supabase
-        .from("planilla_valores")
-        .select("planilla_key, campo_pdf, valor")
-        .eq("donante_id", donante.id)
-        .in("planilla_key", planillas),
-    ]);
-
-    const valoresMap = new Map<string, string | null>();
-    ((valoresRes.data as PlanillaValorRow[]) ?? []).forEach((v) => {
-      valoresMap.set(v.planilla_key + "::" + v.campo_pdf, v.valor);
-    });
-
-    const campos: CampoDisplay[] = ((mapeoRes.data as CampoMapeoRow[]) ?? []).map((m) => ({
-      campo_pdf: m.campo_pdf,
-      valor: m.fuente_canonica
-        ? resolveCanonico(m.fuente_canonica, donante, familiar)
-        : (valoresMap.get(m.planilla_key + "::" + m.campo_pdf) ?? null),
-    }));
-
-    setStageData((s) => ({ ...s, [key]: { loading: false, campos } }));
+    setStageData((s) => ({ ...s, [key]: { kind: "panel", loading: true } }));
+    const content = await loadPanel(supabase, key, donante, familiar, etapas);
+    setStageData((s) => ({ ...s, [key]: { kind: "panel", loading: false, content } }));
   }
-
-  const visibleStages = useMemo(() => STAGES, []);
 
   return (
     <>
@@ -198,9 +141,7 @@ export default function Home() {
                   <div key={d.id} className="donor-row" onClick={() => setSelectedId(d.id)}>
                     <div className="donor-row-top">
                       <span className="donor-row-id">{d.nombre_completo || "Sin nombre"}</span>
-                      {d.estado_general && (
-                        <span className="chip chip-gray">{d.estado_general}</span>
-                      )}
+                      {d.estado_general && <span className="chip chip-gray">{d.estado_general}</span>}
                     </div>
                     <div className="donor-row-sub">
                       {[d.dni && `DNI ${d.dni}`, d.institucion, d.pd_numero && `PD ${d.pd_numero}`]
@@ -222,9 +163,7 @@ export default function Home() {
               <div>
                 <div className="donor-id">{donante.nombre_completo || "Sin nombre"}</div>
                 <div className="donor-meta">
-                  {[donante.institucion, donante.pd_numero && `PD Nº ${donante.pd_numero}`]
-                    .filter(Boolean)
-                    .join(" · ") || "—"}
+                  {[donante.institucion, donante.pd_numero && `PD Nº ${donante.pd_numero}`].filter(Boolean).join(" · ") || "—"}
                 </div>
                 <div className="donor-meta">
                   {[
@@ -252,7 +191,7 @@ export default function Home() {
               Línea de tiempo del caso
             </div>
             <div className="stage-rail">
-              {visibleStages.map((s, idx) => {
+              {STAGES.map((s, idx) => {
                 const st = etapas[s.key];
                 const open = openStage === s.key;
                 const num = idx + 1 < 10 ? "0" + (idx + 1) : String(idx + 1);
@@ -274,54 +213,75 @@ export default function Home() {
                       <div className="stage-panel">
                         {data?.loading && <div className="tiny">Cargando…</div>}
 
-                        {data && !data.loading && data.campos && data.campos.length > 0 && (
+                        {data?.kind === "panel" && !data.loading && data.content && (
                           <>
-                            {data.campos.map((c, i) => (
-                              <div className="field-row" key={c.campo_pdf + i}>
-                                <span className="field-label">{humanizeCampo(c.campo_pdf)}</span>
-                                <span className="field-value">{c.valor ?? "—"}</span>
+                            {data.content.rows.map((r, i) => (
+                              <div className={r.chip ? "check-row" : "field-row"} key={r.label + i}>
+                                <span className={r.chip ? "" : "field-label"}>{r.label}</span>
+                                {r.chip ? (
+                                  <span className={`chip chip-${r.chip.tone}`}>{r.chip.text}</span>
+                                ) : (
+                                  <span className="field-value">{r.value ?? "—"}</span>
+                                )}
                               </div>
                             ))}
+                            {data.content.rows.length === 0 && !data.content.note && (
+                              <div className="tiny">Sin datos cargados todavía.</div>
+                            )}
+                            {data.content.note && <div className="tiny" style={{ marginTop: data.content.rows.length ? 8 : 0 }}>{data.content.note}</div>}
                           </>
                         )}
 
-                        {data && !data.loading && data.campos && data.campos.length === 0 && (
-                          <div className="tiny">
-                            Sin planilla asociada todavía a esta etapa — próximamente.
-                          </div>
-                        )}
-
-                        {data && !data.loading && data.muestras && (
+                        {data?.kind === "muestras" && !data.loading && data.muestras && (
                           <>
-                            {data.muestras.length === 0 && (
-                              <div className="tiny">Sin paquetes de muestra cargados.</div>
-                            )}
+                            {data.muestras.length === 0 && <div className="tiny">Sin paquetes de muestra cargados.</div>}
                             {data.muestras.map((m) => (
                               <div className="field-row" key={m.paquete_key}>
                                 <span className="field-label">
                                   {m.nombre}
                                   <br />
-                                  <span className="tiny">{m.tubos || "—"}</span>
+                                  <span className="tiny">
+                                    {m.tubos || "—"}
+                                    {PAQUETE_LINKS[m.paquete_key] && (
+                                      <>
+                                        {" · "}
+                                        <a href={PAQUETE_LINKS[m.paquete_key]} target="_blank" rel="noopener" style={{ color: "var(--accent)" }}>
+                                          ver formulario
+                                        </a>
+                                      </>
+                                    )}
+                                  </span>
                                 </span>
                                 <span className={`chip ${m.obtenida ? "chip-green" : "chip-gray"}`}>
                                   {m.obtenida ? "Obtenida" : "Pendiente"}
                                 </span>
                               </div>
                             ))}
+                            {data.muestras.length > 0 && (
+                              <div className="tiny" style={{ marginTop: 8 }}>
+                                {data.muestras.filter((m) => m.obtenida).length}/{data.muestras.length} paquetes obtenidos · se
+                                retiran todos juntos, en una sola vez.
+                              </div>
+                            )}
                           </>
                         )}
 
-                        {data && !data.loading && data.organos && (
+                        {data?.kind === "organos" && !data.loading && data.organos && (
                           <>
-                            {data.organos.length === 0 && (
-                              <div className="tiny">Sin datos de órganos cargados todavía.</div>
-                            )}
+                            {data.organos.length === 0 && <div className="tiny">Sin datos de órganos cargados todavía.</div>}
                             {data.organos.map((o) => (
                               <div className="field-row" key={o.organo_key}>
-                                <span className="field-label">{humanizeCampo(o.organo_key)}</span>
+                                <span className="field-label">
+                                  {ORGANO_EMOJI[o.organo_key] ?? ""} {humanizeCampo(o.organo_key)}
+                                </span>
                                 <span className="field-value">{o.pct}% información</span>
                               </div>
                             ))}
+                            {data.organos.length > 0 && (
+                              <div className="tiny" style={{ marginTop: 8 }}>
+                                Porcentaje de completitud de información — no representa aptitud del órgano.
+                              </div>
+                            )}
                           </>
                         )}
                       </div>
