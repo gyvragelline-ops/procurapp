@@ -106,19 +106,19 @@ export function computePotencialEstado(donante: {
   return donante.servicio && donante.pd_numero && donante.fecha_ingreso ? "green" : "gray";
 }
 
-export const REFLEJOS_ME: { key: string; label: string }[] = [
-  { key: "reflejo_fotomotor", label: "Fotomotor" },
-  { key: "reflejo_corneano", label: "Corneano" },
-  { key: "reflejo_oculocefalico", label: "Oculocefálico" },
-  { key: "reflejo_oculovestibular", label: "Oculovestibular" },
-  { key: "reflejo_nauseoso", label: "Nauseoso" },
-  { key: "reflejo_deglutorio", label: "Deglutorio" },
-  { key: "reflejo_maseterino", label: "Maseterino" },
-  { key: "reflejo_dolor", label: "Respuesta al dolor" },
-  { key: "reflejo_osteotendinosos", label: "Osteotendinosos" },
-  { key: "reflejo_plantar", label: "Plantar" },
-  { key: "reflejo_cremasteriano", label: "Cremasteriano" },
-  { key: "reflejo_cutaneoabdominal", label: "Cutáneo-abdominales" },
+export const REFLEJOS_ME: { key: string; label: string; grupo: "A" | "B" }[] = [
+  { key: "reflejo_fotomotor", label: "Fotomotor", grupo: "B" },
+  { key: "reflejo_corneano", label: "Corneano", grupo: "B" },
+  { key: "reflejo_oculocefalico", label: "Oculocefálico", grupo: "B" },
+  { key: "reflejo_oculovestibular", label: "Oculovestibular", grupo: "B" },
+  { key: "reflejo_nauseoso", label: "Nauseoso", grupo: "B" },
+  { key: "reflejo_deglutorio", label: "Deglutorio", grupo: "B" },
+  { key: "reflejo_maseterino", label: "Maseterino", grupo: "B" },
+  { key: "reflejo_dolor", label: "Respuesta al dolor", grupo: "B" },
+  { key: "reflejo_osteotendinosos", label: "Osteotendinosos", grupo: "A" },
+  { key: "reflejo_plantar", label: "Plantar", grupo: "A" },
+  { key: "reflejo_cremasteriano", label: "Cremasteriano", grupo: "A" },
+  { key: "reflejo_cutaneoabdominal", label: "Cutáneo-abdominales", grupo: "A" },
 ];
 
 export const ME_CAMPO_KEYS = [
@@ -137,13 +137,14 @@ export type MeCampos = Record<string, string | null>;
 export function computeMeEstado(campos: MeCampos): EstadoEtapa {
   const horasOk = !!campos.hora_evaluacion_1 && !!campos.hora_evaluacion_2;
   const reflejosOk = REFLEJOS_ME.every((r) => campos[r.key] === "ausente" || campos[r.key] === "presente");
+  const grupoBOk = REFLEJOS_ME.filter((r) => r.grupo === "B").every((r) => campos[r.key] === "ausente");
   let testOk = false;
   if (campos.tipo_test_confirmacion === "apnea") {
     testOk = !!campos.apneica1_pco2_inicial && !!campos.apneica1_pco2_final;
   } else if (campos.tipo_test_confirmacion === "atropina") {
     testOk = !!campos.fc_inicial && !!campos.fc_final;
   }
-  if (horasOk && reflejosOk && testOk) return "green";
+  if (horasOk && reflejosOk && grupoBOk && testOk) return "green";
   const algoCargado =
     campos.hora_evaluacion_1 ||
     campos.hora_evaluacion_2 ||

@@ -259,7 +259,7 @@ export default function Home() {
             <div className="status-strip">
               {stripStagesForTipo(donante.tipo_procuracion).map((k) => (
                 <div className="status-cell" key={k}>
-                  <div className={`status-dot ${dotClass(etapas[k])}`}></div>
+                  <div className={`status-dot ${dotClass(getEtapaEstado(k))}`}></div>
                   <div className="lbl">{STRIP_LABELS[k]}</div>
                 </div>
               ))}

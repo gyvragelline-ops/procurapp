@@ -50,10 +50,12 @@ export default function MePanel({
         <span className="field-label">{label}</span>
         {editingField === field ? (
           <input
-            type="time"
+            type="text"
+            inputMode="numeric"
             className="mini-input"
             style={{ width: 100 }}
             value={draft}
+            placeholder="HH:MM"
             autoFocus
             onChange={(e) => setDraft(e.target.value)}
             onBlur={() => saveField(field)}
@@ -155,21 +157,38 @@ export default function MePanel({
           <button className="btn btn-sm btn-accent" disabled={savingBulk} onClick={marcarTodosAusentes}>
             Marcar todos ausentes
           </button>
-          <div style={{ marginTop: 8 }}>
-            {REFLEJOS_ME.map((r) => {
-              const v = campos[r.key];
-              const tone = v === "ausente" ? "chip-green" : v === "presente" ? "chip-red" : "chip-gray";
-              const texto = v === "ausente" ? "Ausente" : v === "presente" ? "Presente" : "Sin marcar";
-              return (
-                <div className="field-row" key={r.key}>
-                  <span className="field-label">{r.label}</span>
-                  <button className={`chip ${tone}`} style={{ border: "none", cursor: "pointer" }} onClick={() => toggleReflejo(r.key)}>
-                    {texto}
-                  </button>
-                </div>
-              );
-            })}
+
+          <div className="tiny" style={{ marginTop: 10, textTransform: "uppercase", letterSpacing: ".5px" }}>
+            Troncoencefálicos — presente bloquea el verde
           </div>
+          {REFLEJOS_ME.filter((r) => r.grupo === "B").map((r) => (
+            <div className="field-row" key={r.key}>
+              <span className="field-label">{r.label}</span>
+              <button
+                className={`chip ${campos[r.key] === "ausente" ? "chip-green" : campos[r.key] === "presente" ? "chip-red" : "chip-gray"}`}
+                style={{ border: "none", cursor: "pointer" }}
+                onClick={() => toggleReflejo(r.key)}
+              >
+                {campos[r.key] === "ausente" ? "Ausente" : campos[r.key] === "presente" ? "Presente" : "Sin marcar"}
+              </button>
+            </div>
+          ))}
+
+          <div className="tiny" style={{ marginTop: 10, textTransform: "uppercase", letterSpacing: ".5px" }}>
+            Espinales — presente no bloquea el verde
+          </div>
+          {REFLEJOS_ME.filter((r) => r.grupo === "A").map((r) => (
+            <div className="field-row" key={r.key}>
+              <span className="field-label">{r.label}</span>
+              <button
+                className={`chip ${campos[r.key] === "ausente" ? "chip-green" : campos[r.key] === "presente" ? "chip-red" : "chip-gray"}`}
+                style={{ border: "none", cursor: "pointer" }}
+                onClick={() => toggleReflejo(r.key)}
+              >
+                {campos[r.key] === "ausente" ? "Ausente" : campos[r.key] === "presente" ? "Presente" : "Sin marcar"}
+              </button>
+            </div>
+          ))}
         </div>
       )}
 
