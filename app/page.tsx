@@ -158,7 +158,7 @@ export default function Home() {
             style={{ padding: "6px 10px", fontSize: "11.5px" }}
             onClick={() => setSelectedId(null)}
           >
-            Cambiar donante
+            Cambiar potencial donante
           </button>
         )}
       </div>
@@ -168,15 +168,15 @@ export default function Home() {
           <>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
               <div className="section-label" style={{ marginBottom: 0 }}>
-                Donantes
+                Potenciales donantes
               </div>
               <button className="btn btn-accent btn-sm" onClick={() => setCreating(true)}>
-                + Nuevo donante
+                + Nuevo potencial donante
               </button>
             </div>
             {donantes === null && <div className="empty-hint">Cargando…</div>}
             {donantes !== null && donantes.length === 0 && (
-              <div className="empty-hint">No hay donantes cargados todavía.</div>
+              <div className="empty-hint">No hay potenciales donantes cargados todavía.</div>
             )}
             {donantes !== null && donantes.length > 0 && (
               <div className="donor-list">
@@ -214,7 +214,7 @@ export default function Home() {
           />
         )}
 
-        {selectedId && loadingDetail && <div className="empty-hint">Cargando donante…</div>}
+        {selectedId && loadingDetail && <div className="empty-hint">Cargando potencial donante…</div>}
 
         {selectedId && !loadingDetail && donante && (
           <>

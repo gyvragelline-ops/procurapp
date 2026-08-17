@@ -34,7 +34,7 @@ export default function NuevoDonante({
       .single();
     setSaving(false);
     if (err || !data) {
-      setError(err?.message ?? "No se pudo crear el donante.");
+      setError(err?.message ?? "No se pudo crear el potencial donante.");
       return;
     }
     onCreated(data.id);
@@ -42,7 +42,7 @@ export default function NuevoDonante({
 
   return (
     <div className="card">
-      <div className="card-title">Nuevo donante</div>
+      <div className="card-title">Nuevo potencial donante</div>
 
       <div className="field-row">
         <span className="field-label">Nombre completo</span>
@@ -80,7 +80,7 @@ export default function NuevoDonante({
             Solo córneas
           </button>
         </div>
-        {!tipo && <div className="tiny" style={{ marginTop: 6 }}>Elegí un tipo para poder crear el donante.</div>}
+        {!tipo && <div className="tiny" style={{ marginTop: 6 }}>Elegí un tipo para poder crear el potencial donante.</div>}
       </div>
 
       {error && (
@@ -94,7 +94,7 @@ export default function NuevoDonante({
           Cancelar
         </button>
         <button className="btn btn-accent" style={{ flex: 1 }} onClick={handleCrear} disabled={!tipo || saving}>
-          {saving ? "Creando…" : "Crear donante"}
+          {saving ? "Creando…" : "Crear potencial donante"}
         </button>
       </div>
     </div>
