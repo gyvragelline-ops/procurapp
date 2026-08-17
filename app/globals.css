@@ -370,6 +370,12 @@ button {
   outline: none;
   border-color: var(--accent);
 }
+.btn-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
 
 /* ---------- donor list ---------- */
 .donor-list {

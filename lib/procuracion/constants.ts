@@ -1,6 +1,8 @@
 export type EstadoEtapa = "green" | "amber" | "red" | "gray";
 
-export const STAGES: { key: string; label: string }[] = [
+export type TipoProcuracion = "multiorganico" | "corneas";
+
+export const STAGES_MULTIORGANICO: { key: string; label: string }[] = [
   { key: "potencial", label: "Potencial donante" },
   { key: "me", label: "Diagnóstico ME" },
   { key: "certificacion", label: "Certificación" },
@@ -15,7 +17,22 @@ export const STAGES: { key: string; label: string }[] = [
   { key: "quirofano", label: "Quirófano" },
 ];
 
-export const STRIP_STAGES = [
+export const STAGES_CORNEAS: { key: string; label: string }[] = [
+  { key: "potencial", label: "Potencial donante" },
+  { key: "me", label: "Diagnóstico ME" },
+  { key: "comMuerte", label: "Comunicación de muerte" },
+  { key: "comDonacion", label: "Comunicación de donación" },
+  { key: "muestras", label: "Muestras" },
+  { key: "documentacion", label: "Documentación" },
+  { key: "judicial", label: "Intervención judicial" },
+  { key: "entregaCorneas", label: "Entrega de córneas" },
+];
+
+export function stagesForTipo(tipo: TipoProcuracion | null | undefined) {
+  return tipo === "corneas" ? STAGES_CORNEAS : STAGES_MULTIORGANICO;
+}
+
+export const STRIP_STAGES_MULTIORGANICO = [
   "me",
   "certificacion",
   "comMuerte",
@@ -27,6 +44,12 @@ export const STRIP_STAGES = [
   "quirofano",
 ];
 
+export const STRIP_STAGES_CORNEAS = ["me", "comMuerte", "muestras", "documentacion", "entregaCorneas"];
+
+export function stripStagesForTipo(tipo: TipoProcuracion | null | undefined) {
+  return tipo === "corneas" ? STRIP_STAGES_CORNEAS : STRIP_STAGES_MULTIORGANICO;
+}
+
 export const STRIP_LABELS: Record<string, string> = {
   me: "ME",
   certificacion: "Cert",
@@ -37,6 +60,7 @@ export const STRIP_LABELS: Record<string, string> = {
   mantenimiento: "Mant",
   organos: "Órg",
   quirofano: "Qx",
+  entregaCorneas: "Córn",
 };
 
 /**

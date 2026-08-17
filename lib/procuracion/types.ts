@@ -20,6 +20,7 @@ export type Donante = {
   me_hora: string | null;
   causa_muerte: string | null;
   estado_general: string | null;
+  tipo_procuracion: "multiorganico" | "corneas" | null;
   created_at: string;
 };
 

@@ -3,19 +3,21 @@
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
-  STAGES,
-  STRIP_STAGES,
+  STAGES_MULTIORGANICO,
   STRIP_LABELS,
   dotClass,
   chipClass,
   stageLabel,
   humanizeCampo,
   computePotencialEstado,
+  stagesForTipo,
+  stripStagesForTipo,
   type EstadoEtapa,
 } from "@/lib/procuracion/constants";
 import { loadPanel, PAQUETE_LINKS, ORGANO_EMOJI, type PanelContent } from "@/lib/procuracion/panels";
 import type { Donante, Familiar, EtapaEstadoRow, MuestraRow, OrganoRow } from "@/lib/procuracion/types";
 import PotencialPanel from "./potencial-panel";
+import NuevoDonante from "./nuevo-donante";
 
 const supabase = createClient();
 
@@ -34,15 +36,20 @@ export default function Home() {
   const [openStage, setOpenStage] = useState<string | null>(null);
   const [stageData, setStageData] = useState<Record<string, StageData>>({});
   const [loadingDetail, setLoadingDetail] = useState(false);
+  const [creating, setCreating] = useState(false);
 
-  useEffect(() => {
-    supabase
+  function refreshDonantes() {
+    return supabase
       .from("donantes")
       .select(
-        "id, pd_numero, folio_numero, nombre_completo, dni, fecha_nacimiento, edad, sexo, grupo_sanguineo, grupo_confirmado, peso, talla, cama, institucion, localidad, servicio, denunciante, fecha_ingreso, me_hora, causa_muerte, estado_general, created_at"
+        "id, pd_numero, folio_numero, nombre_completo, dni, fecha_nacimiento, edad, sexo, grupo_sanguineo, grupo_confirmado, peso, talla, cama, institucion, localidad, servicio, denunciante, fecha_ingreso, me_hora, causa_muerte, estado_general, tipo_procuracion, created_at"
       )
       .order("created_at", { ascending: false })
       .then(({ data }) => setDonantes((data as Donante[]) ?? []));
+  }
+
+  useEffect(() => {
+    refreshDonantes();
   }, []);
 
   useEffect(() => {
@@ -82,14 +89,16 @@ export default function Home() {
   }
 
   const visibleStages = useMemo(() => {
-    const withoutJudicial = STAGES.filter((s) => s.key !== "judicial");
+    const base = stagesForTipo(donante?.tipo_procuracion);
+    const withoutJudicial = base.filter((s) => s.key !== "judicial");
     if (!judicialAplica) return withoutJudicial;
-    const judicialStage = STAGES.find((s) => s.key === "judicial");
+    const judicialStage =
+      base.find((s) => s.key === "judicial") ?? STAGES_MULTIORGANICO.find((s) => s.key === "judicial");
     if (!judicialStage) return withoutJudicial;
     const withJudicial = [...withoutJudicial];
     withJudicial.splice(withJudicial.length - 1, 0, judicialStage);
     return withJudicial;
-  }, [judicialAplica]);
+  }, [judicialAplica, donante?.tipo_procuracion]);
 
   async function handleOpenStage(key: string) {
     if (openStage === key) {
@@ -155,9 +164,16 @@ export default function Home() {
       </div>
 
       <main className="app-shell flex-1">
-        {!selectedId && (
+        {!selectedId && !creating && (
           <>
-            <div className="section-label">Donantes</div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+              <div className="section-label" style={{ marginBottom: 0 }}>
+                Donantes
+              </div>
+              <button className="btn btn-accent btn-sm" onClick={() => setCreating(true)}>
+                + Nuevo donante
+              </button>
+            </div>
             {donantes === null && <div className="empty-hint">Cargando…</div>}
             {donantes !== null && donantes.length === 0 && (
               <div className="empty-hint">No hay donantes cargados todavía.</div>
@@ -171,7 +187,12 @@ export default function Home() {
                       {d.estado_general && <span className="chip chip-gray">{d.estado_general}</span>}
                     </div>
                     <div className="donor-row-sub">
-                      {[d.dni && `DNI ${d.dni}`, d.institucion, d.pd_numero && `PD ${d.pd_numero}`]
+                      {[
+                        d.dni && `DNI ${d.dni}`,
+                        d.institucion,
+                        d.pd_numero && `PD ${d.pd_numero}`,
+                        d.tipo_procuracion === "corneas" ? "Solo córneas" : d.tipo_procuracion === "multiorganico" ? "Multiorgánico" : null,
+                      ]
                         .filter(Boolean)
                         .join(" · ") || "—"}
                     </div>
@@ -180,6 +201,17 @@ export default function Home() {
               </div>
             )}
           </>
+        )}
+
+        {!selectedId && creating && (
+          <NuevoDonante
+            onCancel={() => setCreating(false)}
+            onCreated={async (id) => {
+              setCreating(false);
+              await refreshDonantes();
+              setSelectedId(id);
+            }}
+          />
         )}
 
         {selectedId && loadingDetail && <div className="empty-hint">Cargando donante…</div>}
@@ -206,7 +238,7 @@ export default function Home() {
             </div>
 
             <div className="status-strip">
-              {STRIP_STAGES.map((k) => (
+              {stripStagesForTipo(donante.tipo_procuracion).map((k) => (
                 <div className="status-cell" key={k}>
                   <div className={`status-dot ${dotClass(etapas[k])}`}></div>
                   <div className="lbl">{STRIP_LABELS[k]}</div>

@@ -34,6 +34,7 @@ create table donantes (
   me_hora           time,                 -- hora de diagnóstico/fallecimiento
   causa_muerte      text,
   estado_general    text default 'activo' check (estado_general in ('activo','cerrado')),
+  tipo_procuracion  text check (tipo_procuracion in ('multiorganico','corneas')), -- se define al crear el donante; determina qué etapas arma el stage rail
   created_at        timestamptz default now(),
   updated_at        timestamptz default now()
 );

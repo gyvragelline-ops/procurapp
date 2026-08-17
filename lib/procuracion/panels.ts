@@ -260,6 +260,13 @@ export async function loadPanel(
     };
   }
 
+  if (key === "entregaCorneas") {
+    return {
+      rows: [],
+      note: "Panel de Entrega de córneas -- contenido a definir en una próxima iteración.",
+    };
+  }
+
   if (key === "quirofano") {
     const campos = await getCampos(supabase, donanteId, "op2_p5", ["indicaciones_medicas"], donante, familiar);
     return {
