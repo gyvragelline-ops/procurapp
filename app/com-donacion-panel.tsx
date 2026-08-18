@@ -171,6 +171,11 @@ export default function ComDonacionPanel({ donanteId }: { donanteId: string }) {
                 <div className="tiny" style={{ opacity: 0.65 }}>[{f.herramienta}]</div>
               </div>
             ))}
+            {resultado.etapa === 4 && (
+              <div className="tiny" style={{ marginTop: 8, opacity: 0.65, fontStyle: "italic" }}>
+                Ya falta poco para poder hablar de donación.
+              </div>
+            )}
           </div>
         )}
       </div>
