@@ -63,17 +63,20 @@ export const HERRAMIENTAS_TRANSVERSALES: string[] = [
   "Relación de ayuda",
 ];
 
+export type FraseSugerida = {
+  frase: string;
+  herramienta: string;
+};
+
 export type AnalisisComunicacion = {
   etapa: number;
-  confianza: "alta" | "media" | "baja";
-  herramientas_recomendadas: string[];
+  frases_sugeridas: FraseSugerida[];
 };
 
 export type RegistroComunicacion = {
   id: string;
   texto: string;
   etapa_detectada: number | null;
-  confianza: string | null;
-  herramientas: string[];
+  frases_sugeridas: FraseSugerida[];
   created_at: string;
 };

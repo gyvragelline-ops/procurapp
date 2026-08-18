@@ -8,8 +8,15 @@ const client = new Anthropic();
 
 const AnalisisSchema = z.object({
   etapa: z.number().int().min(1).max(4),
-  confianza: z.enum(["alta", "media", "baja"]),
-  herramientas_recomendadas: z.array(z.string()),
+  frases_sugeridas: z
+    .array(
+      z.object({
+        frase: z.string(),
+        herramienta: z.string(),
+      })
+    )
+    .min(1)
+    .max(3),
 });
 
 export async function POST(req: NextRequest) {
@@ -37,11 +44,11 @@ export async function POST(req: NextRequest) {
         format: zodOutputFormat(AnalisisSchema),
       },
       system:
-        "Sos un asistente que ayuda a un procurador de órganos, en tiempo real, a identificar en qué etapa emocional está una familia durante el proceso de comunicación de una muerte y posible donación. El procurador transcribe (a mano o dictado) lo que la familia dice o hace. Con eso, identificá la etapa (1 a 4) según la referencia que te paso, tu nivel de confianza, y qué herramientas de la lista transversal recomendás usar ahora mismo con esa familia.",
+        "Sos un asistente que ayuda a un procurador de órganos, en tiempo real, a acompañar a una familia durante la comunicación de una muerte y una posible donación. El procurador transcribe (a mano o dictado) lo que la familia dice o hace. Con eso, identificá la etapa emocional (1 a 4) según la referencia que te paso, y generá de 1 a 3 frases concretas que el procurador pueda decir en voz alta, ahora mismo, en respuesta a lo que la familia dijo.\n\nCada frase tiene que estar inspirada en una de las herramientas transversales de la lista, pero el contenido principal es la frase en sí, no el nombre de la técnica. La frase debe sonar natural, empática y en español rioplatense/argentino coloquial (tuteo, sin formalismos), como algo que una persona diría de verdad y no como un manual. Nada de frases genéricas o robóticas: tienen que estar adaptadas específicamente a lo que esa familia dijo en el texto ingresado. Para cada frase indicá también, en el campo 'herramienta', el nombre de la técnica de la lista transversal que la inspiró.\n\nEjemplo: si la familia dice 'queremos esperar un milagro', una frase válida sería 'Entiendo que te aferres a tu fe, debe ser muy difícil sentirte así' con herramienta 'Reflejo de emociones' — no alcanza con devolver solo el nombre de la técnica.",
       messages: [
         {
           role: "user",
-          content: `ETAPAS DE REFERENCIA:\n${etapasDesc}\n\nHERRAMIENTAS TRANSVERSALES DISPONIBLES (elegí solo de esta lista):\n${HERRAMIENTAS_TRANSVERSALES.join(", ")}\n\nTEXTO INGRESADO POR EL PROCURADOR:\n"${texto}"`,
+          content: `ETAPAS DE REFERENCIA:\n${etapasDesc}\n\nHERRAMIENTAS TRANSVERSALES DISPONIBLES (cada frase debe inspirarse en una de estas):\n${HERRAMIENTAS_TRANSVERSALES.join(", ")}\n\nTEXTO INGRESADO POR EL PROCURADOR (lo que la familia dijo/hizo):\n"${texto}"`,
         },
       ],
     });

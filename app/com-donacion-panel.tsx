@@ -22,7 +22,7 @@ export default function ComDonacionPanel({ donanteId }: { donanteId: string }) {
   async function cargarHistorial() {
     const { data } = await supabase
       .from("comunicacion_donacion_analisis")
-      .select("id, texto, etapa_detectada, confianza, herramientas, created_at")
+      .select("id, texto, etapa_detectada, frases_sugeridas, created_at")
       .eq("donante_id", donanteId)
       .order("created_at", { ascending: false })
       .limit(10);
@@ -56,13 +56,12 @@ export default function ComDonacionPanel({ donanteId }: { donanteId: string }) {
         donante_id: donanteId,
         texto,
         etapa_detectada: data.etapa,
-        confianza: data.confianza,
-        herramientas: data.herramientas_recomendadas,
+        frases_sugeridas: data.frases_sugeridas,
       });
       const etapaNombre = ETAPAS_EMOCIONALES.find((e) => e.id === data.etapa)?.nombre ?? `Etapa ${data.etapa}`;
       await supabase.from("timeline_eventos").insert({
         donante_id: donanteId,
-        texto: `Comunicación de donación — etapa detectada: ${etapaNombre} (confianza ${data.confianza})`,
+        texto: `Comunicación de donación — etapa detectada: ${etapaNombre}`,
       });
 
       setTexto("");
@@ -163,16 +162,15 @@ export default function ComDonacionPanel({ donanteId }: { donanteId: string }) {
                 {resultado.etapa}. {ETAPAS_EMOCIONALES.find((e) => e.id === resultado.etapa)?.nombre}
               </span>
             </div>
-            <div className="field-row">
-              <span className="field-label">Confianza</span>
-              <span className="field-value">{resultado.confianza}</span>
+            <div className="tiny" style={{ marginTop: 8, marginBottom: 4, textTransform: "uppercase", letterSpacing: ".5px" }}>
+              Frases sugeridas
             </div>
-            <div className="field-row">
-              <span className="field-label">Herramientas recomendadas</span>
-              <span className="field-value" style={{ textAlign: "right" }}>
-                {resultado.herramientas_recomendadas.join(", ")}
-              </span>
-            </div>
+            {resultado.frases_sugeridas.map((f, i) => (
+              <div key={i} style={{ marginBottom: 6 }}>
+                <div style={{ fontSize: "13px" }}>&ldquo;{f.frase}&rdquo;</div>
+                <div className="tiny" style={{ opacity: 0.65 }}>[{f.herramienta}]</div>
+              </div>
+            ))}
           </div>
         )}
       </div>
