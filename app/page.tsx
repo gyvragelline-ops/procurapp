@@ -25,6 +25,7 @@ import type { Donante, Familiar, EtapaEstadoRow, MuestraRow, OrganoRow } from "@
 import PotencialPanel from "./potencial-panel";
 import MePanel from "./me-panel";
 import CertAuxPanel from "./cert-aux-panel";
+import RecomendacionesComMuerte from "./recomendaciones-com-muerte";
 import NuevoDonante from "./nuevo-donante";
 
 const EMPTY_ME_CAMPOS: MeCampos = Object.fromEntries(ME_CAMPO_KEYS.map((k) => [k, null]));
@@ -347,6 +348,8 @@ export default function Home() {
                             {data.content.note && <div className="tiny" style={{ marginTop: data.content.rows.length ? 8 : 0 }}>{data.content.note}</div>}
                           </>
                         )}
+
+                        {s.key === "comMuerte" && <RecomendacionesComMuerte />}
 
                         {data?.kind === "muestras" && !data.loading && data.muestras && (
                           <>
