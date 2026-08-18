@@ -40,10 +40,14 @@ export default function ComDonacionPanel({ donanteId }: { donanteId: string }) {
     setError(null);
     setResultado(null);
     try {
+      const historialReciente = (historial ?? [])
+        .slice(0, 3)
+        .map((r) => ({ texto: r.texto, etapa: r.etapa_detectada }));
+
       const res = await fetch("/api/analizar-comunicacion", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ texto }),
+        body: JSON.stringify({ texto, historial_reciente: historialReciente }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -125,8 +129,9 @@ export default function ComDonacionPanel({ donanteId }: { donanteId: string }) {
         <textarea
           value={texto}
           onChange={(ev) => setTexto(ev.target.value)}
-          placeholder="Escribí o pegá lo que la familia está diciendo…"
+          placeholder="Escribí o dictá (con el micrófono del teclado) lo que la familia está diciendo…"
           rows={3}
+          enterKeyHint="done"
           style={{
             width: "100%",
             background: "var(--bg-elev-3)",
@@ -139,6 +144,9 @@ export default function ComDonacionPanel({ donanteId }: { donanteId: string }) {
             resize: "vertical",
           }}
         />
+        <div className="tiny" style={{ marginTop: 4, opacity: 0.6 }}>
+          Tip: tocá el ícono de micrófono del teclado de tu celular para dictar en vez de escribir.
+        </div>
         <button
           className="btn btn-accent btn-sm"
           style={{ marginTop: 6 }}
@@ -174,6 +182,21 @@ export default function ComDonacionPanel({ donanteId }: { donanteId: string }) {
             {resultado.etapa === 4 && (
               <div className="tiny" style={{ marginTop: 8, opacity: 0.65, fontStyle: "italic" }}>
                 Ya falta poco para poder hablar de donación.
+              </div>
+            )}
+            {resultado.avance_donacion?.procurador_menciono_donacion && (
+              <div
+                style={{
+                  marginTop: 10,
+                  padding: 8,
+                  borderRadius: 8,
+                  fontSize: "12.5px",
+                  background: resultado.avance_donacion.puede_avanzar ? "var(--green-dim)" : "var(--amber-dim)",
+                  border: `1px solid ${resultado.avance_donacion.puede_avanzar ? "var(--green)" : "var(--amber)"}`,
+                }}
+              >
+                {resultado.avance_donacion.puede_avanzar ? "✅ " : "⚠️ "}
+                {resultado.avance_donacion.mensaje}
               </div>
             )}
           </div>

@@ -68,9 +68,16 @@ export type FraseSugerida = {
   herramienta: string;
 };
 
+export type AvanceDonacion = {
+  procurador_menciono_donacion: boolean;
+  puede_avanzar: boolean;
+  mensaje: string;
+};
+
 export type AnalisisComunicacion = {
   etapa: number;
   frases_sugeridas: FraseSugerida[];
+  avance_donacion: AvanceDonacion;
 };
 
 export type RegistroComunicacion = {
