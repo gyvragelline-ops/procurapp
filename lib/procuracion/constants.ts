@@ -4,8 +4,8 @@ export type TipoProcuracion = "multiorganico" | "corneas";
 
 export const STAGES_MULTIORGANICO: { key: string; label: string }[] = [
   { key: "potencial", label: "Potencial donante" },
-  { key: "me", label: "Diagnóstico ME" },
-  { key: "certificacion", label: "Certificación" },
+  { key: "me", label: "Certificación (Examen neurológico)" },
+  { key: "certificacion", label: "Certificación (Métodos auxiliares)" },
   { key: "comMuerte", label: "Comunicación de muerte" },
   { key: "comDonacion", label: "Comunicación de donación" },
   { key: "muestras", label: "Muestras" },
@@ -19,7 +19,7 @@ export const STAGES_MULTIORGANICO: { key: string; label: string }[] = [
 
 export const STAGES_CORNEAS: { key: string; label: string }[] = [
   { key: "potencial", label: "Potencial donante" },
-  { key: "me", label: "Diagnóstico ME" },
+  { key: "me", label: "Certificación (Examen neurológico)" },
   { key: "comMuerte", label: "Comunicación de muerte" },
   { key: "comDonacion", label: "Comunicación de donación" },
   { key: "muestras", label: "Muestras" },
@@ -51,8 +51,8 @@ export function stripStagesForTipo(tipo: TipoProcuracion | null | undefined) {
 }
 
 export const STRIP_LABELS: Record<string, string> = {
-  me: "ME",
-  certificacion: "Cert",
+  me: "Cert. Neuro",
+  certificacion: "Cert. Aux",
   comMuerte: "Fam",
   muestras: "Mstr",
   documentacion: "Doc",
@@ -151,6 +151,19 @@ export function computeMeEstado(campos: MeCampos): EstadoEtapa {
     campos.tipo_test_confirmacion ||
     REFLEJOS_ME.some((r) => campos[r.key]);
   return algoCargado ? "amber" : "gray";
+}
+
+export const METODOS_CERT_AUX: { key: string; label: string; grupo: "neurofisiologicos" | "flujo" }[] = [
+  { key: "eeg", label: "EEG", grupo: "neurofisiologicos" },
+  { key: "potenciales_evocados", label: "Potenciales evocados", grupo: "neurofisiologicos" },
+  { key: "doppler_transcraneano", label: "Doppler transcraneano", grupo: "flujo" },
+  { key: "angiografia_cerebral", label: "Angiografía cerebral", grupo: "flujo" },
+];
+
+export type CertAuxCampos = Record<string, string | null>;
+
+export function computeCertAuxEstado(campos: CertAuxCampos): EstadoEtapa {
+  return METODOS_CERT_AUX.some((m) => campos[m.key] === "completo") ? "green" : "gray";
 }
 
 export function humanizeCampo(campo: string) {

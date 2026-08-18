@@ -138,17 +138,6 @@ export async function loadPanel(
     };
   }
 
-  if (key === "certificacion") {
-    const checklist = await getDocEstado(supabase, donanteId, "certificacion");
-    return {
-      rows: checklist.map((c) => ({
-        label: humanizeCampo(c.item_key),
-        chip: chipFromEstado(c.estado, { text: "Pendiente", tone: "amber" as const }),
-      })),
-      note: checklist.length === 0 ? "Sin estudios de certificación cargados todavía." : undefined,
-    };
-  }
-
   if (key === "comMuerte") {
     const fam = await getCampos(supabase, donanteId, "coord_familia", ["nombre_familiar", "parentesco", "telefono_familiar"], donante, familiar);
     return {

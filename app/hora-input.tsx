@@ -13,6 +13,17 @@ export function formatHora(raw: string): string {
   return digits.slice(0, 2) + ":" + digits.slice(2);
 }
 
+/** "HH:MM" -> minutos desde medianoche, o null si está incompleto/es inválido. */
+export function parseHoraMinutos(v: string | null | undefined): number | null {
+  if (!v) return null;
+  const m = v.match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) return null;
+  const h = Number(m[1]);
+  const min = Number(m[2]);
+  if (h > 23 || min > 59) return null;
+  return h * 60 + min;
+}
+
 /**
  * Campo de hora reutilizable: texto libre, sin selector nativo de
  * reloj, formato 24h con auto-inserción de ":". Usar para todo campo

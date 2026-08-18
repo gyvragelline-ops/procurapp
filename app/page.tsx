@@ -11,19 +11,25 @@ import {
   humanizeCampo,
   computePotencialEstado,
   computeMeEstado,
+  computeCertAuxEstado,
   stagesForTipo,
   stripStagesForTipo,
   ME_CAMPO_KEYS,
+  METODOS_CERT_AUX,
   type EstadoEtapa,
   type MeCampos,
+  type CertAuxCampos,
 } from "@/lib/procuracion/constants";
 import { loadPanel, PAQUETE_LINKS, ORGANO_EMOJI, type PanelContent } from "@/lib/procuracion/panels";
 import type { Donante, Familiar, EtapaEstadoRow, MuestraRow, OrganoRow } from "@/lib/procuracion/types";
 import PotencialPanel from "./potencial-panel";
 import MePanel from "./me-panel";
+import CertAuxPanel from "./cert-aux-panel";
 import NuevoDonante from "./nuevo-donante";
 
 const EMPTY_ME_CAMPOS: MeCampos = Object.fromEntries(ME_CAMPO_KEYS.map((k) => [k, null]));
+const CERT_AUX_KEYS = METODOS_CERT_AUX.map((m) => m.key);
+const EMPTY_CERT_AUX_CAMPOS: CertAuxCampos = Object.fromEntries(CERT_AUX_KEYS.map((k) => [k, null]));
 
 const supabase = createClient();
 
@@ -40,6 +46,7 @@ export default function Home() {
   const [etapas, setEtapas] = useState<Record<string, EstadoEtapa>>({});
   const [judicialAplica, setJudicialAplica] = useState(false);
   const [meCampos, setMeCampos] = useState<MeCampos>(EMPTY_ME_CAMPOS);
+  const [certAuxCampos, setCertAuxCampos] = useState<CertAuxCampos>(EMPTY_CERT_AUX_CAMPOS);
   const [openStage, setOpenStage] = useState<string | null>(null);
   const [stageData, setStageData] = useState<Record<string, StageData>>({});
   const [loadingDetail, setLoadingDetail] = useState(false);
@@ -82,7 +89,13 @@ export default function Home() {
         .eq("donante_id", selectedId)
         .eq("planilla_key", "neuro")
         .in("campo_pdf", ME_CAMPO_KEYS),
-    ]).then(([donanteRes, familiarRes, etapasRes, judicialRes, meRes]) => {
+      supabase
+        .from("documentacion_estado")
+        .select("item_key, estado")
+        .eq("donante_id", selectedId)
+        .eq("categoria", "certificacion")
+        .in("item_key", CERT_AUX_KEYS),
+    ]).then(([donanteRes, familiarRes, etapasRes, judicialRes, meRes, certAuxRes]) => {
       const donanteData = (donanteRes.data as Donante) ?? null;
       setDonante(donanteData);
       setFamiliar((familiarRes.data as Familiar) ?? null);
@@ -97,6 +110,11 @@ export default function Home() {
         (meMap as Record<string, string | null>)[r.campo_pdf] = r.valor;
       });
       setMeCampos(meMap);
+      const certAuxMap = { ...EMPTY_CERT_AUX_CAMPOS };
+      ((certAuxRes.data as { item_key: string; estado: string | null }[]) ?? []).forEach((r) => {
+        (certAuxMap as Record<string, string | null>)[r.item_key] = r.estado;
+      });
+      setCertAuxCampos(certAuxMap);
       setLoadingDetail(false);
     });
   }, [selectedId]);
@@ -104,6 +122,7 @@ export default function Home() {
   function getEtapaEstado(key: string): EstadoEtapa | undefined {
     if (key === "potencial" && donante) return computePotencialEstado(donante);
     if (key === "me") return computeMeEstado(meCampos);
+    if (key === "certificacion") return computeCertAuxEstado(certAuxCampos);
     return etapas[key];
   }
 
@@ -125,7 +144,7 @@ export default function Home() {
       return;
     }
     setOpenStage(key);
-    if (key === "potencial" || key === "me" || stageData[key] || !donante) return;
+    if (key === "potencial" || key === "me" || key === "certificacion" || stageData[key] || !donante) return;
 
     if (key === "muestras") {
       setStageData((s) => ({ ...s, [key]: { kind: "muestras", loading: true } }));
@@ -302,7 +321,13 @@ export default function Home() {
                           <MePanel donanteId={donante.id} campos={meCampos} onChange={setMeCampos} />
                         )}
 
-                        {s.key !== "potencial" && s.key !== "me" && data?.loading && <div className="tiny">Cargando…</div>}
+                        {s.key === "certificacion" && donante && (
+                          <CertAuxPanel donanteId={donante.id} campos={certAuxCampos} onChange={setCertAuxCampos} />
+                        )}
+
+                        {s.key !== "potencial" && s.key !== "me" && s.key !== "certificacion" && data?.loading && (
+                          <div className="tiny">Cargando…</div>
+                        )}
 
                         {data?.kind === "panel" && !data.loading && data.content && (
                           <>

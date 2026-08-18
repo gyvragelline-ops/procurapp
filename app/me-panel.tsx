@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { REFLEJOS_ME, type MeCampos } from "@/lib/procuracion/constants";
-import HoraInput from "./hora-input";
+import HoraInput, { parseHoraMinutos } from "./hora-input";
 
 const supabase = createClient();
 
@@ -132,10 +132,19 @@ export default function MePanel({
   const esApnea = campos.tipo_test_confirmacion === "apnea";
   const esAtropina = campos.tipo_test_confirmacion === "atropina";
 
+  const min1 = parseHoraMinutos(campos.hora_evaluacion_1);
+  const min2 = parseHoraMinutos(campos.hora_evaluacion_2);
+  const horasMuyCercanas = min1 != null && min2 != null && min2 - min1 < 60;
+
   return (
     <>
       {renderTimeRow("hora_evaluacion_1", "Hora 1ª evaluación")}
       {renderTimeRow("hora_evaluacion_2", "Hora 2ª evaluación")}
+      {horasMuyCercanas && (
+        <div className="tiny" style={{ color: "var(--amber)", marginTop: -2, marginBottom: 6 }}>
+          Debe haber al menos 1 hora de diferencia entre evaluaciones
+        </div>
+      )}
 
       <div
         className="check-row"
