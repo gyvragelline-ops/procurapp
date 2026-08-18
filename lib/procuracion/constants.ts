@@ -166,6 +166,10 @@ export function computeCertAuxEstado(campos: CertAuxCampos): EstadoEtapa {
   return METODOS_CERT_AUX.some((m) => campos[m.key] === "completo") ? "green" : "gray";
 }
 
+export function computeComMuerteEstado(realizada: boolean): EstadoEtapa {
+  return realizada ? "green" : "gray";
+}
+
 export function humanizeCampo(campo: string) {
   return campo
     .replace(/_/g, " ")

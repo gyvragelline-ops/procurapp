@@ -12,6 +12,7 @@ import {
   computePotencialEstado,
   computeMeEstado,
   computeCertAuxEstado,
+  computeComMuerteEstado,
   stagesForTipo,
   stripStagesForTipo,
   ME_CAMPO_KEYS,
@@ -25,6 +26,7 @@ import type { Donante, Familiar, EtapaEstadoRow, MuestraRow, OrganoRow } from "@
 import PotencialPanel from "./potencial-panel";
 import MePanel from "./me-panel";
 import CertAuxPanel from "./cert-aux-panel";
+import ComMuertePanel from "./com-muerte-panel";
 import RecomendacionesComMuerte from "./recomendaciones-com-muerte";
 import NuevoDonante from "./nuevo-donante";
 
@@ -48,6 +50,7 @@ export default function Home() {
   const [judicialAplica, setJudicialAplica] = useState(false);
   const [meCampos, setMeCampos] = useState<MeCampos>(EMPTY_ME_CAMPOS);
   const [certAuxCampos, setCertAuxCampos] = useState<CertAuxCampos>(EMPTY_CERT_AUX_CAMPOS);
+  const [comMuerteRealizada, setComMuerteRealizada] = useState(false);
   const [openStage, setOpenStage] = useState<string | null>(null);
   const [stageData, setStageData] = useState<Record<string, StageData>>({});
   const [loadingDetail, setLoadingDetail] = useState(false);
@@ -96,7 +99,14 @@ export default function Home() {
         .eq("donante_id", selectedId)
         .eq("categoria", "certificacion")
         .in("item_key", CERT_AUX_KEYS),
-    ]).then(([donanteRes, familiarRes, etapasRes, judicialRes, meRes, certAuxRes]) => {
+      supabase
+        .from("documentacion_estado")
+        .select("estado")
+        .eq("donante_id", selectedId)
+        .eq("categoria", "comMuerte")
+        .eq("item_key", "realizada")
+        .maybeSingle(),
+    ]).then(([donanteRes, familiarRes, etapasRes, judicialRes, meRes, certAuxRes, comMuerteRes]) => {
       const donanteData = (donanteRes.data as Donante) ?? null;
       setDonante(donanteData);
       setFamiliar((familiarRes.data as Familiar) ?? null);
@@ -116,6 +126,7 @@ export default function Home() {
         (certAuxMap as Record<string, string | null>)[r.item_key] = r.estado;
       });
       setCertAuxCampos(certAuxMap);
+      setComMuerteRealizada((comMuerteRes.data as { estado: string | null } | null)?.estado === "si");
       setLoadingDetail(false);
     });
   }, [selectedId]);
@@ -124,6 +135,7 @@ export default function Home() {
     if (key === "potencial" && donante) return computePotencialEstado(donante);
     if (key === "me") return computeMeEstado(meCampos);
     if (key === "certificacion") return computeCertAuxEstado(certAuxCampos);
+    if (key === "comMuerte") return computeComMuerteEstado(comMuerteRealizada);
     return etapas[key];
   }
 
@@ -145,7 +157,7 @@ export default function Home() {
       return;
     }
     setOpenStage(key);
-    if (key === "potencial" || key === "me" || key === "certificacion" || stageData[key] || !donante) return;
+    if (key === "potencial" || key === "me" || key === "certificacion" || key === "comMuerte" || stageData[key] || !donante) return;
 
     if (key === "muestras") {
       setStageData((s) => ({ ...s, [key]: { kind: "muestras", loading: true } }));
@@ -326,9 +338,22 @@ export default function Home() {
                           <CertAuxPanel donanteId={donante.id} campos={certAuxCampos} onChange={setCertAuxCampos} />
                         )}
 
-                        {s.key !== "potencial" && s.key !== "me" && s.key !== "certificacion" && data?.loading && (
-                          <div className="tiny">Cargando…</div>
+                        {s.key === "comMuerte" && donante && (
+                          <>
+                            <ComMuertePanel
+                              donanteId={donante.id}
+                              realizada={comMuerteRealizada}
+                              onChange={setComMuerteRealizada}
+                            />
+                            <RecomendacionesComMuerte />
+                          </>
                         )}
+
+                        {s.key !== "potencial" &&
+                          s.key !== "me" &&
+                          s.key !== "certificacion" &&
+                          s.key !== "comMuerte" &&
+                          data?.loading && <div className="tiny">Cargando…</div>}
 
                         {data?.kind === "panel" && !data.loading && data.content && (
                           <>
@@ -348,8 +373,6 @@ export default function Home() {
                             {data.content.note && <div className="tiny" style={{ marginTop: data.content.rows.length ? 8 : 0 }}>{data.content.note}</div>}
                           </>
                         )}
-
-                        {s.key === "comMuerte" && <RecomendacionesComMuerte />}
 
                         {data?.kind === "muestras" && !data.loading && data.muestras && (
                           <>

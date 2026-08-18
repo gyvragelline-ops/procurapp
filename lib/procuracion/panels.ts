@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Donante, Familiar } from "./types";
-import { humanizeCampo, stageLabel, type EstadoEtapa } from "./constants";
+import { humanizeCampo, type EstadoEtapa } from "./constants";
 
 export type ChipTone = "green" | "amber" | "red" | "gray";
 export type PanelRow = {
@@ -134,18 +134,6 @@ export async function loadPanel(
             ? { text: aplica.estado === "si" ? "Corresponde" : "No corresponde", tone: aplica.estado === "si" ? "amber" : "gray" }
             : { text: "Sin definir", tone: "gray" },
         },
-      ],
-    };
-  }
-
-  if (key === "comMuerte") {
-    const fam = await getCampos(supabase, donanteId, "coord_familia", ["nombre_familiar", "parentesco", "telefono_familiar"], donante, familiar);
-    return {
-      rows: [
-        { label: "Estado", chip: { text: stageLabel(etapas[key]), tone: etapas[key] ?? "gray" } },
-        { label: "Familiar de contacto", value: fam.nombre_familiar },
-        { label: "Parentesco", value: fam.parentesco },
-        { label: "Teléfono", value: fam.telefono_familiar },
       ],
     };
   }

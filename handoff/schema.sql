@@ -152,7 +152,7 @@ create table solicitudes (
 create table documentacion_estado (
   id            uuid primary key default gen_random_uuid(),
   donante_id    uuid not null references donantes(id) on delete cascade,
-  categoria     text not null check (categoria in ('documentacion','estudios','certificacion','judicial')),
+  categoria     text not null check (categoria in ('documentacion','estudios','certificacion','judicial','comMuerte')),
   item_key      text not null,   -- ej. 'comunicacion_familiar' | 'foto_dni' | 'doppler_o_eeg' | 'tac_torax' | 'aplica' | 'foto_precario' | 'autorizacion'
   estado        text,            -- 'green'|'amber'|'red' o valor libre según item ('si'|'no'|'pendiente')
   meta          jsonb default '{}'::jsonb,  -- ej. {tipo:'doppler'} o {co2Inicial:'38', co2Final:'64'}
