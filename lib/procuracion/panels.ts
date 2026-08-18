@@ -138,13 +138,6 @@ export async function loadPanel(
     };
   }
 
-  if (key === "comDonacion") {
-    return {
-      rows: [],
-      note: "Espacio preparado para recursos y estrategias de comunicación de donación — se cargará el protocolo institucional próximamente.",
-    };
-  }
-
   if (key === "judicial") {
     const items = await getDocEstado(supabase, donanteId, "judicial");
     const foto = items.find((r) => r.item_key === "foto_precario");

@@ -28,6 +28,7 @@ import MePanel from "./me-panel";
 import CertAuxPanel from "./cert-aux-panel";
 import ComMuertePanel from "./com-muerte-panel";
 import RecomendacionesComMuerte from "./recomendaciones-com-muerte";
+import ComDonacionPanel from "./com-donacion-panel";
 import NuevoDonante from "./nuevo-donante";
 
 const EMPTY_ME_CAMPOS: MeCampos = Object.fromEntries(ME_CAMPO_KEYS.map((k) => [k, null]));
@@ -157,7 +158,16 @@ export default function Home() {
       return;
     }
     setOpenStage(key);
-    if (key === "potencial" || key === "me" || key === "certificacion" || key === "comMuerte" || stageData[key] || !donante) return;
+    if (
+      key === "potencial" ||
+      key === "me" ||
+      key === "certificacion" ||
+      key === "comMuerte" ||
+      key === "comDonacion" ||
+      stageData[key] ||
+      !donante
+    )
+      return;
 
     if (key === "muestras") {
       setStageData((s) => ({ ...s, [key]: { kind: "muestras", loading: true } }));
@@ -349,10 +359,13 @@ export default function Home() {
                           </>
                         )}
 
+                        {s.key === "comDonacion" && donante && <ComDonacionPanel donanteId={donante.id} />}
+
                         {s.key !== "potencial" &&
                           s.key !== "me" &&
                           s.key !== "certificacion" &&
                           s.key !== "comMuerte" &&
+                          s.key !== "comDonacion" &&
                           data?.loading && <div className="tiny">Cargando…</div>}
 
                         {data?.kind === "panel" && !data.loading && data.content && (
