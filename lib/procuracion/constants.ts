@@ -170,6 +170,10 @@ export function computeComMuerteEstado(realizada: boolean): EstadoEtapa {
   return realizada ? "green" : "gray";
 }
 
+export function computeComDonacionEstado(realizada: boolean): EstadoEtapa {
+  return realizada ? "green" : "gray";
+}
+
 export function humanizeCampo(campo: string) {
   return campo
     .replace(/_/g, " ")

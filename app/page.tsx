@@ -13,6 +13,7 @@ import {
   computeMeEstado,
   computeCertAuxEstado,
   computeComMuerteEstado,
+  computeComDonacionEstado,
   stagesForTipo,
   stripStagesForTipo,
   ME_CAMPO_KEYS,
@@ -29,6 +30,7 @@ import CertAuxPanel from "./cert-aux-panel";
 import ComMuertePanel from "./com-muerte-panel";
 import RecomendacionesComMuerte from "./recomendaciones-com-muerte";
 import ComDonacionPanel from "./com-donacion-panel";
+import ComDonacionRealizada from "./com-donacion-realizada";
 import NuevoDonante from "./nuevo-donante";
 
 const EMPTY_ME_CAMPOS: MeCampos = Object.fromEntries(ME_CAMPO_KEYS.map((k) => [k, null]));
@@ -52,6 +54,7 @@ export default function Home() {
   const [meCampos, setMeCampos] = useState<MeCampos>(EMPTY_ME_CAMPOS);
   const [certAuxCampos, setCertAuxCampos] = useState<CertAuxCampos>(EMPTY_CERT_AUX_CAMPOS);
   const [comMuerteRealizada, setComMuerteRealizada] = useState(false);
+  const [comDonacionRealizada, setComDonacionRealizada] = useState(false);
   const [openStage, setOpenStage] = useState<string | null>(null);
   const [stageData, setStageData] = useState<Record<string, StageData>>({});
   const [loadingDetail, setLoadingDetail] = useState(false);
@@ -107,7 +110,14 @@ export default function Home() {
         .eq("categoria", "comMuerte")
         .eq("item_key", "realizada")
         .maybeSingle(),
-    ]).then(([donanteRes, familiarRes, etapasRes, judicialRes, meRes, certAuxRes, comMuerteRes]) => {
+      supabase
+        .from("documentacion_estado")
+        .select("estado")
+        .eq("donante_id", selectedId)
+        .eq("categoria", "comDonacion")
+        .eq("item_key", "realizada")
+        .maybeSingle(),
+    ]).then(([donanteRes, familiarRes, etapasRes, judicialRes, meRes, certAuxRes, comMuerteRes, comDonacionRes]) => {
       const donanteData = (donanteRes.data as Donante) ?? null;
       setDonante(donanteData);
       setFamiliar((familiarRes.data as Familiar) ?? null);
@@ -128,6 +138,7 @@ export default function Home() {
       });
       setCertAuxCampos(certAuxMap);
       setComMuerteRealizada((comMuerteRes.data as { estado: string | null } | null)?.estado === "si");
+      setComDonacionRealizada((comDonacionRes.data as { estado: string | null } | null)?.estado === "si");
       setLoadingDetail(false);
     });
   }, [selectedId]);
@@ -137,6 +148,7 @@ export default function Home() {
     if (key === "me") return computeMeEstado(meCampos);
     if (key === "certificacion") return computeCertAuxEstado(certAuxCampos);
     if (key === "comMuerte") return computeComMuerteEstado(comMuerteRealizada);
+    if (key === "comDonacion") return computeComDonacionEstado(comDonacionRealizada);
     return etapas[key];
   }
 
@@ -359,7 +371,16 @@ export default function Home() {
                           </>
                         )}
 
-                        {s.key === "comDonacion" && donante && <ComDonacionPanel donanteId={donante.id} />}
+                        {s.key === "comDonacion" && donante && (
+                          <>
+                            <ComDonacionRealizada
+                              donanteId={donante.id}
+                              realizada={comDonacionRealizada}
+                              onChange={setComDonacionRealizada}
+                            />
+                            <ComDonacionPanel donanteId={donante.id} />
+                          </>
+                        )}
 
                         {s.key !== "potencial" &&
                           s.key !== "me" &&
