@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
   STAGES_MULTIORGANICO,
@@ -22,8 +22,9 @@ import {
   type MeCampos,
   type CertAuxCampos,
 } from "@/lib/procuracion/constants";
-import { loadPanel, PAQUETE_LINKS, ORGANO_EMOJI, type PanelContent } from "@/lib/procuracion/panels";
-import type { Donante, Familiar, EtapaEstadoRow, MuestraRow, OrganoRow } from "@/lib/procuracion/types";
+import { loadPanel, ORGANO_EMOJI, type PanelContent } from "@/lib/procuracion/panels";
+import { MUESTRAS_PAQUETES, generarMuestrasPdfs, tieneDatosMinimos, firmaDatosBase } from "@/lib/procuracion/muestras-pdf";
+import type { Donante, Familiar, EtapaEstadoRow, MuestraRow, OrganoRow, PlanillaGeneradaRow } from "@/lib/procuracion/types";
 import PotencialPanel from "./potencial-panel";
 import MePanel from "./me-panel";
 import CertAuxPanel from "./cert-aux-panel";
@@ -55,6 +56,9 @@ export default function Home() {
   const [certAuxCampos, setCertAuxCampos] = useState<CertAuxCampos>(EMPTY_CERT_AUX_CAMPOS);
   const [comMuerteRealizada, setComMuerteRealizada] = useState(false);
   const [comDonacionRealizada, setComDonacionRealizada] = useState(false);
+  const [planillasGeneradas, setPlanillasGeneradas] = useState<Record<string, PlanillaGeneradaRow>>({});
+  const [generandoPdfs, setGenerandoPdfs] = useState(false);
+  const lastFirmaGenerada = useRef<Record<string, string>>({});
   const [openStage, setOpenStage] = useState<string | null>(null);
   const [stageData, setStageData] = useState<Record<string, StageData>>({});
   const [loadingDetail, setLoadingDetail] = useState(false);
@@ -117,7 +121,12 @@ export default function Home() {
         .eq("categoria", "comDonacion")
         .eq("item_key", "realizada")
         .maybeSingle(),
-    ]).then(([donanteRes, familiarRes, etapasRes, judicialRes, meRes, certAuxRes, comMuerteRes, comDonacionRes]) => {
+      supabase
+        .from("planillas_generadas")
+        .select("planilla_key, archivo_url, generado_en")
+        .eq("donante_id", selectedId)
+        .order("generado_en", { ascending: false }),
+    ]).then(([donanteRes, familiarRes, etapasRes, judicialRes, meRes, certAuxRes, comMuerteRes, comDonacionRes, planillasRes]) => {
       const donanteData = (donanteRes.data as Donante) ?? null;
       setDonante(donanteData);
       setFamiliar((familiarRes.data as Familiar) ?? null);
@@ -139,9 +148,44 @@ export default function Home() {
       setCertAuxCampos(certAuxMap);
       setComMuerteRealizada((comMuerteRes.data as { estado: string | null } | null)?.estado === "si");
       setComDonacionRealizada((comDonacionRes.data as { estado: string | null } | null)?.estado === "si");
+      const planillasMap: Record<string, PlanillaGeneradaRow> = {};
+      ((planillasRes.data as PlanillaGeneradaRow[]) ?? []).forEach((r) => {
+        if (!planillasMap[r.planilla_key]) planillasMap[r.planilla_key] = r;
+      });
+      setPlanillasGeneradas(planillasMap);
+      if (donanteData && tieneDatosMinimos(donanteData)) {
+        lastFirmaGenerada.current[donanteData.id] =
+          MUESTRAS_PAQUETES.filter((p) => p.prellenable).every((p) => planillasMap[p.key])
+            ? firmaDatosBase(donanteData)
+            : lastFirmaGenerada.current[donanteData.id] ?? "";
+      }
       setLoadingDetail(false);
     });
   }, [selectedId]);
+
+  useEffect(() => {
+    if (!donante || !tieneDatosMinimos(donante)) return;
+    const firma = firmaDatosBase(donante);
+    if (lastFirmaGenerada.current[donante.id] === firma) return;
+    lastFirmaGenerada.current[donante.id] = firma;
+    setGenerandoPdfs(true);
+    generarMuestrasPdfs(supabase, donante)
+      .then(() =>
+        supabase
+          .from("planillas_generadas")
+          .select("planilla_key, archivo_url, generado_en")
+          .eq("donante_id", donante.id)
+          .order("generado_en", { ascending: false })
+      )
+      .then(({ data }) => {
+        const map: Record<string, PlanillaGeneradaRow> = {};
+        ((data as PlanillaGeneradaRow[]) ?? []).forEach((r) => {
+          if (!map[r.planilla_key]) map[r.planilla_key] = r;
+        });
+        setPlanillasGeneradas(map);
+      })
+      .finally(() => setGenerandoPdfs(false));
+  }, [donante]);
 
   function getEtapaEstado(key: string): EstadoEtapa | undefined {
     if (key === "potencial" && donante) return computePotencialEstado(donante);
@@ -411,28 +455,41 @@ export default function Home() {
                         {data?.kind === "muestras" && !data.loading && data.muestras && (
                           <>
                             {data.muestras.length === 0 && <div className="tiny">Sin paquetes de muestra cargados.</div>}
-                            {data.muestras.map((m) => (
-                              <div className="field-row" key={m.paquete_key}>
-                                <span className="field-label">
-                                  {m.nombre}
-                                  <br />
-                                  <span className="tiny">
-                                    {m.tubos || "—"}
-                                    {PAQUETE_LINKS[m.paquete_key] && (
-                                      <>
-                                        {" · "}
-                                        <a href={PAQUETE_LINKS[m.paquete_key]} target="_blank" rel="noopener" style={{ color: "var(--accent)" }}>
-                                          ver formulario
-                                        </a>
-                                      </>
-                                    )}
+                            {generandoPdfs && <div className="tiny" style={{ marginBottom: 6 }}>Generando formularios prellenados…</div>}
+                            {data.muestras.map((m) => {
+                              const paquete = MUESTRAS_PAQUETES.find((p) => p.key === m.paquete_key);
+                              const generado = planillasGeneradas[m.paquete_key];
+                              return (
+                                <div className="field-row" key={m.paquete_key}>
+                                  <span className="field-label">
+                                    {m.nombre}
+                                    <br />
+                                    <span className="tiny">
+                                      {m.tubos || "—"}
+                                      {paquete && (
+                                        <>
+                                          {" · "}
+                                          <a href={`/forms/${paquete.archivo}`} target="_blank" rel="noopener" style={{ color: "var(--accent)" }}>
+                                            formulario en blanco
+                                          </a>
+                                        </>
+                                      )}
+                                      {generado?.archivo_url && (
+                                        <>
+                                          {" · "}
+                                          <a href={generado.archivo_url} target="_blank" rel="noopener" style={{ color: "var(--accent)" }}>
+                                            descargar prellenado
+                                          </a>
+                                        </>
+                                      )}
+                                    </span>
                                   </span>
-                                </span>
-                                <span className={`chip ${m.obtenida ? "chip-green" : "chip-gray"}`}>
-                                  {m.obtenida ? "Obtenida" : "Pendiente"}
-                                </span>
-                              </div>
-                            ))}
+                                  <span className={`chip ${m.obtenida ? "chip-green" : "chip-gray"}`}>
+                                    {m.obtenida ? "Obtenida" : "Pendiente"}
+                                  </span>
+                                </div>
+                              );
+                            })}
                             {data.muestras.length > 0 && (
                               <div className="tiny" style={{ marginTop: 8 }}>
                                 {data.muestras.filter((m) => m.obtenida).length}/{data.muestras.length} paquetes obtenidos · se

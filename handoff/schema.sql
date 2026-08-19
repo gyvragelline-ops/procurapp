@@ -84,18 +84,20 @@ create table timeline_eventos (
 );
 
 -- ------------------------------------------------------------
--- 5) MUESTRAS — paquete fijo de 7 (HLA, Laboratorio, Bacteriología,
---    Serología, Pre-ablación, Grupo y factor, Hisopado COVID).
---    Se sembra una fila por paquete al crear el donante.
+-- 5) MUESTRAS — paquete fijo de 8 (HLA, Laboratorio, Hemocultivo,
+--    Urocultivo, Serología, Pre-ablación, Grupo y factor, Hisopado
+--    COVID). Se sembra una fila por paquete al crear el donante.
+--    paquete_key === planilla_key para los que tienen motor de
+--    prellenado (ver handoff/motor_prellenado_muestras.sql).
 -- ------------------------------------------------------------
 create table muestras (
   id            uuid primary key default gen_random_uuid(),
   donante_id    uuid not null references donantes(id) on delete cascade,
-  paquete_key   text not null,   -- 'hla' | 'lab' | 'bacterio' | 'serologia' | 'preablacion' | 'grupors' | 'covid'
+  paquete_key   text not null,   -- 'hla'|'lab'|'hemocultivo'|'urocultivo'|'serologia'|'preablacion'|'grupors'|'covid'
   nombre        text not null,
   tubos         text,
   obtenida      boolean default false,
-  retirada      boolean default false,  -- las 7 se retiran juntas; se puede derivar de donantes o duplicar acá
+  retirada      boolean default false,  -- las 8 se retiran juntas; se puede derivar de donantes o duplicar acá
   unique (donante_id, paquete_key)
 );
 
@@ -233,7 +235,8 @@ begin
   values
     (new.id, 'hla', 'HLA', 'a definir'),
     (new.id, 'lab', 'Laboratorio', 'a definir'),
-    (new.id, 'bacterio', 'Bacteriología (hemocultivos + urocultivo)', 'a definir'),
+    (new.id, 'hemocultivo', 'Hemocultivo', 'a definir'),
+    (new.id, 'urocultivo', 'Urocultivo', 'a definir'),
     (new.id, 'serologia', 'Serología', 'a definir'),
     (new.id, 'preablacion', 'Laboratorio pre-ablación', 'a definir'),
     (new.id, 'grupors', 'Grupo sanguíneo y factor RH', 'a definir'),

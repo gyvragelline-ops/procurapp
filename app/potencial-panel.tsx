@@ -6,7 +6,7 @@ import type { Donante } from "@/lib/procuracion/types";
 
 const supabase = createClient();
 
-type Campo = "servicio" | "pd_numero" | "fecha_ingreso";
+type Campo = "servicio" | "pd_numero" | "fecha_ingreso" | "nombre_completo" | "edad" | "institucion" | "cama";
 
 function fmtFecha(v: string | null) {
   if (!v) return null;
@@ -39,12 +39,17 @@ export default function PotencialPanel({
   const [savingJudicial, setSavingJudicial] = useState(false);
 
   function startEdit(field: Campo) {
-    setDraft(field === "fecha_ingreso" ? toDatetimeLocalValue(donante.fecha_ingreso) : (donante[field] ?? ""));
+    if (field === "fecha_ingreso") setDraft(toDatetimeLocalValue(donante.fecha_ingreso));
+    else if (field === "edad") setDraft(donante.edad != null ? String(donante.edad) : "");
+    else setDraft(donante[field] ?? "");
     setEditingField(field);
   }
 
   async function saveField(field: Campo) {
-    const value = field === "fecha_ingreso" ? (draft ? new Date(draft).toISOString() : null) : draft.trim() || null;
+    let value: string | number | null;
+    if (field === "fecha_ingreso") value = draft ? new Date(draft).toISOString() : null;
+    else if (field === "edad") value = draft.trim() && !Number.isNaN(Number(draft.trim())) ? Number(draft.trim()) : null;
+    else value = draft.trim() || null;
     setEditingField(null);
     const { data, error } = await supabase
       .from("donantes")
@@ -70,8 +75,12 @@ export default function PotencialPanel({
   }
 
   const rows: { key: Campo; label: string; display: string | null }[] = [
-    { key: "servicio", label: "Servicio", display: donante.servicio },
+    { key: "nombre_completo", label: "Potencial donante", display: donante.nombre_completo },
     { key: "pd_numero", label: "PD Nº", display: donante.pd_numero },
+    { key: "edad", label: "Edad", display: donante.edad != null ? String(donante.edad) : null },
+    { key: "institucion", label: "Establecimiento", display: donante.institucion },
+    { key: "servicio", label: "Servicio", display: donante.servicio },
+    { key: "cama", label: "Cama", display: donante.cama },
     { key: "fecha_ingreso", label: "Fecha de ingreso", display: fmtFecha(donante.fecha_ingreso) },
   ];
 
@@ -83,6 +92,7 @@ export default function PotencialPanel({
           {editingField === r.key ? (
             <input
               type={r.key === "fecha_ingreso" ? "datetime-local" : "text"}
+              inputMode={r.key === "edad" ? "numeric" : undefined}
               className="mini-input"
               style={{ width: r.key === "fecha_ingreso" ? 170 : 130, textAlign: "left" }}
               value={draft}

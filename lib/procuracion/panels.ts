@@ -13,19 +13,6 @@ export type PanelContent = {
   note?: string;
 };
 
-export const PAQUETE_LINKS: Record<string, string> = {
-  hla: "https://www.cucaiba.gba.gov.ar/wp-content/uploads/2017/07/FPrO-75-04-02-Solicitud-HLA-1.pdf",
-  lab: "https://www.cucaiba.gba.gov.ar/wp-content/uploads/2017/07/FPrO-75-04-03-Solicitud-laboratorio-1.pdf",
-  bacterio:
-    "https://www.cucaiba.gba.gov.ar/wp-content/uploads/2017/07/FPrO-75-04-04-Solicitud-bacteriologia-1.pdf",
-  serologia:
-    "https://www.cucaiba.gba.gov.ar/wp-content/uploads/2017/07/FPrO-75-04-05-Solicitud-serologia-1.pdf",
-  preablacion:
-    "https://www.cucaiba.gba.gov.ar/wp-content/uploads/2017/07/FPrO-75-04-06-Solicitud-laboratorio-Pre_ablacion-1.pdf",
-  grupors:
-    "https://www.cucaiba.gba.gov.ar/wp-content/uploads/2017/07/Solicitud-Grupo-Sanguineo-y-Factor-RH-1.pdf",
-};
-
 export const ORGANO_EMOJI: Record<string, string> = {
   corazon: "❤️",
   pulmones: "🫁",

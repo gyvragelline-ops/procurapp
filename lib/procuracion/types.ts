@@ -61,6 +61,12 @@ export type MuestraRow = {
   retirada: boolean;
 };
 
+export type PlanillaGeneradaRow = {
+  planilla_key: string;
+  archivo_url: string | null;
+  generado_en: string;
+};
+
 export type OrganoRow = {
   organo_key: string;
   pct: number;
