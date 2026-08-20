@@ -14,6 +14,7 @@ import {
   computeCertAuxEstado,
   computeComMuerteEstado,
   computeComDonacionEstado,
+  computeMuestrasEstado,
   stagesForTipo,
   stripStagesForTipo,
   ME_CAMPO_KEYS,
@@ -43,7 +44,6 @@ const supabase = createClient();
 
 type StageData =
   | { kind: "panel"; loading: boolean; content?: PanelContent }
-  | { kind: "muestras"; loading: boolean; muestras?: MuestraRow[] }
   | { kind: "organos"; loading: boolean; organos?: OrganoRow[] };
 
 export default function Home() {
@@ -57,9 +57,11 @@ export default function Home() {
   const [certAuxCampos, setCertAuxCampos] = useState<CertAuxCampos>(EMPTY_CERT_AUX_CAMPOS);
   const [comMuerteRealizada, setComMuerteRealizada] = useState(false);
   const [comDonacionRealizada, setComDonacionRealizada] = useState(false);
+  const [muestras, setMuestras] = useState<MuestraRow[]>([]);
   const [planillasGeneradas, setPlanillasGeneradas] = useState<Record<string, PlanillaGeneradaRow>>({});
   const [generandoPdfs, setGenerandoPdfs] = useState(false);
   const [combinandoPdfs, setCombinandoPdfs] = useState(false);
+  const [descargaError, setDescargaError] = useState<string | null>(null);
   const [mostrarIndividual, setMostrarIndividual] = useState(false);
   const lastFirmaGenerada = useRef<Record<string, string>>({});
   const [openStage, setOpenStage] = useState<string | null>(null);
@@ -129,7 +131,8 @@ export default function Home() {
         .select("planilla_key, archivo_url, generado_en")
         .eq("donante_id", selectedId)
         .order("generado_en", { ascending: false }),
-    ]).then(([donanteRes, familiarRes, etapasRes, judicialRes, meRes, certAuxRes, comMuerteRes, comDonacionRes, planillasRes]) => {
+      supabase.from("muestras").select("paquete_key, nombre, tubos, obtenida, retirada").eq("donante_id", selectedId),
+    ]).then(([donanteRes, familiarRes, etapasRes, judicialRes, meRes, certAuxRes, comMuerteRes, comDonacionRes, planillasRes, muestrasRes]) => {
       const donanteData = (donanteRes.data as Donante) ?? null;
       setDonante(donanteData);
       setFamiliar((familiarRes.data as Familiar) ?? null);
@@ -156,6 +159,7 @@ export default function Home() {
         if (!planillasMap[r.planilla_key]) planillasMap[r.planilla_key] = r;
       });
       setPlanillasGeneradas(planillasMap);
+      setMuestras((muestrasRes.data as MuestraRow[]) ?? []);
       setLoadingDetail(false);
     });
   }, [selectedId]);
@@ -190,6 +194,7 @@ export default function Home() {
   async function descargarEImprimir() {
     if (!donante || !todosPrellenadosListos) return;
     setCombinandoPdfs(true);
+    setDescargaError(null);
     try {
       const urls = [
         ...prellenables.map((p) => planillasGeneradas[p.key].archivo_url as string),
@@ -198,60 +203,34 @@ export default function Home() {
       const bytes = await combinarMuestrasPdfs(urls);
       const blob = new Blob([bytes as BlobPart], { type: "application/pdf" });
       const url = URL.createObjectURL(blob);
-      const iframe = document.createElement("iframe");
-      iframe.style.position = "fixed";
-      iframe.style.right = "0";
-      iframe.style.bottom = "0";
-      iframe.style.width = "0";
-      iframe.style.height = "0";
-      iframe.style.border = "0";
-      iframe.src = url;
-      document.body.appendChild(iframe);
-      iframe.onload = () => {
-        setTimeout(() => {
-          iframe.contentWindow?.focus();
-          iframe.contentWindow?.print();
-        }, 300);
-      };
-      const limpiar = () => {
-        document.body.removeChild(iframe);
-        URL.revokeObjectURL(url);
-      };
-      iframe.contentWindow?.addEventListener("afterprint", limpiar);
-      setTimeout(limpiar, 60000);
+      // La descarga es la acción garantizada (mismo mecanismo que ya
+      // funcionaba antes). Abrir además una pestaña con el PDF es una
+      // mejora best-effort para verlo/imprimirlo directo -- si el
+      // navegador la bloquea, la descarga ya se hizo igual.
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `muestras_${donante.pd_numero ?? donante.id}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.open(url, "_blank");
+    } catch (err) {
+      setDescargaError(err instanceof Error ? err.message : "No se pudo generar el PDF combinado.");
     } finally {
       setCombinandoPdfs(false);
     }
   }
 
-  function actualizarMuestraLocal(paqueteKey: string, cambios: Partial<MuestraRow>) {
-    setStageData((s) => {
-      const cur = s["muestras"];
-      if (!cur || cur.kind !== "muestras" || !cur.muestras) return s;
-      return {
-        ...s,
-        muestras: {
-          ...cur,
-          muestras: cur.muestras.map((m) => (m.paquete_key === paqueteKey ? { ...m, ...cambios } : m)),
-        },
-      };
-    });
-  }
-
   async function toggleObtenida(paqueteKey: string, actual: boolean) {
     if (!donante) return;
     const nuevo = !actual;
-    actualizarMuestraLocal(paqueteKey, { obtenida: nuevo });
+    setMuestras((prev) => prev.map((m) => (m.paquete_key === paqueteKey ? { ...m, obtenida: nuevo } : m)));
     await supabase.from("muestras").update({ obtenida: nuevo }).eq("donante_id", donante.id).eq("paquete_key", paqueteKey);
   }
 
   async function marcarTodasObtenidas() {
     if (!donante) return;
-    setStageData((s) => {
-      const cur = s["muestras"];
-      if (!cur || cur.kind !== "muestras" || !cur.muestras) return s;
-      return { ...s, muestras: { ...cur, muestras: cur.muestras.map((m) => ({ ...m, obtenida: true })) } };
-    });
+    setMuestras((prev) => prev.map((m) => ({ ...m, obtenida: true })));
     await supabase.from("muestras").update({ obtenida: true }).eq("donante_id", donante.id);
   }
 
@@ -261,6 +240,7 @@ export default function Home() {
     if (key === "certificacion") return computeCertAuxEstado(certAuxCampos);
     if (key === "comMuerte") return computeComMuerteEstado(comMuerteRealizada);
     if (key === "comDonacion") return computeComDonacionEstado(comDonacionRealizada);
+    if (key === "muestras") return computeMuestrasEstado(muestras);
     return etapas[key];
   }
 
@@ -288,20 +268,11 @@ export default function Home() {
       key === "certificacion" ||
       key === "comMuerte" ||
       key === "comDonacion" ||
+      key === "muestras" ||
       stageData[key] ||
       !donante
     )
       return;
-
-    if (key === "muestras") {
-      setStageData((s) => ({ ...s, [key]: { kind: "muestras", loading: true } }));
-      const { data } = await supabase
-        .from("muestras")
-        .select("paquete_key, nombre, tubos, obtenida, retirada")
-        .eq("donante_id", donante.id);
-      setStageData((s) => ({ ...s, [key]: { kind: "muestras", loading: false, muestras: (data as MuestraRow[]) ?? [] } }));
-      return;
-    }
 
     if (key === "organos") {
       setStageData((s) => ({ ...s, [key]: { kind: "organos", loading: true } }));
@@ -499,6 +470,7 @@ export default function Home() {
                           s.key !== "certificacion" &&
                           s.key !== "comMuerte" &&
                           s.key !== "comDonacion" &&
+                          s.key !== "muestras" &&
                           data?.loading && <div className="tiny">Cargando…</div>}
 
                         {data?.kind === "panel" && !data.loading && data.content && (
@@ -520,12 +492,12 @@ export default function Home() {
                           </>
                         )}
 
-                        {data?.kind === "muestras" && !data.loading && data.muestras && (
+                        {s.key === "muestras" && donante && (
                           <>
-                            {data.muestras.length === 0 && <div className="tiny">Sin paquetes de muestra cargados.</div>}
+                            {muestras.length === 0 && <div className="tiny">Sin paquetes de muestra cargados.</div>}
                             {generandoPdfs && <div className="tiny" style={{ marginBottom: 8 }}>Generando formularios prellenados…</div>}
 
-                            {data.muestras.length > 0 && (
+                            {muestras.length > 0 && (
                               <button
                                 className="btn btn-accent"
                                 style={{ width: "100%", marginBottom: 8 }}
@@ -539,8 +511,13 @@ export default function Home() {
                                     : "Generando formularios…"}
                               </button>
                             )}
+                            {descargaError && (
+                              <div className="tiny" style={{ color: "var(--red)", marginBottom: 8 }}>
+                                {descargaError}
+                              </div>
+                            )}
 
-                            {data.muestras.length > 0 && (
+                            {muestras.length > 0 && (
                               <button
                                 className="btn btn-sm"
                                 style={{ width: "100%", marginBottom: 10 }}
@@ -550,7 +527,7 @@ export default function Home() {
                               </button>
                             )}
 
-                            {data.muestras.map((m) => (
+                            {muestras.map((m) => (
                               <div className="field-row" key={m.paquete_key} style={{ paddingTop: 4, paddingBottom: 4 }}>
                                 <span className="field-label" style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                                   <span>{m.nombre}</span>
@@ -566,14 +543,14 @@ export default function Home() {
                               </div>
                             ))}
 
-                            {data.muestras.length > 0 && (
+                            {muestras.length > 0 && (
                               <div className="tiny" style={{ marginTop: 8 }}>
-                                {data.muestras.filter((m) => m.obtenida).length}/{data.muestras.length} paquetes obtenidos · se
+                                {muestras.filter((m) => m.obtenida).length}/{muestras.length} paquetes obtenidos · se
                                 retiran todos juntos, en una sola vez.
                               </div>
                             )}
 
-                            {data.muestras.length > 0 && (
+                            {muestras.length > 0 && (
                               <div style={{ marginTop: 10, paddingTop: 8, borderTop: "1px solid var(--border-soft)" }}>
                                 <span
                                   className="tiny"
@@ -584,7 +561,7 @@ export default function Home() {
                                 </span>
                                 {mostrarIndividual && (
                                   <div style={{ marginTop: 6 }}>
-                                    {data.muestras.map((m) => {
+                                    {muestras.map((m) => {
                                       const paquete = MUESTRAS_PAQUETES.find((p) => p.key === m.paquete_key);
                                       const generado = planillasGeneradas[m.paquete_key];
                                       return (

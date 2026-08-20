@@ -36,6 +36,7 @@ export const STRIP_STAGES_MULTIORGANICO = [
   "me",
   "certificacion",
   "comMuerte",
+  "comDonacion",
   "muestras",
   "documentacion",
   "estudios",
@@ -44,7 +45,7 @@ export const STRIP_STAGES_MULTIORGANICO = [
   "quirofano",
 ];
 
-export const STRIP_STAGES_CORNEAS = ["me", "comMuerte", "muestras", "documentacion", "entregaCorneas"];
+export const STRIP_STAGES_CORNEAS = ["me", "comMuerte", "comDonacion", "muestras", "documentacion", "entregaCorneas"];
 
 export function stripStagesForTipo(tipo: TipoProcuracion | null | undefined) {
   return tipo === "corneas" ? STRIP_STAGES_CORNEAS : STRIP_STAGES_MULTIORGANICO;
@@ -54,6 +55,7 @@ export const STRIP_LABELS: Record<string, string> = {
   me: "Cert. Neuro",
   certificacion: "Cert. Aux",
   comMuerte: "Fam",
+  comDonacion: "Donac",
   muestras: "Mstr",
   documentacion: "Doc",
   estudios: "Est",
@@ -172,6 +174,14 @@ export function computeComMuerteEstado(realizada: boolean): EstadoEtapa {
 
 export function computeComDonacionEstado(realizada: boolean): EstadoEtapa {
   return realizada ? "green" : "gray";
+}
+
+export function computeMuestrasEstado(muestras: { obtenida: boolean }[]): EstadoEtapa {
+  if (muestras.length === 0) return "gray";
+  const obtenidas = muestras.filter((m) => m.obtenida).length;
+  if (obtenidas === muestras.length) return "green";
+  if (obtenidas > 0) return "amber";
+  return "gray";
 }
 
 export function humanizeCampo(campo: string) {
