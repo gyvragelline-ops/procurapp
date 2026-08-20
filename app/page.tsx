@@ -187,7 +187,7 @@ export default function Home() {
   const prellenables = MUESTRAS_PAQUETES.filter((p) => p.prellenable);
   const todosPrellenadosListos = prellenables.every((p) => planillasGeneradas[p.key]?.archivo_url);
 
-  async function descargarTodos() {
+  async function descargarEImprimir() {
     if (!donante || !todosPrellenadosListos) return;
     setCombinandoPdfs(true);
     try {
@@ -198,14 +198,61 @@ export default function Home() {
       const bytes = await combinarMuestrasPdfs(urls);
       const blob = new Blob([bytes as BlobPart], { type: "application/pdf" });
       const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `muestras_${donante.pd_numero ?? donante.id}.pdf`;
-      a.click();
-      URL.revokeObjectURL(url);
+      const iframe = document.createElement("iframe");
+      iframe.style.position = "fixed";
+      iframe.style.right = "0";
+      iframe.style.bottom = "0";
+      iframe.style.width = "0";
+      iframe.style.height = "0";
+      iframe.style.border = "0";
+      iframe.src = url;
+      document.body.appendChild(iframe);
+      iframe.onload = () => {
+        setTimeout(() => {
+          iframe.contentWindow?.focus();
+          iframe.contentWindow?.print();
+        }, 300);
+      };
+      const limpiar = () => {
+        document.body.removeChild(iframe);
+        URL.revokeObjectURL(url);
+      };
+      iframe.contentWindow?.addEventListener("afterprint", limpiar);
+      setTimeout(limpiar, 60000);
     } finally {
       setCombinandoPdfs(false);
     }
+  }
+
+  function actualizarMuestraLocal(paqueteKey: string, cambios: Partial<MuestraRow>) {
+    setStageData((s) => {
+      const cur = s["muestras"];
+      if (!cur || cur.kind !== "muestras" || !cur.muestras) return s;
+      return {
+        ...s,
+        muestras: {
+          ...cur,
+          muestras: cur.muestras.map((m) => (m.paquete_key === paqueteKey ? { ...m, ...cambios } : m)),
+        },
+      };
+    });
+  }
+
+  async function toggleObtenida(paqueteKey: string, actual: boolean) {
+    if (!donante) return;
+    const nuevo = !actual;
+    actualizarMuestraLocal(paqueteKey, { obtenida: nuevo });
+    await supabase.from("muestras").update({ obtenida: nuevo }).eq("donante_id", donante.id).eq("paquete_key", paqueteKey);
+  }
+
+  async function marcarTodasObtenidas() {
+    if (!donante) return;
+    setStageData((s) => {
+      const cur = s["muestras"];
+      if (!cur || cur.kind !== "muestras" || !cur.muestras) return s;
+      return { ...s, muestras: { ...cur, muestras: cur.muestras.map((m) => ({ ...m, obtenida: true })) } };
+    });
+    await supabase.from("muestras").update({ obtenida: true }).eq("donante_id", donante.id);
   }
 
   function getEtapaEstado(key: string): EstadoEtapa | undefined {
@@ -481,15 +528,25 @@ export default function Home() {
                             {data.muestras.length > 0 && (
                               <button
                                 className="btn btn-accent"
-                                style={{ width: "100%", marginBottom: 10 }}
+                                style={{ width: "100%", marginBottom: 8 }}
                                 disabled={!todosPrellenadosListos || combinandoPdfs}
-                                onClick={descargarTodos}
+                                onClick={descargarEImprimir}
                               >
                                 {combinandoPdfs
-                                  ? "Combinando…"
+                                  ? "Preparando…"
                                   : todosPrellenadosListos
-                                    ? "Descargar todos (1 PDF)"
-                                    : "Descargar todos — generando…"}
+                                    ? "Descargar e imprimir"
+                                    : "Generando formularios…"}
+                              </button>
+                            )}
+
+                            {data.muestras.length > 0 && (
+                              <button
+                                className="btn btn-sm"
+                                style={{ width: "100%", marginBottom: 10 }}
+                                onClick={marcarTodasObtenidas}
+                              >
+                                Marcar todos como obtenidos
                               </button>
                             )}
 
@@ -499,9 +556,13 @@ export default function Home() {
                                   <span>{m.nombre}</span>
                                   <MuestraIconRow paqueteKey={m.paquete_key} />
                                 </span>
-                                <span className={`chip ${m.obtenida ? "chip-green" : "chip-gray"}`}>
+                                <button
+                                  className={`chip ${m.obtenida ? "chip-green" : "chip-gray"}`}
+                                  style={{ border: "none", cursor: "pointer" }}
+                                  onClick={() => toggleObtenida(m.paquete_key, m.obtenida)}
+                                >
                                   {m.obtenida ? "Obtenida" : "Pendiente"}
-                                </span>
+                                </button>
                               </div>
                             ))}
 
