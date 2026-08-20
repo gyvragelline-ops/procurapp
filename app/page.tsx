@@ -23,7 +23,8 @@ import {
   type CertAuxCampos,
 } from "@/lib/procuracion/constants";
 import { loadPanel, ORGANO_EMOJI, type PanelContent } from "@/lib/procuracion/panels";
-import { MUESTRAS_PAQUETES, generarMuestrasPdfs, tieneDatosMinimos, firmaDatosBase } from "@/lib/procuracion/muestras-pdf";
+import { MUESTRAS_PAQUETES, generarMuestrasPdfs, combinarMuestrasPdfs, tieneDatosMinimos, firmaDatosBase } from "@/lib/procuracion/muestras-pdf";
+import { MuestraIconRow } from "./muestra-icons";
 import type { Donante, Familiar, EtapaEstadoRow, MuestraRow, OrganoRow, PlanillaGeneradaRow } from "@/lib/procuracion/types";
 import PotencialPanel from "./potencial-panel";
 import MePanel from "./me-panel";
@@ -58,6 +59,8 @@ export default function Home() {
   const [comDonacionRealizada, setComDonacionRealizada] = useState(false);
   const [planillasGeneradas, setPlanillasGeneradas] = useState<Record<string, PlanillaGeneradaRow>>({});
   const [generandoPdfs, setGenerandoPdfs] = useState(false);
+  const [combinandoPdfs, setCombinandoPdfs] = useState(false);
+  const [mostrarIndividual, setMostrarIndividual] = useState(false);
   const lastFirmaGenerada = useRef<Record<string, string>>({});
   const [openStage, setOpenStage] = useState<string | null>(null);
   const [stageData, setStageData] = useState<Record<string, StageData>>({});
@@ -186,6 +189,30 @@ export default function Home() {
       })
       .finally(() => setGenerandoPdfs(false));
   }, [donante]);
+
+  const prellenables = MUESTRAS_PAQUETES.filter((p) => p.prellenable);
+  const todosPrellenadosListos = prellenables.every((p) => planillasGeneradas[p.key]?.archivo_url);
+
+  async function descargarTodos() {
+    if (!donante || !todosPrellenadosListos) return;
+    setCombinandoPdfs(true);
+    try {
+      const urls = [
+        ...prellenables.map((p) => planillasGeneradas[p.key].archivo_url as string),
+        "/forms/solicitud_covid.pdf",
+      ];
+      const bytes = await combinarMuestrasPdfs(urls);
+      const blob = new Blob([bytes as BlobPart], { type: "application/pdf" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `muestras_${donante.pd_numero ?? donante.id}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setCombinandoPdfs(false);
+    }
+  }
 
   function getEtapaEstado(key: string): EstadoEtapa | undefined {
     if (key === "potencial" && donante) return computePotencialEstado(donante);
@@ -455,45 +482,77 @@ export default function Home() {
                         {data?.kind === "muestras" && !data.loading && data.muestras && (
                           <>
                             {data.muestras.length === 0 && <div className="tiny">Sin paquetes de muestra cargados.</div>}
-                            {generandoPdfs && <div className="tiny" style={{ marginBottom: 6 }}>Generando formularios prellenados…</div>}
-                            {data.muestras.map((m) => {
-                              const paquete = MUESTRAS_PAQUETES.find((p) => p.key === m.paquete_key);
-                              const generado = planillasGeneradas[m.paquete_key];
-                              return (
-                                <div className="field-row" key={m.paquete_key}>
-                                  <span className="field-label">
-                                    {m.nombre}
-                                    <br />
-                                    <span className="tiny">
-                                      {m.tubos || "—"}
-                                      {paquete && (
-                                        <>
-                                          {" · "}
-                                          <a href={`/forms/${paquete.archivo}`} target="_blank" rel="noopener" style={{ color: "var(--accent)" }}>
-                                            formulario en blanco
-                                          </a>
-                                        </>
-                                      )}
-                                      {generado?.archivo_url && (
-                                        <>
-                                          {" · "}
-                                          <a href={generado.archivo_url} target="_blank" rel="noopener" style={{ color: "var(--accent)" }}>
-                                            descargar prellenado
-                                          </a>
-                                        </>
-                                      )}
-                                    </span>
-                                  </span>
-                                  <span className={`chip ${m.obtenida ? "chip-green" : "chip-gray"}`}>
-                                    {m.obtenida ? "Obtenida" : "Pendiente"}
-                                  </span>
-                                </div>
-                              );
-                            })}
+                            {generandoPdfs && <div className="tiny" style={{ marginBottom: 8 }}>Generando formularios prellenados…</div>}
+
+                            {data.muestras.length > 0 && (
+                              <button
+                                className="btn btn-accent"
+                                style={{ width: "100%", marginBottom: 10 }}
+                                disabled={!todosPrellenadosListos || combinandoPdfs}
+                                onClick={descargarTodos}
+                              >
+                                {combinandoPdfs
+                                  ? "Combinando…"
+                                  : todosPrellenadosListos
+                                    ? "Descargar todos (1 PDF)"
+                                    : "Descargar todos — generando…"}
+                              </button>
+                            )}
+
+                            {data.muestras.map((m) => (
+                              <div className="field-row" key={m.paquete_key} style={{ paddingTop: 4, paddingBottom: 4 }}>
+                                <span className="field-label" style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                                  <span>{m.nombre}</span>
+                                  <MuestraIconRow paqueteKey={m.paquete_key} />
+                                </span>
+                                <span className={`chip ${m.obtenida ? "chip-green" : "chip-gray"}`}>
+                                  {m.obtenida ? "Obtenida" : "Pendiente"}
+                                </span>
+                              </div>
+                            ))}
+
                             {data.muestras.length > 0 && (
                               <div className="tiny" style={{ marginTop: 8 }}>
                                 {data.muestras.filter((m) => m.obtenida).length}/{data.muestras.length} paquetes obtenidos · se
                                 retiran todos juntos, en una sola vez.
+                              </div>
+                            )}
+
+                            {data.muestras.length > 0 && (
+                              <div style={{ marginTop: 10, paddingTop: 8, borderTop: "1px solid var(--border-soft)" }}>
+                                <span
+                                  className="tiny"
+                                  style={{ cursor: "pointer", color: "var(--accent)" }}
+                                  onClick={() => setMostrarIndividual((v) => !v)}
+                                >
+                                  {mostrarIndividual ? "Ocultar descargas individuales ▾" : "Descargar formularios individualmente ▸"}
+                                </span>
+                                {mostrarIndividual && (
+                                  <div style={{ marginTop: 6 }}>
+                                    {data.muestras.map((m) => {
+                                      const paquete = MUESTRAS_PAQUETES.find((p) => p.key === m.paquete_key);
+                                      const generado = planillasGeneradas[m.paquete_key];
+                                      return (
+                                        <div key={m.paquete_key} className="tiny" style={{ marginBottom: 3 }}>
+                                          {m.nombre}:{" "}
+                                          {paquete && (
+                                            <a href={`/forms/${paquete.archivo}`} target="_blank" rel="noopener" style={{ color: "var(--accent)" }}>
+                                              formulario en blanco
+                                            </a>
+                                          )}
+                                          {generado?.archivo_url && (
+                                            <>
+                                              {" · "}
+                                              <a href={generado.archivo_url} target="_blank" rel="noopener" style={{ color: "var(--accent)" }}>
+                                                descargar prellenado
+                                              </a>
+                                            </>
+                                          )}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                )}
                               </div>
                             )}
                           </>

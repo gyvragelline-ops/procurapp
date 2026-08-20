@@ -1,4 +1,4 @@
-import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Donante } from "./types";
 
@@ -25,24 +25,92 @@ export const MUESTRAS_PAQUETES: MuestraPaqueteDef[] = [
   { key: "covid", nombre: "Hisopado COVID", tubos: "1 hisopado", archivo: "solicitud_covid.pdf", prellenable: false },
 ];
 
-// Coordenadas en px @150dpi (origen arriba-a-la-izquierda), determinadas
-// visualmente sobre un render de referencia -- mismo criterio que
-// handoff/formkit.py. Las 7 solicitudes CUCAIBA comparten exactamente
-// este layout (verificado visualmente en las 7).
+// Coordenadas en px @150dpi (origen arriba-a-la-izquierda), determinadas por
+// escaneo de píxeles sobre el render de referencia (bordes de recuadro,
+// posición de puntos suspensivos) -- mucho más preciso que a ojo. Las 7
+// solicitudes CUCAIBA comparten exactamente este layout de encabezado
+// (verificado visualmente en las 7).
 const SCALE = 72 / 150; // pt por px @150dpi
+const COLOR_TEXTO = rgb(0.06, 0.06, 0.4);
+const COLOR_X = rgb(0.06, 0.06, 0.4);
 
-const CAMPOS_COMUNES: Record<string, { x: number; y: number; size: number }> = {
-  dia: { x: 1230, y: 858, size: 26 },
-  mes: { x: 1465, y: 858, size: 26 },
-  anio: { x: 1705, y: 858, size: 26 },
-  horaHH: { x: 1948, y: 858, size: 26 },
-  horaMM: { x: 2058, y: 858, size: 26 },
-  pdNumero: { x: 2820, y: 862, size: 24 },
-  potencialDonante: { x: 1030, y: 1085, size: 22 },
-  edad: { x: 3365, y: 1085, size: 22 },
-  establecimiento: { x: 1000, y: 1235, size: 22 },
-  servicio: { x: 2365, y: 1235, size: 22 },
-  cama: { x: 3425, y: 1235, size: 22 },
+// Los 4 recuadros (Día/Mes/Año/Hora) -- se centra el texto dentro de
+// cada uno usando el ancho real de la fuente, no una posición fija.
+const RECUADROS = {
+  dia: { left: 1221, width: 286 },
+  mes: { left: 1530, width: 287 },
+  anio: { left: 1838, width: 286 },
+  horaHH: { left: 2146, width: 144 },
+  horaMM: { left: 2298, width: 135 },
+};
+const RECUADRO_BASELINE_Y = 865;
+const RECUADRO_FONT_SIZE = 95; // px @150dpi -- dia/mes/anio
+const RECUADRO_HORA_FONT_SIZE = 82; // px @150dpi -- horaHH/horaMM (recuadro más angosto)
+
+// Campos sobre línea de puntos -- alineados a la izquierda, justo
+// después de la etiqueta impresa.
+const CAMPOS_LINEA: Record<string, { x: number; y: number }> = {
+  pdNumero: { x: 2830, y: 864 },
+  potencialDonante: { x: 1040, y: 1092 },
+  edad: { x: 3375, y: 1092 },
+  establecimiento: { x: 1010, y: 1248 },
+  servicio: { x: 2375, y: 1248 },
+  cama: { x: 3435, y: 1248 },
+};
+const CAMPO_LINEA_FONT_SIZE = 72; // px @150dpi -- similar al tamaño de la etiqueta impresa
+
+// Casilleros a tildar por planilla (centro x,y + tamaño del recuadro,
+// en px @150dpi, determinados por detección de blobs sobre el render).
+// Grupo y factor no tiene casilleros. Hemocultivo/Urocultivo no se tocan.
+type Checkbox = { cx: number; cy: number; size: number };
+const CHECKBOXES_A_MARCAR: Record<string, Checkbox[]> = {
+  hla: [
+    { cx: 773, cy: 1801, size: 84 }, // Sangre con EDTA (único a tildar)
+  ],
+  lab: [
+    { cx: 393, cy: 1456, size: 60 },
+    { cx: 1090, cy: 1456, size: 60 },
+    { cx: 1736, cy: 1461, size: 61 },
+    { cx: 393, cy: 1535, size: 60 },
+    { cx: 1090, cy: 1535, size: 60 },
+    { cx: 1736, cy: 1540, size: 61 },
+    { cx: 393, cy: 1618, size: 60 },
+    { cx: 1090, cy: 1618, size: 60 },
+    { cx: 1736, cy: 1622, size: 61 },
+    { cx: 393, cy: 1697, size: 60 },
+    { cx: 1090, cy: 1697, size: 60 },
+    { cx: 1736, cy: 1703, size: 61 },
+    { cx: 393, cy: 1781, size: 60 },
+    { cx: 1090, cy: 1781, size: 60 },
+    { cx: 1736, cy: 1786, size: 61 },
+    { cx: 393, cy: 1865, size: 60 },
+    { cx: 1090, cy: 1865, size: 60 },
+    { cx: 1736, cy: 1869, size: 61 },
+    { cx: 393, cy: 1946, size: 60 },
+    { cx: 1090, cy: 1946, size: 60 },
+    { cx: 1736, cy: 1951, size: 61 },
+    { cx: 393, cy: 2029, size: 60 },
+    { cx: 1090, cy: 2029, size: 60 },
+  ],
+  serologia: [
+    // Se excluye a propósito el casillero en blanco sin etiqueta al pie
+    // de la 2ª columna (cx≈1334, cy≈1992) -- no corresponde a ningún ítem.
+    { cx: 546, cy: 1507, size: 73 },
+    { cx: 1336, cy: 1504, size: 74 },
+    { cx: 546, cy: 1600, size: 73 },
+    { cx: 1336, cy: 1606, size: 74 },
+    { cx: 546, cy: 1702, size: 73 },
+    { cx: 1334, cy: 1699, size: 73 },
+    { cx: 546, cy: 1799, size: 73 },
+    { cx: 1334, cy: 1794, size: 74 },
+    { cx: 546, cy: 1900, size: 73 },
+    { cx: 1334, cy: 1894, size: 73 },
+    { cx: 546, cy: 2002, size: 73 },
+  ],
+  preablacion: [
+    { cx: 1140, cy: 1604, size: 99 },
+    { cx: 1140, cy: 1799, size: 99 },
+  ],
 };
 
 function pad2(n: number) {
@@ -86,38 +154,83 @@ export function firmaDatosBase(donante: Donante): string {
   );
 }
 
-export async function fillMuestraPdf(archivoUrl: string, donante: Donante): Promise<Uint8Array> {
-  const bytes = await fetch(archivoUrl).then((r) => r.arrayBuffer());
-  const pdfDoc = await PDFDocument.load(bytes);
+function drawCentrado(page: PDFPage, font: PDFFont, text: string, left: number, width: number, baselineY: number, sizePx: number, pageHeight: number) {
+  const sizePt = sizePx * SCALE;
+  const textWidthPt = font.widthOfTextAtSize(text, sizePt);
+  const centerXPt = (left + width / 2) * SCALE;
+  page.drawText(text, {
+    x: centerXPt - textWidthPt / 2,
+    y: pageHeight - baselineY * SCALE,
+    size: sizePt,
+    font,
+    color: COLOR_TEXTO,
+  });
+}
+
+function drawEnLinea(page: PDFPage, font: PDFFont, text: string, x: number, y: number, sizePx: number, pageHeight: number) {
+  page.drawText(text, {
+    x: x * SCALE,
+    y: pageHeight - y * SCALE,
+    size: sizePx * SCALE,
+    font,
+    color: COLOR_TEXTO,
+  });
+}
+
+function marcarCheckbox(page: PDFPage, boldFont: PDFFont, box: Checkbox, pageHeight: number) {
+  const sizePt = box.size * 0.72 * SCALE;
+  const textWidthPt = boldFont.widthOfTextAtSize("X", sizePt);
+  const centerXPt = box.cx * SCALE;
+  const centerYPt = pageHeight - box.cy * SCALE;
+  page.drawText("X", {
+    x: centerXPt - textWidthPt / 2,
+    y: centerYPt - sizePt * 0.36,
+    size: sizePt,
+    font: boldFont,
+    color: COLOR_X,
+  });
+}
+
+async function rellenarPagina(pdfDoc: PDFDocument, planillaKey: string, donante: Donante) {
   const page = pdfDoc.getPage(0);
   const { height } = page.getSize();
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const values = camposComunesDeDonante(donante);
-  const color = rgb(0.06, 0.06, 0.4);
 
-  (Object.keys(CAMPOS_COMUNES) as (keyof typeof values)[]).forEach((key) => {
+  drawCentrado(page, font, values.dia, RECUADROS.dia.left, RECUADROS.dia.width, RECUADRO_BASELINE_Y, RECUADRO_FONT_SIZE, height);
+  drawCentrado(page, font, values.mes, RECUADROS.mes.left, RECUADROS.mes.width, RECUADRO_BASELINE_Y, RECUADRO_FONT_SIZE, height);
+  drawCentrado(page, font, values.anio, RECUADROS.anio.left, RECUADROS.anio.width, RECUADRO_BASELINE_Y, RECUADRO_FONT_SIZE, height);
+  drawCentrado(page, font, values.horaHH, RECUADROS.horaHH.left, RECUADROS.horaHH.width, RECUADRO_BASELINE_Y, RECUADRO_HORA_FONT_SIZE, height);
+  drawCentrado(page, font, values.horaMM, RECUADROS.horaMM.left, RECUADROS.horaMM.width, RECUADRO_BASELINE_Y, RECUADRO_HORA_FONT_SIZE, height);
+
+  (Object.keys(CAMPOS_LINEA) as (keyof typeof values)[]).forEach((key) => {
     const text = values[key];
     if (!text) return;
-    const pos = CAMPOS_COMUNES[key];
-    page.drawText(text, {
-      x: pos.x * SCALE,
-      y: height - pos.y * SCALE,
-      size: pos.size * SCALE,
-      font,
-      color,
-    });
+    const pos = CAMPOS_LINEA[key];
+    drawEnLinea(page, font, text, pos.x, pos.y, CAMPO_LINEA_FONT_SIZE, height);
   });
 
+  const checkboxes = CHECKBOXES_A_MARCAR[planillaKey];
+  if (checkboxes && checkboxes.length > 0) {
+    const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+    checkboxes.forEach((box) => marcarCheckbox(page, boldFont, box, height));
+  }
+}
+
+export async function fillMuestraPdf(archivoUrl: string, planillaKey: string, donante: Donante): Promise<Uint8Array> {
+  const bytes = await fetch(archivoUrl).then((r) => r.arrayBuffer());
+  const pdfDoc = await PDFDocument.load(bytes);
+  await rellenarPagina(pdfDoc, planillaKey, donante);
   return pdfDoc.save();
 }
 
-// Genera (o regenera) los PDFs prellenables de los 8, los sube a
+// Genera (o regenera) los PDFs prellenables de los 7, los sube a
 // Storage (bucket "planillas", sobrescribiendo el mismo archivo por
 // caso+planilla) y deja un registro de auditoría en planillas_generadas.
 export async function generarMuestrasPdfs(supabase: SupabaseClient, donante: Donante): Promise<void> {
   const prellenables = MUESTRAS_PAQUETES.filter((p) => p.prellenable);
   for (const p of prellenables) {
-    const bytes = await fillMuestraPdf(`/forms/${p.archivo}`, donante);
+    const bytes = await fillMuestraPdf(`/forms/${p.archivo}`, p.key, donante);
     const path = `${donante.id}/${p.key}.pdf`;
     const { error: uploadError } = await supabase.storage
       .from("planillas")
@@ -130,4 +243,18 @@ export async function generarMuestrasPdfs(supabase: SupabaseClient, donante: Don
       archivo_url: pub.publicUrl,
     });
   }
+}
+
+// Combina los 7 PDFs prellenados ya generados (Storage) + el formulario
+// de COVID en blanco (no se prellena) en un único PDF de varias páginas,
+// listo para imprimir todo junto de una.
+export async function combinarMuestrasPdfs(archivosUrl: string[]): Promise<Uint8Array> {
+  const combinado = await PDFDocument.create();
+  for (const url of archivosUrl) {
+    const bytes = await fetch(url).then((r) => r.arrayBuffer());
+    const src = await PDFDocument.load(bytes);
+    const [pagina] = await combinado.copyPages(src, [0]);
+    combinado.addPage(pagina);
+  }
+  return combinado.save();
 }
