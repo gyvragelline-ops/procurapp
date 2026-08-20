@@ -44,20 +44,22 @@ const RECUADROS = {
   horaMM: { left: 2298, width: 135 },
 };
 const RECUADRO_BASELINE_Y = 865;
-const RECUADRO_FONT_SIZE = 95; // px @150dpi -- dia/mes/anio
-const RECUADRO_HORA_FONT_SIZE = 82; // px @150dpi -- horaHH/horaMM (recuadro más angosto)
+// Tamaño único para TODO el texto prellenado (recuadros de fecha/hora y
+// campos sobre línea de puntos) -- antes variaba entre campos y se veía
+// inconsistente.
+const FONT_SIZE_UNIFICADO = 80; // px @150dpi
 
-// Campos sobre línea de puntos -- alineados a la izquierda, justo
-// después de la etiqueta impresa.
+// Campos sobre línea de puntos -- alineados a la izquierda, con un
+// margen chico después de los dos puntos impresos para que el valor
+// no quede pegado al enunciado.
 const CAMPOS_LINEA: Record<string, { x: number; y: number }> = {
-  pdNumero: { x: 2830, y: 864 },
-  potencialDonante: { x: 1040, y: 1092 },
-  edad: { x: 3375, y: 1092 },
-  establecimiento: { x: 1010, y: 1248 },
-  servicio: { x: 2375, y: 1248 },
-  cama: { x: 3435, y: 1248 },
+  pdNumero: { x: 2870, y: 864 },
+  potencialDonante: { x: 1080, y: 1092 },
+  edad: { x: 3410, y: 1092 },
+  establecimiento: { x: 1050, y: 1248 },
+  servicio: { x: 2415, y: 1248 },
+  cama: { x: 3460, y: 1248 },
 };
-const CAMPO_LINEA_FONT_SIZE = 72; // px @150dpi -- similar al tamaño de la etiqueta impresa
 
 // Casilleros a tildar por planilla (centro x,y + tamaño del recuadro,
 // en px @150dpi, determinados por detección de blobs sobre el render).
@@ -197,17 +199,17 @@ async function rellenarPagina(pdfDoc: PDFDocument, planillaKey: string, donante:
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const values = camposComunesDeDonante(donante);
 
-  drawCentrado(page, font, values.dia, RECUADROS.dia.left, RECUADROS.dia.width, RECUADRO_BASELINE_Y, RECUADRO_FONT_SIZE, height);
-  drawCentrado(page, font, values.mes, RECUADROS.mes.left, RECUADROS.mes.width, RECUADRO_BASELINE_Y, RECUADRO_FONT_SIZE, height);
-  drawCentrado(page, font, values.anio, RECUADROS.anio.left, RECUADROS.anio.width, RECUADRO_BASELINE_Y, RECUADRO_FONT_SIZE, height);
-  drawCentrado(page, font, values.horaHH, RECUADROS.horaHH.left, RECUADROS.horaHH.width, RECUADRO_BASELINE_Y, RECUADRO_HORA_FONT_SIZE, height);
-  drawCentrado(page, font, values.horaMM, RECUADROS.horaMM.left, RECUADROS.horaMM.width, RECUADRO_BASELINE_Y, RECUADRO_HORA_FONT_SIZE, height);
+  drawCentrado(page, font, values.dia, RECUADROS.dia.left, RECUADROS.dia.width, RECUADRO_BASELINE_Y, FONT_SIZE_UNIFICADO, height);
+  drawCentrado(page, font, values.mes, RECUADROS.mes.left, RECUADROS.mes.width, RECUADRO_BASELINE_Y, FONT_SIZE_UNIFICADO, height);
+  drawCentrado(page, font, values.anio, RECUADROS.anio.left, RECUADROS.anio.width, RECUADRO_BASELINE_Y, FONT_SIZE_UNIFICADO, height);
+  drawCentrado(page, font, values.horaHH, RECUADROS.horaHH.left, RECUADROS.horaHH.width, RECUADRO_BASELINE_Y, FONT_SIZE_UNIFICADO, height);
+  drawCentrado(page, font, values.horaMM, RECUADROS.horaMM.left, RECUADROS.horaMM.width, RECUADRO_BASELINE_Y, FONT_SIZE_UNIFICADO, height);
 
   (Object.keys(CAMPOS_LINEA) as (keyof typeof values)[]).forEach((key) => {
     const text = values[key];
     if (!text) return;
     const pos = CAMPOS_LINEA[key];
-    drawEnLinea(page, font, text, pos.x, pos.y, CAMPO_LINEA_FONT_SIZE, height);
+    drawEnLinea(page, font, text, pos.x, pos.y, FONT_SIZE_UNIFICADO, height);
   });
 
   const checkboxes = CHECKBOXES_A_MARCAR[planillaKey];
@@ -234,7 +236,7 @@ export async function generarMuestrasPdfs(supabase: SupabaseClient, donante: Don
     const path = `${donante.id}/${p.key}.pdf`;
     const { error: uploadError } = await supabase.storage
       .from("planillas")
-      .upload(path, bytes, { contentType: "application/pdf", upsert: true });
+      .upload(path, bytes, { contentType: "application/pdf", upsert: true, cacheControl: "0" });
     if (uploadError) continue;
     const { data: pub } = supabase.storage.from("planillas").getPublicUrl(path);
     await supabase.from("planillas_generadas").insert({

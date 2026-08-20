@@ -156,12 +156,6 @@ export default function Home() {
         if (!planillasMap[r.planilla_key]) planillasMap[r.planilla_key] = r;
       });
       setPlanillasGeneradas(planillasMap);
-      if (donanteData && tieneDatosMinimos(donanteData)) {
-        lastFirmaGenerada.current[donanteData.id] =
-          MUESTRAS_PAQUETES.filter((p) => p.prellenable).every((p) => planillasMap[p.key])
-            ? firmaDatosBase(donanteData)
-            : lastFirmaGenerada.current[donanteData.id] ?? "";
-      }
       setLoadingDetail(false);
     });
   }, [selectedId]);
