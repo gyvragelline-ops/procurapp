@@ -88,6 +88,13 @@ export default function Home() {
     setLoadingDetail(true);
     setOpenStage(null);
     setStageData({});
+    // Se olvida cualquier generación previa de PDFs de Muestras al entrar
+    // a este caso, para que el efecto de más abajo regenere siempre con
+    // el motor vigente -- sin esto, si el caso ya se había abierto antes
+    // en esta misma pestaña (aunque haya sido con una versión anterior
+    // del motor, antes de un redeploy), quedaba sirviendo los PDFs viejos
+    // guardados en Storage sin volver a generarlos.
+    delete lastFirmaGenerada.current[selectedId];
 
     Promise.all([
       supabase.from("donantes").select("*").eq("id", selectedId).single(),
