@@ -6,13 +6,28 @@ import type { Donante } from "@/lib/procuracion/types";
 
 const supabase = createClient();
 
-type Campo = "servicio" | "pd_numero" | "fecha_ingreso" | "nombre_completo" | "edad" | "institucion" | "cama";
+type Campo =
+  | "servicio"
+  | "pd_numero"
+  | "fecha_ingreso"
+  | "nombre_completo"
+  | "edad"
+  | "institucion"
+  | "cama"
+  | "fecha_nacimiento";
 
 function fmtFecha(v: string | null) {
   if (!v) return null;
   const d = new Date(v);
   if (Number.isNaN(d.getTime())) return v;
   return d.toLocaleString("es-AR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+}
+
+function fmtFechaSolo(v: string | null) {
+  if (!v) return null;
+  const d = new Date(v + "T00:00:00");
+  if (Number.isNaN(d.getTime())) return v;
+  return d.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
 function toDatetimeLocalValue(v: string | null) {
@@ -41,6 +56,7 @@ export default function PotencialPanel({
   function startEdit(field: Campo) {
     if (field === "fecha_ingreso") setDraft(toDatetimeLocalValue(donante.fecha_ingreso));
     else if (field === "edad") setDraft(donante.edad != null ? String(donante.edad) : "");
+    else if (field === "fecha_nacimiento") setDraft(donante.fecha_nacimiento ?? "");
     else setDraft(donante[field] ?? "");
     setEditingField(field);
   }
@@ -49,6 +65,7 @@ export default function PotencialPanel({
     let value: string | number | null;
     if (field === "fecha_ingreso") value = draft ? new Date(draft).toISOString() : null;
     else if (field === "edad") value = draft.trim() && !Number.isNaN(Number(draft.trim())) ? Number(draft.trim()) : null;
+    else if (field === "fecha_nacimiento") value = draft || null;
     else value = draft.trim() || null;
     setEditingField(null);
     const { data, error } = await supabase
@@ -81,6 +98,7 @@ export default function PotencialPanel({
     { key: "institucion", label: "Establecimiento", display: donante.institucion },
     { key: "servicio", label: "Servicio", display: donante.servicio },
     { key: "cama", label: "Cama", display: donante.cama },
+    { key: "fecha_nacimiento", label: "Fecha de nacimiento", display: fmtFechaSolo(donante.fecha_nacimiento) },
     { key: "fecha_ingreso", label: "Fecha de ingreso", display: fmtFecha(donante.fecha_ingreso) },
   ];
 
@@ -91,10 +109,10 @@ export default function PotencialPanel({
           <span className="field-label">{r.label}</span>
           {editingField === r.key ? (
             <input
-              type={r.key === "fecha_ingreso" ? "datetime-local" : "text"}
+              type={r.key === "fecha_ingreso" ? "datetime-local" : r.key === "fecha_nacimiento" ? "date" : "text"}
               inputMode={r.key === "edad" ? "numeric" : undefined}
               className="mini-input"
-              style={{ width: r.key === "fecha_ingreso" ? 170 : 130, textAlign: "left" }}
+              style={{ width: r.key === "fecha_ingreso" || r.key === "fecha_nacimiento" ? 170 : 130, textAlign: "left" }}
               value={draft}
               autoFocus
               onChange={(e) => setDraft(e.target.value)}

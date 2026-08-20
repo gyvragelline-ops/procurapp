@@ -34,6 +34,7 @@ import ComMuertePanel from "./com-muerte-panel";
 import RecomendacionesComMuerte from "./recomendaciones-com-muerte";
 import ComDonacionPanel from "./com-donacion-panel";
 import ComDonacionRealizada from "./com-donacion-realizada";
+import FamiliarContactoPanel from "./familiar-contacto-panel";
 import NuevoDonante from "./nuevo-donante";
 
 const EMPTY_ME_CAMPOS: MeCampos = Object.fromEntries(ME_CAMPO_KEYS.map((k) => [k, null]));
@@ -469,6 +470,7 @@ export default function Home() {
                               onChange={setComDonacionRealizada}
                             />
                             <ComDonacionPanel donanteId={donante.id} />
+                            <FamiliarContactoPanel donanteId={donante.id} familiar={familiar} onChange={setFamiliar} />
                           </>
                         )}
 
