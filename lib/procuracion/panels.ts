@@ -178,16 +178,10 @@ export async function loadPanel(
     };
   }
 
-  if (key === "estudios") {
-    const items = await getDocEstado(supabase, donanteId, "estudios");
-    const tac = items.find((r) => r.item_key === "tac_torax");
-    const otros = items.filter((r) => r.item_key !== "tac_torax");
+  if (key === "labImagenes") {
     return {
-      rows: [
-        ...otros.map((o) => ({ label: humanizeCampo(o.item_key), chip: chipFromEstado(o.estado, { text: "Pendiente", tone: "amber" as const }) })),
-        { label: "TAC de tórax (si aplica)", chip: tac ? chipFromEstado(tac.estado, { text: "Pendiente", tone: "amber" }) : { text: "No indicado", tone: "gray" } },
-      ],
-      note: items.length === 0 ? "Sin estudios cargados todavía." : undefined,
+      rows: [],
+      note: "Panel de Laboratorio e imágenes -- contenido a definir en una próxima iteración.",
     };
   }
 
