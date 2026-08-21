@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { REFLEJOS_ME, type MeCampos } from "@/lib/procuracion/constants";
+import { REFLEJOS_ME, reflejoKey, type MeCampos } from "@/lib/procuracion/constants";
 import HoraInput, { parseHoraMinutos } from "./hora-input";
 import FechaHoraInput from "./fecha-hora-input";
 
@@ -37,9 +37,10 @@ export default function MePanel({
   const [editingField, setEditingField] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [savingTipo, setSavingTipo] = useState(false);
-  const [savingBulk, setSavingBulk] = useState(false);
-  const [reflejosOpen, setReflejosOpen] = useState(false);
+  const [savingBulk1a, setSavingBulk1a] = useState(false);
+  const [savingBulk2a, setSavingBulk2a] = useState(false);
   const [eval1Open, setEval1Open] = useState(false);
+  const [eval2Open, setEval2Open] = useState(false);
 
   async function saveCampo(campo_pdf: string, valor: string | null, planillaKey: string = "neuro") {
     await supabase
@@ -247,21 +248,22 @@ export default function MePanel({
     onChange({ ...campos, apneica1_resultado: valor });
   }
 
-  async function marcarTodosAusentes() {
-    setSavingBulk(true);
+  async function marcarTodosAusentes(momento: "1a" | "2a") {
+    const setSaving = momento === "1a" ? setSavingBulk1a : setSavingBulk2a;
+    setSaving(true);
     const rows = REFLEJOS_ME.map((r) => ({
       donante_id: donanteId,
       planilla_key: "neuro",
-      campo_pdf: r.key,
+      campo_pdf: reflejoKey(r.key, momento),
       valor: "ausente",
     }));
     await supabase.from("planilla_valores").upsert(rows, { onConflict: "donante_id,planilla_key,campo_pdf" });
     const next = { ...campos };
     REFLEJOS_ME.forEach((r) => {
-      next[r.key] = "ausente";
+      next[reflejoKey(r.key, momento)] = "ausente";
     });
     onChange(next);
-    setSavingBulk(false);
+    setSaving(false);
   }
 
   async function toggleReflejo(key: string) {
@@ -277,7 +279,6 @@ export default function MePanel({
     setSavingTipo(false);
   }
 
-  const reflejosDefinidos = REFLEJOS_ME.filter((r) => campos[r.key] === "ausente" || campos[r.key] === "presente").length;
   const esApnea = campos.tipo_test_confirmacion === "apnea";
   const esAtropina = campos.tipo_test_confirmacion === "atropina";
 
@@ -287,62 +288,82 @@ export default function MePanel({
 
   const cumpleMe = campos.cumple_me_si === "si" ? "si" : campos.cumple_me_no === "si" ? "no" : null;
 
-  return (
-    <>
-      <div className="check-row" style={{ cursor: "pointer" }} onClick={() => setEval1Open((v) => !v)}>
-        <span>1ª Evaluación {eval1Open ? "▾" : "▸"}</span>
-      </div>
-      {eval1Open && (
-        <div style={{ marginTop: 6, marginBottom: 6 }}>
-          {renderHoraRow("hora_1a", "Hora")}
-          {renderTextRow("ta_tam_1a", "TAM")}
-          {renderTextRow("t_central_1a", "Temperatura central")}
-          {renderSiNoPar("diabetes_insipida_1a", "Diabetes insípida")}
-          {renderTextRow("pupilas_1a", "Pupilas")}
-        </div>
-      )}
-
+  function renderReflejosBlock(momento: "1a" | "2a") {
+    const savingBulk = momento === "1a" ? savingBulk1a : savingBulk2a;
+    const definidos = REFLEJOS_ME.filter((r) => {
+      const v = campos[reflejoKey(r.key, momento)];
+      return v === "ausente" || v === "presente";
+    }).length;
+    return (
       <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--border-soft)" }}>
-        <div className="tiny" style={{ marginBottom: 8, textTransform: "uppercase", letterSpacing: ".5px" }}>
-          2ª Evaluación <span style={{ textTransform: "none", fontWeight: 400 }}>(se copia de la 1ª, editable)</span>
+        <div className="check-row" style={{ borderBottom: "none", padding: "0 0 8px" }}>
+          <span>Reflejos</span>
+          <span className={`chip ${definidos === 12 ? "chip-green" : "chip-gray"}`}>{definidos}/12</span>
         </div>
-        {renderHoraRow("hora_2a", "Hora")}
-        {horasMuyCercanas && (
-          <div className="tiny" style={{ color: "var(--amber)", marginTop: -2, marginBottom: 6 }}>
-            Debe haber al menos 1 hora de diferencia entre evaluaciones
-          </div>
-        )}
-        {renderTextRow("ta_tam_2a", "TAM")}
-        {renderTextRow("t_central_2a", "Temperatura central")}
-        {renderSiNoPar("diabetes_insipida_2a", "Diabetes insípida")}
-        {renderTextRow("pupilas_2a", "Pupilas")}
-      </div>
+        <button className="btn btn-sm btn-accent" disabled={savingBulk} onClick={() => marcarTodosAusentes(momento)}>
+          Marcar todos ausentes
+        </button>
 
-      <div className="check-row" style={{ cursor: "pointer", marginTop: 10 }} onClick={() => setReflejosOpen((v) => !v)}>
-        <span>Reflejos {reflejosOpen ? "▾" : "▸"}</span>
-        <span className={`chip ${reflejosDefinidos === 12 ? "chip-green" : "chip-gray"}`}>{reflejosDefinidos}/12</span>
-      </div>
-
-      {reflejosOpen && (
-        <div style={{ marginTop: 6, marginBottom: 6 }}>
-          <button className="btn btn-sm btn-accent" disabled={savingBulk} onClick={marcarTodosAusentes}>
-            Marcar todos ausentes
-          </button>
-
-          {REFLEJOS_ME.map((r) => (
-            <div className="field-row" key={r.key}>
+        {REFLEJOS_ME.map((r) => {
+          const key = reflejoKey(r.key, momento);
+          return (
+            <div className="field-row" key={key}>
               <span className="field-label">{r.label}</span>
               <button
-                className={`chip ${campos[r.key] === "ausente" ? "chip-green" : campos[r.key] === "presente" ? "chip-red" : "chip-gray"}`}
+                className={`chip ${campos[key] === "ausente" ? "chip-green" : campos[key] === "presente" ? "chip-red" : "chip-gray"}`}
                 style={{ border: "none", cursor: "pointer" }}
-                onClick={() => toggleReflejo(r.key)}
+                onClick={() => toggleReflejo(key)}
               >
-                {campos[r.key] === "ausente" ? "Ausente" : campos[r.key] === "presente" ? "Presente" : "Sin marcar"}
+                {campos[key] === "ausente" ? "Ausente" : campos[key] === "presente" ? "Presente" : "Sin marcar"}
               </button>
             </div>
-          ))}
-        </div>
-      )}
+          );
+        })}
+      </div>
+    );
+  }
+
+  function renderEvalFields(momento: "1a" | "2a") {
+    return (
+      <>
+        {renderHoraRow(`hora_${momento}`, "Hora")}
+        {momento === "2a" && horasMuyCercanas && (
+          <div className="tiny" style={{ color: "var(--amber)", marginTop: -2, marginBottom: 6 }}>
+            Recordá que debe ser mayor a 1 hora
+          </div>
+        )}
+        {renderTextRow(`ta_tam_${momento}`, "TAM")}
+        {renderTextRow(`t_central_${momento}`, "Temperatura central")}
+        {renderSiNoPar(`diabetes_insipida_${momento}`, "Diabetes insípida")}
+        {renderTextRow(`pupilas_${momento}`, "Pupilas")}
+        {renderReflejosBlock(momento)}
+      </>
+    );
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        className="check-row"
+        style={{ cursor: "pointer", width: "100%", textAlign: "left", background: "none" }}
+        onClick={() => setEval1Open((v) => !v)}
+      >
+        <span>1ª Evaluación {eval1Open ? "▾" : "▸"}</span>
+      </button>
+      {eval1Open && <div style={{ marginTop: 6, marginBottom: 6 }}>{renderEvalFields("1a")}</div>}
+
+      <button
+        type="button"
+        className="check-row"
+        style={{ cursor: "pointer", width: "100%", textAlign: "left", background: "none", marginTop: 10 }}
+        onClick={() => setEval2Open((v) => !v)}
+      >
+        <span>
+          2ª Evaluación <span style={{ fontWeight: 400 }}>(se copia de la 1ª, editable)</span> {eval2Open ? "▾" : "▸"}
+        </span>
+      </button>
+      {eval2Open && <div style={{ marginTop: 6, marginBottom: 6 }}>{renderEvalFields("2a")}</div>}
 
       <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--border-soft)" }}>
         <div className="tiny" style={{ marginBottom: 8, textTransform: "uppercase", letterSpacing: ".5px" }}>

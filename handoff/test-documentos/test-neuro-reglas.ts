@@ -7,7 +7,7 @@ import { PDFDocument } from "pdf-lib";
 import { createClient } from "@supabase/supabase-js";
 import { DOCUMENTOS, resolverValoresPlanilla, rellenarCamposPdf, generarDocumentoPdf } from "../../lib/procuracion/documentos-pdf";
 import type { Donante, Familiar } from "../../lib/procuracion/types";
-import { REFLEJOS_ME, REFLEJO_PDF_PREFIX } from "../../lib/procuracion/constants";
+import { REFLEJOS_ME, REFLEJO_PDF_PREFIX, reflejoKey } from "../../lib/procuracion/constants";
 
 // generarDocumentoPdf usa fetch("/forms/documentos/...") -- solo funciona
 // en el navegador. Para probarlo en Node, interceptamos ese path y leemos
@@ -109,27 +109,35 @@ async function main() {
       console.log("  OK");
     }
 
-    // --- Caso 4: reflejos -> 48 casilleros reales ---
-    console.log("\n=== Caso 4: reflejos -> deben volcarse en los 48 casilleros reales ===");
-    await supabase.from("planilla_valores").insert(
-      REFLEJOS_ME.map((r, i) => ({
+    // --- Caso 4: reflejos -> 48 casilleros reales, 1ª y 2ª evaluación independientes ---
+    console.log("\n=== Caso 4: reflejos -> deben volcarse en los 48 casilleros reales, cada evaluación con su propio valor ===");
+    await supabase.from("planilla_valores").insert([
+      ...REFLEJOS_ME.map((r, i) => ({
         donante_id: donanteId,
         planilla_key: "neuro",
-        campo_pdf: r.key,
+        campo_pdf: reflejoKey(r.key, "1a"),
         valor: i % 2 === 0 ? "ausente" : "presente",
-      }))
-    );
+      })),
+      ...REFLEJOS_ME.map((r, i) => ({
+        donante_id: donanteId,
+        planilla_key: "neuro",
+        campo_pdf: reflejoKey(r.key, "2a"),
+        // deliberadamente invertido respecto a la 1ª, para probar que no comparten estado
+        valor: i % 2 === 0 ? "presente" : "ausente",
+      })),
+    ]);
     {
       const doc = DOCUMENTOS.find((d) => d.key === "neuro")!;
       const bytes = await generarDocumentoPdf(supabase, doc, donante as Donante, null as unknown as Familiar);
       const outDoc = await PDFDocument.load(bytes);
       for (const [i, r] of REFLEJOS_ME.entries()) {
         const prefijo = REFLEJO_PDF_PREFIX[r.key];
-        const esperadoSi = i % 2 !== 0; // presente
-        await checkField(outDoc, `${prefijo}_1a_si`, esperadoSi);
-        await checkField(outDoc, `${prefijo}_1a_no`, !esperadoSi);
-        await checkField(outDoc, `${prefijo}_2a_si`, esperadoSi);
-        await checkField(outDoc, `${prefijo}_2a_no`, !esperadoSi);
+        const esperado1aSi = i % 2 !== 0; // presente
+        const esperado2aSi = i % 2 === 0; // presente (invertido)
+        await checkField(outDoc, `${prefijo}_1a_si`, esperado1aSi);
+        await checkField(outDoc, `${prefijo}_1a_no`, !esperado1aSi);
+        await checkField(outDoc, `${prefijo}_2a_si`, esperado2aSi);
+        await checkField(outDoc, `${prefijo}_2a_no`, !esperado2aSi);
       }
     }
 

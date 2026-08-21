@@ -108,6 +108,13 @@ export function computePotencialEstado(donante: {
   return donante.servicio && donante.pd_numero && donante.fecha_ingreso ? "green" : "gray";
 }
 
+// La Historia Clínica Neurológica real tiene 2 columnas de reflejos, una
+// por evaluación -- cada reflejo se guarda como 2 valores independientes
+// (ausente/presente/null), uno por momento.
+export function reflejoKey(baseKey: string, momento: "1a" | "2a"): string {
+  return `${baseKey}_${momento}`;
+}
+
 export const REFLEJOS_ME: { key: string; label: string; grupo: "A" | "B" }[] = [
   { key: "reflejo_fotomotor", label: "Fotomotor", grupo: "B" },
   { key: "reflejo_corneano", label: "Corneano", grupo: "B" },
@@ -200,7 +207,7 @@ export const ME_CAMPO_KEYS = [
   "apneica1_pco2_final",
   "fc_inicial",
   "fc_final",
-  ...REFLEJOS_ME.map((r) => r.key),
+  ...REFLEJOS_ME.flatMap((r) => [reflejoKey(r.key, "1a"), reflejoKey(r.key, "2a")]),
   ...ME_CAMPO_KEYS_DOCUMENTO,
 ];
 
@@ -208,8 +215,14 @@ export type MeCampos = Record<string, string | null>;
 
 export function computeMeEstado(campos: MeCampos): EstadoEtapa {
   const horasOk = !!campos.hora_1a && !!campos.hora_2a;
-  const reflejosOk = REFLEJOS_ME.every((r) => campos[r.key] === "ausente" || campos[r.key] === "presente");
-  const grupoBOk = REFLEJOS_ME.filter((r) => r.grupo === "B").every((r) => campos[r.key] === "ausente");
+  const reflejoDefinido = (r: { key: string }, momento: "1a" | "2a") => {
+    const v = campos[reflejoKey(r.key, momento)];
+    return v === "ausente" || v === "presente";
+  };
+  const reflejosOk = REFLEJOS_ME.every((r) => reflejoDefinido(r, "1a") && reflejoDefinido(r, "2a"));
+  const grupoBOk = REFLEJOS_ME.filter((r) => r.grupo === "B").every(
+    (r) => campos[reflejoKey(r.key, "1a")] === "ausente" && campos[reflejoKey(r.key, "2a")] === "ausente"
+  );
   let testOk = false;
   if (campos.tipo_test_confirmacion === "apnea") {
     testOk = !!campos.apneica1_pco2_inicial && !!campos.apneica1_pco2_final;
@@ -221,7 +234,7 @@ export function computeMeEstado(campos: MeCampos): EstadoEtapa {
     campos.hora_1a ||
     campos.hora_2a ||
     campos.tipo_test_confirmacion ||
-    REFLEJOS_ME.some((r) => campos[r.key]);
+    REFLEJOS_ME.some((r) => campos[reflejoKey(r.key, "1a")] || campos[reflejoKey(r.key, "2a")]);
   return algoCargado ? "amber" : "gray";
 }
 

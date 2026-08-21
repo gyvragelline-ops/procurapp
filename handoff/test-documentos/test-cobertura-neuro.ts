@@ -62,9 +62,10 @@ async function main() {
       pess: "Ausencia de respuesta bilateral",
       pev: "No realizado",
     };
-    // reflejos (modelo ya existente, sin cambios)
+    // reflejos -- 1 valor independiente por evaluación (ver reflejoKey en constants.ts)
     for (const r of ["reflejo_fotomotor", "reflejo_corneano", "reflejo_oculocefalico", "reflejo_oculovestibular", "reflejo_nauseoso", "reflejo_deglutorio", "reflejo_maseterino", "reflejo_dolor", "reflejo_osteotendinosos", "reflejo_plantar", "reflejo_cremasteriano", "reflejo_cutaneoabdominal"]) {
-      neuroValores[r] = "ausente";
+      neuroValores[`${r}_1a`] = "ausente";
+      neuroValores[`${r}_2a`] = "ausente";
     }
 
     await supabase

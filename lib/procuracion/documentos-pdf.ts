@@ -2,7 +2,7 @@ import { PDFDocument } from "pdf-lib";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Donante, Familiar } from "./types";
 import { resolveCanonico } from "./panels";
-import { REFLEJOS_ME, REFLEJO_PDF_PREFIX } from "./constants";
+import { REFLEJOS_ME, REFLEJO_PDF_PREFIX, reflejoKey } from "./constants";
 
 export type DocumentoDef = {
   key: string;
@@ -129,7 +129,7 @@ async function aplicarReglasNeuro(supabase: SupabaseClient, donanteId: string, v
     "atropina_fecha",
     "atropina_hora",
     "atropina_duracion",
-    ...REFLEJOS_ME.map((r) => r.key),
+    ...REFLEJOS_ME.flatMap((r) => [reflejoKey(r.key, "1a"), reflejoKey(r.key, "2a")]),
   ];
   const { data } = await supabase
     .from("planilla_valores")
@@ -139,13 +139,13 @@ async function aplicarReglasNeuro(supabase: SupabaseClient, donanteId: string, v
     .in("campo_pdf", clavesInternas);
   const crudo = new Map(((data as { campo_pdf: string; valor: string | null }[]) ?? []).map((r) => [r.campo_pdf, r.valor]));
 
-  // Reflejos -> 48 casilleros reales
+  // Reflejos -> 48 casilleros reales (cada evaluación tiene su propio valor)
   for (const r of REFLEJOS_ME) {
-    const val = crudo.get(r.key);
-    if (val !== "ausente" && val !== "presente") continue;
     const prefijo = REFLEJO_PDF_PREFIX[r.key];
-    const sufijo = val === "presente" ? "si" : "no";
-    for (const momento of ["1a", "2a"]) {
+    for (const momento of ["1a", "2a"] as const) {
+      const val = crudo.get(reflejoKey(r.key, momento));
+      if (val !== "ausente" && val !== "presente") continue;
+      const sufijo = val === "presente" ? "si" : "no";
       valores.set(`${prefijo}_${momento}_${sufijo}`, { valor: "si", tipo: "checkbox" });
     }
   }
