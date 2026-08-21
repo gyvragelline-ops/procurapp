@@ -155,9 +155,13 @@ export const REFLEJO_PDF_PREFIX: Record<string, string> = {
 // verde de ninguna etapa, solo completan lo impreso en Historia Clínica
 // Neurológica / Certificado de fallecimiento. Nombres EXACTOS de los
 // campos reales de esas plantillas (ver handoff/test-documentos), salvo
-// apneica1_resultado/atropina_* que son internos (se componen en el
-// campo real correspondiente al generar el PDF -- ver documentos-pdf.ts).
+// apneica1_resultado/atropina_*/fecha_examen que son internos (se
+// componen en el campo real correspondiente al generar el PDF -- ver
+// documentos-pdf.ts). fecha_examen es una única fecha (sin hora),
+// compartida por 1ª y 2ª evaluación porque ocurren el mismo día -- se
+// vuelca en fecha_1a y fecha_2a.
 export const ME_CAMPO_KEYS_DOCUMENTO = [
+  "fecha_examen",
   "ta_tam_1a",
   "ta_tam_2a",
   "t_central_1a",

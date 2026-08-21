@@ -343,6 +343,11 @@ export default function MePanel({
 
   return (
     <>
+      {renderTextRow("fecha_examen", "Fecha del examen")}
+      <div className="tiny" style={{ marginTop: -6, marginBottom: 6 }}>
+        Única para las 2 evaluaciones -- ocurren el mismo día.
+      </div>
+
       <button
         type="button"
         className="check-row"

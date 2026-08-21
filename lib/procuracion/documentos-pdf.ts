@@ -117,8 +117,11 @@ function pad2(n: number): string {
  *   POSITIVA/NEGATIVA/INDETERMINADA.
  * - Test de atropina: no tiene casillero propio en el formulario -> se
  *   vuelca como texto en "Otros exámenes" (fecha/hora/informe).
- * - Fecha del documento y de cada evaluación: la fecha/hora en que se
- *   genera el PDF (no se captura, es automática).
+ * - Fecha de cada evaluación (fecha_1a/fecha_2a): se toma del campo único
+ *   "Fecha del examen" cargado en el panel (1ª y 2ª evaluación ocurren el
+ *   mismo día). Fecha/hora del encabezado del documento (fecha_dia/mes/
+ *   anio/fecha_hora_top): no se captura, es automática (momento en que se
+ *   genera el PDF).
  */
 async function aplicarReglasNeuro(supabase: SupabaseClient, donanteId: string, valores: Map<string, ValorCampo>): Promise<void> {
   const clavesInternas = [
@@ -129,6 +132,7 @@ async function aplicarReglasNeuro(supabase: SupabaseClient, donanteId: string, v
     "atropina_fecha",
     "atropina_hora",
     "atropina_duracion",
+    "fecha_examen",
     ...REFLEJOS_ME.flatMap((r) => [reflejoKey(r.key, "1a"), reflejoKey(r.key, "2a")]),
   ];
   const { data } = await supabase
@@ -169,8 +173,8 @@ async function aplicarReglasNeuro(supabase: SupabaseClient, donanteId: string, v
     if (crudo.get("atropina_hora")) valores.set("otros_examenes_hora", { valor: crudo.get("atropina_hora")!, tipo: "text" });
   }
 
-  // Fecha del documento y de cada evaluación: automática, al momento de
-  // generar el PDF.
+  // Fecha del encabezado del documento: automática, al momento de generar
+  // el PDF (no es la fecha del examen).
   const ahora = new Date();
   const dia = pad2(ahora.getDate());
   const mes = pad2(ahora.getMonth() + 1);
@@ -180,9 +184,14 @@ async function aplicarReglasNeuro(supabase: SupabaseClient, donanteId: string, v
   valores.set("fecha_mes", { valor: mes, tipo: "text" });
   valores.set("fecha_anio", { valor: anio, tipo: "text" });
   valores.set("fecha_hora_top", { valor: hora, tipo: "text" });
-  const fechaCorta = `${dia}/${mes}/${anio}`;
-  valores.set("fecha_1a", { valor: fechaCorta, tipo: "text" });
-  valores.set("fecha_2a", { valor: fechaCorta, tipo: "text" });
+
+  // Fecha de cada evaluación: la que cargó el procurador en "Fecha del
+  // examen" -- única para 1ª y 2ª porque ocurren el mismo día.
+  const fechaExamen = crudo.get("fecha_examen");
+  if (fechaExamen) {
+    valores.set("fecha_1a", { valor: fechaExamen, tipo: "text" });
+    valores.set("fecha_2a", { valor: fechaExamen, tipo: "text" });
+  }
 }
 
 /**

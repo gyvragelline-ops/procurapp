@@ -141,8 +141,8 @@ async function main() {
       }
     }
 
-    // --- Caso 5: fecha automática del documento y de cada evaluación ---
-    console.log("\n=== Caso 5: fecha del documento / evaluación -> automática ===");
+    // --- Caso 5: fecha del encabezado (automática) vs. fecha del examen (cargada) ---
+    console.log("\n=== Caso 5: fecha_dia automática, fecha_1a/2a en blanco sin fecha_examen ===");
     {
       const doc = DOCUMENTOS.find((d) => d.key === "neuro")!;
       const bytes = await generarDocumentoPdf(supabase, doc, donante as Donante, null as unknown as Familiar);
@@ -151,7 +151,22 @@ async function main() {
       const dia = form.getTextField("fecha_dia").getText();
       const fecha1a = form.getTextField("fecha_1a").getText();
       console.log(`  fecha_dia="${dia}" fecha_1a="${fecha1a}"`);
-      if (!dia || !fecha1a) throw new Error("FALLO: fecha automática no generada");
+      if (!dia) throw new Error("FALLO: fecha automática del encabezado no generada");
+      if (fecha1a) throw new Error("FALLO: fecha_1a no debería tener valor sin fecha_examen cargado");
+      console.log("  OK");
+    }
+
+    console.log("\n=== Caso 6: fecha_examen cargado -> vuelca en fecha_1a y fecha_2a ===");
+    await supabase.from("planilla_valores").insert({ donante_id: donanteId, planilla_key: "neuro", campo_pdf: "fecha_examen", valor: "20/08/2026" });
+    {
+      const doc = DOCUMENTOS.find((d) => d.key === "neuro")!;
+      const bytes = await generarDocumentoPdf(supabase, doc, donante as Donante, null as unknown as Familiar);
+      const outDoc = await PDFDocument.load(bytes);
+      const form = outDoc.getForm();
+      const fecha1a = form.getTextField("fecha_1a").getText();
+      const fecha2a = form.getTextField("fecha_2a").getText();
+      console.log(`  fecha_1a="${fecha1a}" fecha_2a="${fecha2a}"`);
+      if (fecha1a !== "20/08/2026" || fecha2a !== "20/08/2026") throw new Error("FALLO: fecha_examen no se volcó en fecha_1a/fecha_2a");
       console.log("  OK");
     }
 
