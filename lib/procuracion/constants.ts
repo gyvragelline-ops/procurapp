@@ -123,10 +123,33 @@ export const REFLEJOS_ME: { key: string; label: string; grupo: "A" | "B" }[] = [
   { key: "reflejo_cutaneoabdominal", label: "Cutáneo-abdominales", grupo: "A" },
 ];
 
+// La app guarda un solo valor (ausente/presente) por reflejo, pero la
+// plantilla real de Historia Clínica Neurológica pide 4 casilleros por
+// reflejo (1a_si/1a_no/2a_si/2a_no) -- y varios usan un prefijo de campo
+// distinto al key interno de la app (ver handoff/test-documentos/
+// campos_pdfs_completo.txt). Este mapeo es lo que permite volcar los 12
+// valores ya cargados a esos 48 casilleros al generar el PDF.
+export const REFLEJO_PDF_PREFIX: Record<string, string> = {
+  reflejo_fotomotor: "reflejo_fotomotor",
+  reflejo_corneano: "reflejo_corneano",
+  reflejo_oculocefalico: "reflejo_oculocefalico",
+  reflejo_oculovestibular: "reflejo_oculovestibulares",
+  reflejo_nauseoso: "reflejo_nauseoso",
+  reflejo_deglutorio: "reflejo_deglutorio",
+  reflejo_maseterino: "reflejo_maseterino",
+  reflejo_dolor: "respuesta_dolor",
+  reflejo_osteotendinosos: "reflejos_osteotendinosos",
+  reflejo_plantar: "reflejo_plantar",
+  reflejo_cremasteriano: "reflejo_cremasteriano",
+  reflejo_cutaneoabdominal: "reflejos_cutaneo_abdominales",
+};
+
 // Campos "de cierre del documento" -- no forman parte del criterio de
 // verde de ninguna etapa, solo completan lo impreso en Historia Clínica
 // Neurológica / Certificado de fallecimiento. Nombres EXACTOS de los
-// campos reales de esas plantillas (ver handoff/test-documentos).
+// campos reales de esas plantillas (ver handoff/test-documentos), salvo
+// apneica1_resultado/atropina_* que son internos (se componen en el
+// campo real correspondiente al generar el PDF -- ver documentos-pdf.ts).
 export const ME_CAMPO_KEYS_DOCUMENTO = [
   "ta_tam_1a",
   "ta_tam_2a",
@@ -143,20 +166,21 @@ export const ME_CAMPO_KEYS_DOCUMENTO = [
   "movimientos_atipicos_2a_si",
   "movimientos_atipicos_2a_no",
   "causa_coma",
-  "droga1",
-  "droga2",
-  "otra_med_resto",
+  "estudios_complementarios",
   "arm_obligada",
   "arm_fecha_hs",
   "fondo_ojo",
-  "cb_union_neuromuscular",
-  "cb_electroestimulacion",
   "observaciones_resto",
   "cumple_me_si",
   "cumple_me_no",
   "no_cumple_motivo",
   "apneica1_duracion",
   "apneica1_complicaciones",
+  "apneica1_resultado",
+  "atropina_fecha",
+  "atropina_hora",
+  "atropina_duracion",
+  "atropina_complicaciones",
   "eeg1_fecha",
   "eeg1_hora",
   "eeg1_informe",

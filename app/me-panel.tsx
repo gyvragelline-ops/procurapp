@@ -161,22 +161,9 @@ export default function MePanel({
     );
   }
 
-  async function toggleCheckbox(field: string) {
-    const nuevo = campos[field] === "si" ? null : "si";
-    await saveCampo(field, nuevo);
-    onChange({ ...campos, [field]: nuevo });
-  }
-
-  function renderCheckboxToggle(field: string, label: string) {
-    const marcado = campos[field] === "si";
-    return (
-      <div className="field-row" key={field}>
-        <span className="field-label">{label}</span>
-        <button className={`chip ${marcado ? "chip-green" : "chip-gray"}`} style={{ border: "none", cursor: "pointer" }} onClick={() => toggleCheckbox(field)}>
-          {marcado ? "Sí" : "No"}
-        </button>
-      </div>
-    );
+  async function setResultadoApnea(valor: "positiva" | "negativa" | "indeterminada") {
+    await saveCampo("apneica1_resultado", valor);
+    onChange({ ...campos, apneica1_resultado: valor });
   }
 
   async function marcarTodosAusentes() {
@@ -256,6 +243,15 @@ export default function MePanel({
       )}
 
       <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--border-soft)" }}>
+        {renderTextRow("causa_coma", "Causa del coma")}
+      </div>
+
+      <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--border-soft)" }}>
+        {renderTextRow("arm_obligada", "ARM obligada desde")}
+        {renderTextRow("arm_fecha_hs", "Fecha y hora")}
+      </div>
+
+      <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--border-soft)" }}>
         <div className="tiny" style={{ marginBottom: 8, textTransform: "uppercase", letterSpacing: ".5px" }}>
           Test de confirmación
         </div>
@@ -274,12 +270,32 @@ export default function MePanel({
             {renderNumRow("apneica1_pco2_final", "CO2 final", "mmHg")}
             {renderTextRow("apneica1_duracion", "Duración")}
             {renderTextRow("apneica1_complicaciones", "Complicaciones")}
+            <div className="field-row">
+              <span className="field-label">Resultado</span>
+              <div style={{ display: "flex", gap: 4 }}>
+                {(["positiva", "negativa", "indeterminada"] as const).map((r) => (
+                  <button
+                    key={r}
+                    className={`btn btn-sm ${(campos.apneica1_resultado ?? "positiva") === r ? "btn-accent" : ""}`}
+                    onClick={() => setResultadoApnea(r)}
+                  >
+                    {r === "positiva" ? "Positiva" : r === "negativa" ? "Negativa" : "Indeterminada"}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="tiny">Por defecto se marca "Positiva" en el documento -- cambiala solo si corresponde.</div>
           </>
         )}
         {esAtropina && (
           <>
             {renderNumRow("fc_inicial", "FC inicial", "lpm")}
             {renderNumRow("fc_final", "FC final", "lpm")}
+            {renderTextRow("atropina_fecha", "Fecha")}
+            {renderHoraRow("atropina_hora", "Hora")}
+            {renderTextRow("atropina_duracion", "Duración")}
+            {renderTextRow("atropina_complicaciones", "Complicaciones")}
+            <div className="tiny">El formulario no tiene casillero propio para atropina -- se vuelca en "Otros exámenes".</div>
           </>
         )}
         {!esApnea && !esAtropina && (
@@ -297,7 +313,7 @@ export default function MePanel({
           <div className="tiny" style={{ marginBottom: 4, textTransform: "uppercase", letterSpacing: ".5px" }}>
             1ª evaluación
           </div>
-          {renderTextRow("ta_tam_1a", "TA/TAM")}
+          {renderTextRow("ta_tam_1a", "TAM")}
           {renderTextRow("t_central_1a", "Temperatura central")}
           {renderSiNoPar("diabetes_insipida_1a", "Diabetes insípida")}
           {renderTextRow("pupilas_1a", "Pupilas")}
@@ -306,7 +322,7 @@ export default function MePanel({
           <div className="tiny" style={{ marginTop: 10, marginBottom: 4, textTransform: "uppercase", letterSpacing: ".5px" }}>
             2ª evaluación
           </div>
-          {renderTextRow("ta_tam_2a", "TA/TAM")}
+          {renderTextRow("ta_tam_2a", "TAM")}
           {renderTextRow("t_central_2a", "Temperatura central")}
           {renderSiNoPar("diabetes_insipida_2a", "Diabetes insípida")}
           {renderTextRow("pupilas_2a", "Pupilas")}
@@ -316,23 +332,10 @@ export default function MePanel({
 
       <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--border-soft)" }}>
         <div className="tiny" style={{ marginBottom: 8, textTransform: "uppercase", letterSpacing: ".5px" }}>
-          Coma y medicación
+          Estudios
         </div>
-        {renderTextRow("causa_coma", "Causa del coma")}
-        {renderTextRow("droga1", "Medicación depresora 1")}
-        {renderTextRow("droga2", "Medicación depresora 2")}
-        {renderTextRow("otra_med_resto", "Otra medicación de importancia neurológica (relajantes, anticonvulsivos, ototóxicos)", { multiline: true })}
-      </div>
-
-      <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--border-soft)" }}>
-        <div className="tiny" style={{ marginBottom: 8, textTransform: "uppercase", letterSpacing: ".5px" }}>
-          ARM y examen
-        </div>
-        {renderTextRow("arm_obligada", "ARM obligada desde")}
-        {renderTextRow("arm_fecha_hs", "Fecha y hora")}
+        {renderTextRow("estudios_complementarios", "Estudios complementarios (TAC u otro método de imagen)", { multiline: true })}
         {renderTextRow("fondo_ojo", "Fondo de ojo")}
-        {renderCheckboxToggle("cb_union_neuromuscular", "Evaluación de la unión neuromuscular")}
-        {renderCheckboxToggle("cb_electroestimulacion", "Electroestimulación")}
       </div>
 
       <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--border-soft)" }}>
@@ -344,7 +347,7 @@ export default function MePanel({
 
       <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--border-soft)" }}>
         <div className="tiny" style={{ marginBottom: 8, textTransform: "uppercase", letterSpacing: ".5px" }}>
-          ¿Cumple criterios de ME?
+          ¿Cumple criterios de muerte encefálica?
         </div>
         <div className="btn-row" style={{ marginTop: 0 }}>
           <button className={`btn btn-sm ${cumpleMe === "si" ? "btn-accent" : ""}`} onClick={() => setSiNoPar("cumple_me", "si")}>

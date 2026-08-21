@@ -2,6 +2,7 @@ import { PDFDocument } from "pdf-lib";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Donante, Familiar } from "./types";
 import { resolveCanonico } from "./panels";
+import { REFLEJOS_ME, REFLEJO_PDF_PREFIX } from "./constants";
 
 export type DocumentoDef = {
   key: string;
@@ -101,6 +102,91 @@ export async function rellenarCamposPdf(bytes: ArrayBuffer | Uint8Array, valores
   return pdfDoc.save();
 }
 
+function pad2(n: number): string {
+  return String(n).padStart(2, "0");
+}
+
+/**
+ * Reglas de mapeo específicas de Historia Clínica Neurológica -- no son
+ * campos nuevos a capturar, son reglas de dónde vuelca cada dato ya
+ * cargado en otro lado. Muta `valores` con lo derivado:
+ * - Reflejos: los 12 valores planos (ausente/presente) se vuelcan en los
+ *   48 casilleros reales (1a/2a x si/no), reusando el mismo valor para
+ *   ambas evaluaciones porque la app no distingue 1a de 2a por reflejo.
+ * - Test de apnea: resultado (Positiva por defecto) -> casillero
+ *   POSITIVA/NEGATIVA/INDETERMINADA.
+ * - Test de atropina: no tiene casillero propio en el formulario -> se
+ *   vuelca como texto en "Otros exámenes" (fecha/hora/informe).
+ * - Fecha del documento y de cada evaluación: la fecha/hora en que se
+ *   genera el PDF (no se captura, es automática).
+ */
+async function aplicarReglasNeuro(supabase: SupabaseClient, donanteId: string, valores: Map<string, ValorCampo>): Promise<void> {
+  const clavesInternas = [
+    "tipo_test_confirmacion",
+    "apneica1_resultado",
+    "fc_inicial",
+    "fc_final",
+    "atropina_fecha",
+    "atropina_hora",
+    "atropina_duracion",
+    "atropina_complicaciones",
+    ...REFLEJOS_ME.map((r) => r.key),
+  ];
+  const { data } = await supabase
+    .from("planilla_valores")
+    .select("campo_pdf, valor")
+    .eq("donante_id", donanteId)
+    .eq("planilla_key", "neuro")
+    .in("campo_pdf", clavesInternas);
+  const crudo = new Map(((data as { campo_pdf: string; valor: string | null }[]) ?? []).map((r) => [r.campo_pdf, r.valor]));
+
+  // Reflejos -> 48 casilleros reales
+  for (const r of REFLEJOS_ME) {
+    const val = crudo.get(r.key);
+    if (val !== "ausente" && val !== "presente") continue;
+    const prefijo = REFLEJO_PDF_PREFIX[r.key];
+    const sufijo = val === "presente" ? "si" : "no";
+    for (const momento of ["1a", "2a"]) {
+      valores.set(`${prefijo}_${momento}_${sufijo}`, { valor: "si", tipo: "checkbox" });
+    }
+  }
+
+  // Test de apnea -> casillero Positiva/Negativa/Indeterminada (Positiva
+  // por defecto si el procurador no lo cambió).
+  if (crudo.get("tipo_test_confirmacion") === "apnea") {
+    const resultado = crudo.get("apneica1_resultado") || "positiva";
+    valores.set(`apneica1_${resultado}`, { valor: "si", tipo: "checkbox" });
+  }
+
+  // Test de atropina -> no tiene casillero propio; se vuelca como texto
+  // en "Otros exámenes" (el formulario no distingue el tipo de test ahí).
+  if (crudo.get("tipo_test_confirmacion") === "atropina") {
+    const partes: string[] = ["Test de atropina."];
+    if (crudo.get("fc_inicial")) partes.push(`FC inicial: ${crudo.get("fc_inicial")} lpm.`);
+    if (crudo.get("fc_final")) partes.push(`FC final: ${crudo.get("fc_final")} lpm.`);
+    if (crudo.get("atropina_duracion")) partes.push(`Duración: ${crudo.get("atropina_duracion")}.`);
+    if (crudo.get("atropina_complicaciones")) partes.push(`Complicaciones: ${crudo.get("atropina_complicaciones")}.`);
+    valores.set("otros_examenes_resto", { valor: partes.join(" "), tipo: "text" });
+    if (crudo.get("atropina_fecha")) valores.set("otros_examenes_fecha", { valor: crudo.get("atropina_fecha")!, tipo: "text" });
+    if (crudo.get("atropina_hora")) valores.set("otros_examenes_hora", { valor: crudo.get("atropina_hora")!, tipo: "text" });
+  }
+
+  // Fecha del documento y de cada evaluación: automática, al momento de
+  // generar el PDF.
+  const ahora = new Date();
+  const dia = pad2(ahora.getDate());
+  const mes = pad2(ahora.getMonth() + 1);
+  const anio = String(ahora.getFullYear());
+  const hora = `${pad2(ahora.getHours())}:${pad2(ahora.getMinutes())}`;
+  valores.set("fecha_dia", { valor: dia, tipo: "text" });
+  valores.set("fecha_mes", { valor: mes, tipo: "text" });
+  valores.set("fecha_anio", { valor: anio, tipo: "text" });
+  valores.set("fecha_hora_top", { valor: hora, tipo: "text" });
+  const fechaCorta = `${dia}/${mes}/${anio}`;
+  valores.set("fecha_1a", { valor: fechaCorta, tipo: "text" });
+  valores.set("fecha_2a", { valor: fechaCorta, tipo: "text" });
+}
+
 /** Genera el PDF prellenado de un documento con lo que ya esté disponible. */
 export async function generarDocumentoPdf(
   supabase: SupabaseClient,
@@ -112,6 +198,7 @@ export async function generarDocumentoPdf(
 
   const bytes = await fetch(`/forms/documentos/${doc.archivo}`).then((r) => r.arrayBuffer());
   const valores = doc.planillaKeys.length > 0 ? await resolverValoresPlanilla(supabase, doc.planillaKeys, donante, familiar) : new Map();
+  if (doc.key === "neuro") await aplicarReglasNeuro(supabase, donante.id, valores);
   return rellenarCamposPdf(bytes, valores);
 }
 
