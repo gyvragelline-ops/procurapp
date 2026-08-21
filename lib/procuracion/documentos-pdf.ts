@@ -92,6 +92,12 @@ export async function rellenarCamposPdf(bytes: ArrayBuffer | Uint8Array, valores
         if (VALORES_TRUTHY.test(valor.trim())) cb.check();
       } else {
         const tf = form.getTextField(campo);
+        // Sin tamaño fijo, pdf-lib autoajusta la fuente al ancho/alto de
+        // cada campo -- en cajas anchas con poco texto (ej. estudios
+        // complementarios) eso produce una letra desproporcionadamente
+        // grande, y en cajas bajitas puede desbordar hacia el campo de
+        // abajo. Un tamaño uniforme evita ambos problemas.
+        tf.setFontSize(9);
         tf.setText(valor);
       }
     } catch {

@@ -1,3 +1,17 @@
+# NOTA (2026-08-21): historia_clinica_neurologica.pdf (el AcroForm ya
+# desplegado en public/forms/documentos/) tiene 4 correcciones de
+# posición de widget aplicadas DIRECTAMENTE sobre el PDF con pdf-lib,
+# que no están reflejadas en las coordenadas de este script:
+# - causa_coma (P1): estaba pisando la línea de "Observaciones" --
+#   se corrigió con y += 12 y x = 230 (en vez de 138.24) en el PDF final.
+# - fecha_1a/2a, hora_1a/2a, ta_tam_1a/2a (P3): cada una aparecía un
+#   renglón más abajo de lo que le correspondía (fecha en la línea de
+#   HORA, hora en la de TA/TAM, etc.) -- se corrigieron con y += 19.68
+#   c/u en el PDF final.
+# - t_central_1a/2a (P3): y += 6 (ajuste menor, caja muy baja: 9.12pt).
+# Si se regenera este PDF desde cero con este script, hay que volver a
+# calibrar esas filas contra el PDF ya corregido (o repetir el parche
+# con pdf-lib) antes de reemplazar el archivo servido.
 import formkit as fk
 
 SRC = "/mnt/project/FPrO750201Historiaclinicaneurológica1.pdf"
