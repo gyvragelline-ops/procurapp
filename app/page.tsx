@@ -19,6 +19,8 @@ import {
   stripStagesForTipo,
   ME_CAMPO_KEYS,
   METODOS_CERT_AUX,
+  CERTIFICADO_CIERRE_KEYS,
+  DOPPLER_CAMPO_KEYS,
   type EstadoEtapa,
   type MeCampos,
   type CertAuxCampos,
@@ -58,6 +60,8 @@ export default function Home() {
   const [judicialAplica, setJudicialAplica] = useState(false);
   const [meCampos, setMeCampos] = useState<MeCampos>(EMPTY_ME_CAMPOS);
   const [certAuxCampos, setCertAuxCampos] = useState<CertAuxCampos>(EMPTY_CERT_AUX_CAMPOS);
+  const [dopplerCampos, setDopplerCampos] = useState<Record<string, string | null>>({});
+  const [angiografiaMeta, setAngiografiaMeta] = useState<{ fecha?: string; hora?: string; informe?: string }>({});
   const [comMuerteRealizada, setComMuerteRealizada] = useState(false);
   const [comDonacionRealizada, setComDonacionRealizada] = useState(false);
   const [muestras, setMuestras] = useState<MuestraRow[]>([]);
@@ -117,8 +121,20 @@ export default function Home() {
         .eq("planilla_key", "neuro")
         .in("campo_pdf", ME_CAMPO_KEYS),
       supabase
+        .from("planilla_valores")
+        .select("campo_pdf, valor")
+        .eq("donante_id", selectedId)
+        .eq("planilla_key", "certificado")
+        .in("campo_pdf", CERTIFICADO_CIERRE_KEYS),
+      supabase
+        .from("planilla_valores")
+        .select("campo_pdf, valor")
+        .eq("donante_id", selectedId)
+        .eq("planilla_key", "doppler")
+        .in("campo_pdf", DOPPLER_CAMPO_KEYS),
+      supabase
         .from("documentacion_estado")
-        .select("item_key, estado")
+        .select("item_key, estado, meta")
         .eq("donante_id", selectedId)
         .eq("categoria", "certificacion")
         .in("item_key", CERT_AUX_KEYS),
@@ -142,7 +158,7 @@ export default function Home() {
         .eq("donante_id", selectedId)
         .order("generado_en", { ascending: false }),
       supabase.from("muestras").select("paquete_key, nombre, tubos, obtenida, retirada").eq("donante_id", selectedId),
-    ]).then(([donanteRes, familiarRes, etapasRes, judicialRes, meRes, certAuxRes, comMuerteRes, comDonacionRes, planillasRes, muestrasRes]) => {
+    ]).then(([donanteRes, familiarRes, etapasRes, judicialRes, meRes, certificadoCierreRes, dopplerRes, certAuxRes, comMuerteRes, comDonacionRes, planillasRes, muestrasRes]) => {
       const donanteData = (donanteRes.data as Donante) ?? null;
       setDonante(donanteData);
       setFamiliar((familiarRes.data as Familiar) ?? null);
@@ -156,12 +172,23 @@ export default function Home() {
       ((meRes.data as { campo_pdf: string; valor: string | null }[]) ?? []).forEach((r) => {
         (meMap as Record<string, string | null>)[r.campo_pdf] = r.valor;
       });
+      ((certificadoCierreRes.data as { campo_pdf: string; valor: string | null }[]) ?? []).forEach((r) => {
+        (meMap as Record<string, string | null>)[r.campo_pdf] = r.valor;
+      });
       setMeCampos(meMap);
+      const dopplerMap: Record<string, string | null> = {};
+      ((dopplerRes.data as { campo_pdf: string; valor: string | null }[]) ?? []).forEach((r) => {
+        dopplerMap[r.campo_pdf] = r.valor;
+      });
+      setDopplerCampos(dopplerMap);
       const certAuxMap = { ...EMPTY_CERT_AUX_CAMPOS };
-      ((certAuxRes.data as { item_key: string; estado: string | null }[]) ?? []).forEach((r) => {
+      const certAuxRows = (certAuxRes.data as { item_key: string; estado: string | null; meta: Record<string, unknown> | null }[]) ?? [];
+      certAuxRows.forEach((r) => {
         (certAuxMap as Record<string, string | null>)[r.item_key] = r.estado;
       });
       setCertAuxCampos(certAuxMap);
+      const angioRow = certAuxRows.find((r) => r.item_key === "angiografia_cerebral");
+      setAngiografiaMeta((angioRow?.meta as { fecha?: string; hora?: string; informe?: string } | null) ?? {});
       setComMuerteRealizada((comMuerteRes.data as { estado: string | null } | null)?.estado === "si");
       setComDonacionRealizada((comDonacionRes.data as { estado: string | null } | null)?.estado === "si");
       const planillasMap: Record<string, PlanillaGeneradaRow> = {};
@@ -451,7 +478,17 @@ export default function Home() {
                         )}
 
                         {s.key === "certificacion" && donante && (
-                          <CertAuxPanel donanteId={donante.id} campos={certAuxCampos} onChange={setCertAuxCampos} />
+                          <CertAuxPanel
+                            donanteId={donante.id}
+                            campos={certAuxCampos}
+                            onChange={setCertAuxCampos}
+                            neuroDetalle={meCampos}
+                            onNeuroDetalleChange={setMeCampos}
+                            dopplerDetalle={dopplerCampos}
+                            onDopplerDetalleChange={setDopplerCampos}
+                            angiografiaMeta={angiografiaMeta}
+                            onAngiografiaMetaChange={setAngiografiaMeta}
+                          />
                         )}
 
                         {s.key === "comMuerte" && donante && (

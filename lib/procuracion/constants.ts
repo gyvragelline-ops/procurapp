@@ -123,21 +123,75 @@ export const REFLEJOS_ME: { key: string; label: string; grupo: "A" | "B" }[] = [
   { key: "reflejo_cutaneoabdominal", label: "Cutáneo-abdominales", grupo: "A" },
 ];
 
+// Campos "de cierre del documento" -- no forman parte del criterio de
+// verde de ninguna etapa, solo completan lo impreso en Historia Clínica
+// Neurológica / Certificado de fallecimiento. Nombres EXACTOS de los
+// campos reales de esas plantillas (ver handoff/test-documentos).
+export const ME_CAMPO_KEYS_DOCUMENTO = [
+  "ta_tam_1a",
+  "ta_tam_2a",
+  "t_central_1a",
+  "t_central_2a",
+  "diabetes_insipida_1a_si",
+  "diabetes_insipida_1a_no",
+  "diabetes_insipida_2a_si",
+  "diabetes_insipida_2a_no",
+  "pupilas_1a",
+  "pupilas_2a",
+  "movimientos_atipicos_1a_si",
+  "movimientos_atipicos_1a_no",
+  "movimientos_atipicos_2a_si",
+  "movimientos_atipicos_2a_no",
+  "causa_coma",
+  "droga1",
+  "droga2",
+  "otra_med_resto",
+  "arm_obligada",
+  "arm_fecha_hs",
+  "fondo_ojo",
+  "cb_union_neuromuscular",
+  "cb_electroestimulacion",
+  "observaciones_resto",
+  "cumple_me_si",
+  "cumple_me_no",
+  "no_cumple_motivo",
+  "apneica1_duracion",
+  "apneica1_complicaciones",
+  "eeg1_fecha",
+  "eeg1_hora",
+  "eeg1_informe",
+  "potenciales_fecha",
+  "potenciales_hora",
+  "peat",
+  "pess",
+  "pev",
+];
+
+// Campos de "cierre" que van a planilla_key='certificado' (no 'neuro') --
+// el panel de Examen neurológico los muestra pero se guardan en la
+// planilla del certificado, que es la que los usa.
+export const CERTIFICADO_CIERRE_KEYS = ["medico1_nombre", "medico2_nombre", "archivo_lugar"];
+
+// Campos propios del Doppler transcraneano (planilla_key='doppler') que
+// se cargan desde el panel de Métodos auxiliares.
+export const DOPPLER_CAMPO_KEYS = ["fecha_dia", "fecha_mes", "fecha_anio", "fecha_hora_top", "interpretacion_resto"];
+
 export const ME_CAMPO_KEYS = [
-  "hora_evaluacion_1",
-  "hora_evaluacion_2",
+  "hora_1a",
+  "hora_2a",
   "tipo_test_confirmacion",
   "apneica1_pco2_inicial",
   "apneica1_pco2_final",
   "fc_inicial",
   "fc_final",
   ...REFLEJOS_ME.map((r) => r.key),
+  ...ME_CAMPO_KEYS_DOCUMENTO,
 ];
 
 export type MeCampos = Record<string, string | null>;
 
 export function computeMeEstado(campos: MeCampos): EstadoEtapa {
-  const horasOk = !!campos.hora_evaluacion_1 && !!campos.hora_evaluacion_2;
+  const horasOk = !!campos.hora_1a && !!campos.hora_2a;
   const reflejosOk = REFLEJOS_ME.every((r) => campos[r.key] === "ausente" || campos[r.key] === "presente");
   const grupoBOk = REFLEJOS_ME.filter((r) => r.grupo === "B").every((r) => campos[r.key] === "ausente");
   let testOk = false;
@@ -148,8 +202,8 @@ export function computeMeEstado(campos: MeCampos): EstadoEtapa {
   }
   if (horasOk && reflejosOk && grupoBOk && testOk) return "green";
   const algoCargado =
-    campos.hora_evaluacion_1 ||
-    campos.hora_evaluacion_2 ||
+    campos.hora_1a ||
+    campos.hora_2a ||
     campos.tipo_test_confirmacion ||
     REFLEJOS_ME.some((r) => campos[r.key]);
   return algoCargado ? "amber" : "gray";
