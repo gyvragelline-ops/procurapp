@@ -4,6 +4,7 @@ import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { REFLEJOS_ME, type MeCampos } from "@/lib/procuracion/constants";
 import HoraInput, { parseHoraMinutos } from "./hora-input";
+import FechaHoraInput from "./fecha-hora-input";
 
 const supabase = createClient();
 
@@ -38,7 +39,7 @@ export default function MePanel({
   const [savingTipo, setSavingTipo] = useState(false);
   const [savingBulk, setSavingBulk] = useState(false);
   const [reflejosOpen, setReflejosOpen] = useState(false);
-  const [evalOpen, setEvalOpen] = useState(false);
+  const [eval1Open, setEval1Open] = useState(false);
 
   async function saveCampo(campo_pdf: string, valor: string | null, planillaKey: string = "neuro") {
     await supabase
@@ -73,6 +74,44 @@ export default function MePanel({
       }
     }
     onChange(actualizados);
+  }
+
+  // "ARM obligada desde" en el PDF real son 2 casilleros contiguos en la
+  // misma línea (arm_obligada + arm_fecha_hs), pero para el procurador es
+  // un solo dato: la fecha/hora desde que la ARM se volvió obligada. Un
+  // único campo alcanza -- arm_obligada se completa solo con "Sí" en
+  // cuanto hay fecha cargada, y se vacía si se borra.
+  async function saveArmFechaHora() {
+    const valor = draft || null;
+    setEditingField(null);
+    await saveCampo("arm_fecha_hs", valor);
+    await saveCampo("arm_obligada", valor ? "Sí" : null);
+    onChange({ ...campos, arm_fecha_hs: valor, arm_obligada: valor ? "Sí" : null });
+  }
+
+  function renderArmFechaHoraRow() {
+    const field = "arm_fecha_hs";
+    return (
+      <div className="field-row" key={field}>
+        <span className="field-label">ARM obligada desde</span>
+        {editingField === field ? (
+          <FechaHoraInput
+            value={draft}
+            onChangeValue={setDraft}
+            autoFocus
+            onBlur={saveArmFechaHora}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") saveArmFechaHora();
+              if (e.key === "Escape") setEditingField(null);
+            }}
+          />
+        ) : (
+          <span className="field-value" style={{ cursor: "pointer" }} onClick={() => startEdit(field)}>
+            {campos[field] ?? "Tocar para completar"}
+          </span>
+        )}
+      </div>
+    );
   }
 
   function renderHoraRow(field: string, label: string) {
@@ -250,15 +289,36 @@ export default function MePanel({
 
   return (
     <>
-      {renderHoraRow("hora_1a", "Hora 1ª evaluación")}
-      {renderHoraRow("hora_2a", "Hora 2ª evaluación")}
-      {horasMuyCercanas && (
-        <div className="tiny" style={{ color: "var(--amber)", marginTop: -2, marginBottom: 6 }}>
-          Debe haber al menos 1 hora de diferencia entre evaluaciones
+      <div className="check-row" style={{ cursor: "pointer" }} onClick={() => setEval1Open((v) => !v)}>
+        <span>1ª Evaluación {eval1Open ? "▾" : "▸"}</span>
+      </div>
+      {eval1Open && (
+        <div style={{ marginTop: 6, marginBottom: 6 }}>
+          {renderHoraRow("hora_1a", "Hora")}
+          {renderTextRow("ta_tam_1a", "TAM")}
+          {renderTextRow("t_central_1a", "Temperatura central")}
+          {renderSiNoPar("diabetes_insipida_1a", "Diabetes insípida")}
+          {renderTextRow("pupilas_1a", "Pupilas")}
         </div>
       )}
 
-      <div className="check-row" style={{ cursor: "pointer" }} onClick={() => setReflejosOpen((v) => !v)}>
+      <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--border-soft)" }}>
+        <div className="tiny" style={{ marginBottom: 8, textTransform: "uppercase", letterSpacing: ".5px" }}>
+          2ª Evaluación <span style={{ textTransform: "none", fontWeight: 400 }}>(se copia de la 1ª, editable)</span>
+        </div>
+        {renderHoraRow("hora_2a", "Hora")}
+        {horasMuyCercanas && (
+          <div className="tiny" style={{ color: "var(--amber)", marginTop: -2, marginBottom: 6 }}>
+            Debe haber al menos 1 hora de diferencia entre evaluaciones
+          </div>
+        )}
+        {renderTextRow("ta_tam_2a", "TAM")}
+        {renderTextRow("t_central_2a", "Temperatura central")}
+        {renderSiNoPar("diabetes_insipida_2a", "Diabetes insípida")}
+        {renderTextRow("pupilas_2a", "Pupilas")}
+      </div>
+
+      <div className="check-row" style={{ cursor: "pointer", marginTop: 10 }} onClick={() => setReflejosOpen((v) => !v)}>
         <span>Reflejos {reflejosOpen ? "▾" : "▸"}</span>
         <span className={`chip ${reflejosDefinidos === 12 ? "chip-green" : "chip-gray"}`}>{reflejosDefinidos}/12</span>
       </div>
@@ -283,15 +343,6 @@ export default function MePanel({
           ))}
         </div>
       )}
-
-      <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--border-soft)" }}>
-        {renderTextRow("causa_coma", "Causa del coma")}
-      </div>
-
-      <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--border-soft)" }}>
-        {renderTextRow("arm_obligada", "ARM obligada desde")}
-        {renderTextRow("arm_fecha_hs", "Fecha y hora")}
-      </div>
 
       <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--border-soft)" }}>
         <div className="tiny" style={{ marginBottom: 8, textTransform: "uppercase", letterSpacing: ".5px" }}>
@@ -345,28 +396,13 @@ export default function MePanel({
         )}
       </div>
 
-      <div className="check-row" style={{ cursor: "pointer", marginTop: 10 }} onClick={() => setEvalOpen((v) => !v)}>
-        <span>Datos por evaluación (1ª / 2ª) {evalOpen ? "▾" : "▸"}</span>
+      <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--border-soft)" }}>
+        {renderTextRow("causa_coma", "Causa del coma")}
       </div>
-      {evalOpen && (
-        <div style={{ marginTop: 6 }}>
-          <div className="tiny" style={{ marginBottom: 4, textTransform: "uppercase", letterSpacing: ".5px" }}>
-            1ª evaluación
-          </div>
-          {renderTextRow("ta_tam_1a", "TAM")}
-          {renderTextRow("t_central_1a", "Temperatura central")}
-          {renderSiNoPar("diabetes_insipida_1a", "Diabetes insípida")}
-          {renderTextRow("pupilas_1a", "Pupilas")}
 
-          <div className="tiny" style={{ marginTop: 10, marginBottom: 4, textTransform: "uppercase", letterSpacing: ".5px" }}>
-            2ª evaluación <span style={{ textTransform: "none", fontWeight: 400 }}>(se copia de la 1ª, editable)</span>
-          </div>
-          {renderTextRow("ta_tam_2a", "TAM")}
-          {renderTextRow("t_central_2a", "Temperatura central")}
-          {renderSiNoPar("diabetes_insipida_2a", "Diabetes insípida")}
-          {renderTextRow("pupilas_2a", "Pupilas")}
-        </div>
-      )}
+      <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--border-soft)" }}>
+        {renderArmFechaHoraRow()}
+      </div>
 
       <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--border-soft)" }}>
         {renderTextRow("estudios_complementarios", "Estudios complementarios (TAC u otro método de imagen)", { multiline: true })}
@@ -392,7 +428,10 @@ export default function MePanel({
           Cierre del certificado de fallecimiento
         </div>
         {renderTextRow("medico1_nombre", "Médico 1 (nombre)", { planillaKey: "certificado" })}
-        {renderTextRow("medico2_nombre", "Médico 2 (nombre) -- se etiqueta como Neurólogo/Neurocirujano en el PDF", { planillaKey: "certificado" })}
+        {renderTextRow("medico2_nombre", "Médico 2 (nombre)", { planillaKey: "certificado" })}
+        <div className="tiny" style={{ marginTop: -6, marginBottom: 6 }}>
+          (neurólogo) -- se agrega automáticamente en el PDF
+        </div>
         {renderTextRow("archivo_lugar", "Lugar donde se archiva la documentación", { planillaKey: "certificado" })}
       </div>
     </>
