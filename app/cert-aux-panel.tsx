@@ -34,7 +34,14 @@ export default function CertAuxPanel({
     const estado = campos[key] ?? "pendiente";
     return (
       <div className="field-row" key={key}>
-        <span className="field-label">{label}</span>
+        <span className="field-label" style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+          <span>{label}</span>
+          {key === "doppler_transcraneano" && (
+            <a href="/forms/documentos/doppler_transcraneano.pdf" target="_blank" rel="noopener" className="tiny" style={{ color: "var(--accent)" }}>
+              Formulario en blanco
+            </a>
+          )}
+        </span>
         <button className={`chip ${TONO[estado]}`} style={{ border: "none", cursor: "pointer" }} onClick={() => ciclar(key)}>
           {TEXTO[estado]}
         </button>

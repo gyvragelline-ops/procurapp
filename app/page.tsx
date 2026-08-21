@@ -36,6 +36,7 @@ import ComDonacionPanel from "./com-donacion-panel";
 import ComDonacionRealizada from "./com-donacion-realizada";
 import FamiliarContactoPanel from "./familiar-contacto-panel";
 import LabImagenesPanel from "./lab-imagenes-panel";
+import DocumentosPanel from "./documentos-panel";
 import NuevoDonante from "./nuevo-donante";
 
 const EMPTY_ME_CAMPOS: MeCampos = Object.fromEntries(ME_CAMPO_KEYS.map((k) => [k, null]));
@@ -503,6 +504,8 @@ export default function Home() {
                             {data.content.note && <div className="tiny" style={{ marginTop: data.content.rows.length ? 8 : 0 }}>{data.content.note}</div>}
                           </>
                         )}
+
+                        {s.key === "documentacion" && donante && <DocumentosPanel donante={donante} familiar={familiar} />}
 
                         {s.key === "muestras" && donante && (
                           <>

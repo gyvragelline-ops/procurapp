@@ -20,7 +20,7 @@ export const ORGANO_EMOJI: Record<string, string> = {
   rinones: "🫘",
 };
 
-function resolveCanonico(fuente: string, donante: Donante, familiar: Familiar | null): string | null {
+export function resolveCanonico(fuente: string, donante: Donante, familiar: Familiar | null): string | null {
   const [tabla, columna] = fuente.split(".");
   const source =
     tabla === "donantes"
@@ -165,15 +165,12 @@ export async function loadPanel(
     const items = await getDocEstado(supabase, donanteId, "documentacion");
     const fotoDni = items.find((r) => r.item_key === "foto_dni");
     const fotoGF = items.find((r) => r.item_key === "foto_grupo_factor");
-    const dopplerEeg = items.find((r) => r.item_key === "doppler_o_eeg");
     const otros = items.filter((r) => !["foto_dni", "foto_grupo_factor", "doppler_o_eeg"].includes(r.item_key));
-    const tipoEstudio = (dopplerEeg?.meta?.tipo as string | undefined) === "eeg" ? "EEG" : "Doppler transcraneal";
     return {
       rows: [
         { label: "Foto de DNI del potencial donante", chip: chipFromEstado(fotoDni?.estado, { text: "Pendiente", tone: "amber" }) },
         { label: "Foto de grupo y factor", chip: chipFromEstado(fotoGF?.estado, { text: "Pendiente", tone: "amber" }) },
         ...otros.map((o) => ({ label: humanizeCampo(o.item_key), chip: chipFromEstado(o.estado, { text: "Pendiente", tone: "amber" as const }) })),
-        { label: tipoEstudio, chip: chipFromEstado(dopplerEeg?.estado, { text: "Pendiente", tone: "amber" }) },
       ],
     };
   }
