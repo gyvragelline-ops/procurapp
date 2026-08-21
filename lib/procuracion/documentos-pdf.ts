@@ -129,7 +129,6 @@ async function aplicarReglasNeuro(supabase: SupabaseClient, donanteId: string, v
     "atropina_fecha",
     "atropina_hora",
     "atropina_duracion",
-    "atropina_complicaciones",
     ...REFLEJOS_ME.map((r) => r.key),
   ];
   const { data } = await supabase
@@ -165,7 +164,6 @@ async function aplicarReglasNeuro(supabase: SupabaseClient, donanteId: string, v
     if (crudo.get("fc_inicial")) partes.push(`FC inicial: ${crudo.get("fc_inicial")} lpm.`);
     if (crudo.get("fc_final")) partes.push(`FC final: ${crudo.get("fc_final")} lpm.`);
     if (crudo.get("atropina_duracion")) partes.push(`Duración: ${crudo.get("atropina_duracion")}.`);
-    if (crudo.get("atropina_complicaciones")) partes.push(`Complicaciones: ${crudo.get("atropina_complicaciones")}.`);
     valores.set("otros_examenes_resto", { valor: partes.join(" "), tipo: "text" });
     if (crudo.get("atropina_fecha")) valores.set("otros_examenes_fecha", { valor: crudo.get("atropina_fecha")!, tipo: "text" });
     if (crudo.get("atropina_hora")) valores.set("otros_examenes_hora", { valor: crudo.get("atropina_hora")!, tipo: "text" });
@@ -187,6 +185,18 @@ async function aplicarReglasNeuro(supabase: SupabaseClient, donanteId: string, v
   valores.set("fecha_2a", { valor: fechaCorta, tipo: "text" });
 }
 
+/**
+ * El 2º médico que certifica se etiqueta automáticamente como
+ * "Neurólogo/Neurocirujano" en el documento -- el procurador solo carga
+ * el nombre, no se le pide el rol.
+ */
+function aplicarReglasCertificado(valores: Map<string, ValorCampo>): void {
+  const medico2 = valores.get("medico2_nombre");
+  if (medico2?.valor) {
+    valores.set("medico2_nombre", { valor: `Neurólogo/Neurocirujano: ${medico2.valor}`, tipo: "text" });
+  }
+}
+
 /** Genera el PDF prellenado de un documento con lo que ya esté disponible. */
 export async function generarDocumentoPdf(
   supabase: SupabaseClient,
@@ -199,6 +209,7 @@ export async function generarDocumentoPdf(
   const bytes = await fetch(`/forms/documentos/${doc.archivo}`).then((r) => r.arrayBuffer());
   const valores = doc.planillaKeys.length > 0 ? await resolverValoresPlanilla(supabase, doc.planillaKeys, donante, familiar) : new Map();
   if (doc.key === "neuro") await aplicarReglasNeuro(supabase, donante.id, valores);
+  if (doc.key === "certificado") aplicarReglasCertificado(valores);
   return rellenarCamposPdf(bytes, valores);
 }
 

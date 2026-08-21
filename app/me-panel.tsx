@@ -7,6 +7,23 @@ import HoraInput, { parseHoraMinutos } from "./hora-input";
 
 const supabase = createClient();
 
+// Campos de la 1ª evaluación que se copian a la 2ª automáticamente si la
+// 2ª todavía está vacía -- el procurador puede editarla después si en la
+// práctica fue distinta.
+const COPIA_1A_A_2A: Record<string, string> = {
+  ta_tam_1a: "ta_tam_2a",
+  t_central_1a: "t_central_2a",
+  pupilas_1a: "pupilas_2a",
+};
+
+function sumarUnaHora(hora: string): string | null {
+  const m = hora.match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) return null;
+  let h = Number(m[1]) + 1;
+  if (h > 23) h -= 24;
+  return `${String(h).padStart(2, "0")}:${m[2]}`;
+}
+
 export default function MePanel({
   donanteId,
   campos,
@@ -41,7 +58,21 @@ export default function MePanel({
     const valor = draft || null;
     setEditingField(null);
     await saveCampo(field, valor, planillaKey);
-    onChange({ ...campos, [field]: valor });
+    const actualizados: MeCampos = { ...campos, [field]: valor };
+
+    const campo2a = COPIA_1A_A_2A[field];
+    if (campo2a && valor && !campos[campo2a]) {
+      await saveCampo(campo2a, valor);
+      actualizados[campo2a] = valor;
+    }
+    if (field === "hora_1a" && valor && !campos.hora_2a) {
+      const auto = sumarUnaHora(valor);
+      if (auto) {
+        await saveCampo("hora_2a", auto);
+        actualizados.hora_2a = auto;
+      }
+    }
+    onChange(actualizados);
   }
 
   function renderHoraRow(field: string, label: string) {
@@ -140,7 +171,18 @@ export default function MePanel({
     const campoOpuesto = `${base}_${valor === "si" ? "no" : "si"}`;
     await saveCampo(campoElegido, "si");
     await saveCampo(campoOpuesto, null);
-    onChange({ ...campos, [campoElegido]: "si", [campoOpuesto]: null });
+    const actualizados: MeCampos = { ...campos, [campoElegido]: "si", [campoOpuesto]: null };
+
+    if (base === "diabetes_insipida_1a" && campos["diabetes_insipida_2a_si"] !== "si" && campos["diabetes_insipida_2a_no"] !== "si") {
+      const elegido2a = `diabetes_insipida_2a_${valor}`;
+      const opuesto2a = `diabetes_insipida_2a_${valor === "si" ? "no" : "si"}`;
+      await saveCampo(elegido2a, "si");
+      await saveCampo(opuesto2a, null);
+      actualizados[elegido2a] = "si";
+      actualizados[opuesto2a] = null;
+    }
+
+    onChange(actualizados);
   }
 
   function renderSiNoPar(base: string, label: string) {
@@ -269,7 +311,6 @@ export default function MePanel({
             {renderNumRow("apneica1_pco2_inicial", "CO2 inicial", "mmHg")}
             {renderNumRow("apneica1_pco2_final", "CO2 final", "mmHg")}
             {renderTextRow("apneica1_duracion", "Duración")}
-            {renderTextRow("apneica1_complicaciones", "Complicaciones")}
             <div className="field-row">
               <span className="field-label">Resultado</span>
               <div style={{ display: "flex", gap: 4 }}>
@@ -294,7 +335,6 @@ export default function MePanel({
             {renderTextRow("atropina_fecha", "Fecha")}
             {renderHoraRow("atropina_hora", "Hora")}
             {renderTextRow("atropina_duracion", "Duración")}
-            {renderTextRow("atropina_complicaciones", "Complicaciones")}
             <div className="tiny">El formulario no tiene casillero propio para atropina -- se vuelca en "Otros exámenes".</div>
           </>
         )}
@@ -317,32 +357,19 @@ export default function MePanel({
           {renderTextRow("t_central_1a", "Temperatura central")}
           {renderSiNoPar("diabetes_insipida_1a", "Diabetes insípida")}
           {renderTextRow("pupilas_1a", "Pupilas")}
-          {renderSiNoPar("movimientos_atipicos_1a", "Movimientos atípicos")}
 
           <div className="tiny" style={{ marginTop: 10, marginBottom: 4, textTransform: "uppercase", letterSpacing: ".5px" }}>
-            2ª evaluación
+            2ª evaluación <span style={{ textTransform: "none", fontWeight: 400 }}>(se copia de la 1ª, editable)</span>
           </div>
           {renderTextRow("ta_tam_2a", "TAM")}
           {renderTextRow("t_central_2a", "Temperatura central")}
           {renderSiNoPar("diabetes_insipida_2a", "Diabetes insípida")}
           {renderTextRow("pupilas_2a", "Pupilas")}
-          {renderSiNoPar("movimientos_atipicos_2a", "Movimientos atípicos")}
         </div>
       )}
 
       <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--border-soft)" }}>
-        <div className="tiny" style={{ marginBottom: 8, textTransform: "uppercase", letterSpacing: ".5px" }}>
-          Estudios
-        </div>
         {renderTextRow("estudios_complementarios", "Estudios complementarios (TAC u otro método de imagen)", { multiline: true })}
-        {renderTextRow("fondo_ojo", "Fondo de ojo")}
-      </div>
-
-      <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--border-soft)" }}>
-        <div className="tiny" style={{ marginBottom: 8, textTransform: "uppercase", letterSpacing: ".5px" }}>
-          Observaciones generales
-        </div>
-        {renderTextRow("observaciones_resto", "Observaciones", { multiline: true })}
       </div>
 
       <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--border-soft)" }}>
@@ -364,8 +391,8 @@ export default function MePanel({
         <div className="tiny" style={{ marginBottom: 8, textTransform: "uppercase", letterSpacing: ".5px" }}>
           Cierre del certificado de fallecimiento
         </div>
-        {renderTextRow("medico1_nombre", "Médico 1 (nombre y matrícula)", { planillaKey: "certificado" })}
-        {renderTextRow("medico2_nombre", "Médico 2 (nombre y matrícula)", { planillaKey: "certificado" })}
+        {renderTextRow("medico1_nombre", "Médico 1 (nombre)", { planillaKey: "certificado" })}
+        {renderTextRow("medico2_nombre", "Médico 2 (nombre) -- se etiqueta como Neurólogo/Neurocirujano en el PDF", { planillaKey: "certificado" })}
         {renderTextRow("archivo_lugar", "Lugar donde se archiva la documentación", { planillaKey: "certificado" })}
       </div>
     </>
