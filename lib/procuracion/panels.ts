@@ -178,13 +178,6 @@ export async function loadPanel(
     };
   }
 
-  if (key === "labImagenes") {
-    return {
-      rows: [],
-      note: "Panel de Laboratorio e imágenes -- contenido a definir en una próxima iteración.",
-    };
-  }
-
   if (key === "entregaCorneas") {
     return {
       rows: [],

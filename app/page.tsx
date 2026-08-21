@@ -35,6 +35,7 @@ import RecomendacionesComMuerte from "./recomendaciones-com-muerte";
 import ComDonacionPanel from "./com-donacion-panel";
 import ComDonacionRealizada from "./com-donacion-realizada";
 import FamiliarContactoPanel from "./familiar-contacto-panel";
+import LabImagenesPanel from "./lab-imagenes-panel";
 import NuevoDonante from "./nuevo-donante";
 
 const EMPTY_ME_CAMPOS: MeCampos = Object.fromEntries(ME_CAMPO_KEYS.map((k) => [k, null]));
@@ -277,6 +278,7 @@ export default function Home() {
       key === "comMuerte" ||
       key === "comDonacion" ||
       key === "muestras" ||
+      key === "labImagenes" ||
       stageData[key] ||
       !donante
     )
@@ -480,6 +482,7 @@ export default function Home() {
                           s.key !== "comMuerte" &&
                           s.key !== "comDonacion" &&
                           s.key !== "muestras" &&
+                          s.key !== "labImagenes" &&
                           data?.loading && <div className="tiny">Cargando…</div>}
 
                         {data?.kind === "panel" && !data.loading && data.content && (
@@ -598,6 +601,8 @@ export default function Home() {
                             )}
                           </>
                         )}
+
+                        {s.key === "labImagenes" && donante && <LabImagenesPanel donanteId={donante.id} />}
 
                         {data?.kind === "organos" && !data.loading && data.organos && (
                           <>
