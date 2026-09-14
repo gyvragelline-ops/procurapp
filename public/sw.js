@@ -20,8 +20,20 @@ self.addEventListener("activate", (event) => {
 });
 
 self.addEventListener("fetch", (event) => {
-  if (event.request.method !== "GET") return;
+  const { request } = event;
+
+  // Nunca tocar pedidos que no sean del propio origen: Supabase (u otro
+  // servicio externo) tiene que seguir su curso normal, sin pasar por
+  // acá. Sin este chequeo, un pedido cruzado a supabase.co entraba al
+  // mismo respondWith() de abajo -- si fallaba y no había nada en caché
+  // (nunca lo hay para supabase.co, SHELL_URLS no lo incluye),
+  // caches.match() devolvía undefined y respondWith(undefined) tira
+  // "Failed to convert value to 'Response'" en la página.
+  if (new URL(request.url).origin !== self.location.origin) return;
+
+  if (request.method !== "GET") return;
+
   event.respondWith(
-    fetch(event.request).catch(() => caches.match(event.request))
+    fetch(request).catch(() => caches.match(request).then((cacheada) => cacheada || caches.match("/")))
   );
 });
