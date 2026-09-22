@@ -7,16 +7,21 @@ import { REFLEJOS_ME, REFLEJO_PDF_PREFIX, reflejoKey } from "./constants";
 export type DocumentoDef = {
   key: string;
   nombre: string;
-  archivo: string | null; // ruta bajo /forms/documentos, o null si todavía no tenemos la plantilla
+  archivo: string | null; // ruta bajo /forms/documentos -- solo aplica a motor "legacy"
   planillaKeys: string[];
   fuente: string; // descripción corta de qué paneles lo alimentan, para mostrar en el panel
+  // "legacy": rellena el PDF escaneado por coordenadas/AcroForm (pdf-lib).
+  // "nuevo": genera el documento desde cero con @react-pdf/renderer -- ver
+  // lib/procuracion/documentos-nuevos/. El motor viejo queda obsoleto: no
+  // se sigue arreglando, se va reemplazando documento por documento.
+  motor: "legacy" | "nuevo";
 };
 
-// Los 5 documentos grandes del panel de Documentación. Cada uno se prellena
-// con lo que ya tengamos disponible en planilla_valores/campo_mapeo para
-// sus planilla_keys -- el resto del formulario queda en blanco. El
-// prellenado fino de cada uno se itera formulario por formulario, como se
-// hizo con Muestras.
+// Documentos que efectivamente se imprimen desde el panel de Documentación.
+// OP2, Protocolo de Coordinador de Donante y Hoja de Comunicación Familiar
+// V.04 dejaron de imprimirse (decisión de producto) -- sus datos se siguen
+// capturando en los paneles de siempre, pero ya no generan PDF propio, así
+// que no tienen entrada acá.
 export const DOCUMENTOS: DocumentoDef[] = [
   {
     key: "neuro",
@@ -24,34 +29,15 @@ export const DOCUMENTOS: DocumentoDef[] = [
     archivo: "historia_clinica_neurologica.pdf",
     planillaKeys: ["neuro"],
     fuente: "Certificación — Examen neurológico",
+    motor: "legacy",
   },
   {
     key: "certificado",
     nombre: "Certificado de fallecimiento",
-    archivo: "certificado_fallecimiento.pdf",
+    archivo: null,
     planillaKeys: ["certificado"],
     fuente: "Potencial donante + Certificación",
-  },
-  {
-    key: "coord_donante",
-    nombre: "Protocolo de Coordinador de Donante",
-    archivo: null,
-    planillaKeys: [],
-    fuente: "Potencial donante + Judicial (falta la plantilla del formulario)",
-  },
-  {
-    key: "op2_completo",
-    nombre: "Historia Clínica del Potencial Donante — OP2",
-    archivo: "op2_completo.pdf",
-    planillaKeys: ["op2_p1", "op2_p2", "op2_p3", "op2_p4", "op2_p5"],
-    fuente: "Mantenimiento + Laboratorio e imágenes",
-  },
-  {
-    key: "coord_familia",
-    nombre: "Hoja de Comunicación Familiar V.04",
-    archivo: "comunicacion_familiar.pdf",
-    planillaKeys: ["coord_familia"],
-    fuente: "Comunicación de donación — datos del familiar",
+    motor: "nuevo",
   },
 ];
 
@@ -212,24 +198,45 @@ function aplicarReglasCertificado(valores: Map<string, ValorCampo>): void {
   }
 }
 
-/** Genera el PDF prellenado de un documento con lo que ya esté disponible. */
+/** Genera el PDF prellenado de un documento "legacy" (AcroForm sobre el escaneado). */
 export async function generarDocumentoPdf(
   supabase: SupabaseClient,
   doc: DocumentoDef,
   donante: Donante,
   familiar: Familiar | null
 ): Promise<Uint8Array> {
-  if (!doc.archivo) throw new Error("Todavía no tenemos la plantilla de este formulario.");
+  if (doc.motor !== "legacy" || !doc.archivo) throw new Error("Este documento no usa el motor legacy.");
 
   const bytes = await fetch(`/forms/documentos/${doc.archivo}`).then((r) => r.arrayBuffer());
   const valores = doc.planillaKeys.length > 0 ? await resolverValoresPlanilla(supabase, doc.planillaKeys, donante, familiar) : new Map();
   if (doc.key === "neuro") await aplicarReglasNeuro(supabase, donante.id, valores);
-  if (doc.key === "certificado") aplicarReglasCertificado(valores);
   return rellenarCamposPdf(bytes, valores);
+}
+
+/** Genera el PDF de un documento "nuevo" (@react-pdf/renderer, sin plantilla escaneada). */
+export async function generarDocumentoNuevo(
+  supabase: SupabaseClient,
+  doc: DocumentoDef,
+  donante: Donante,
+  familiar: Familiar | null
+): Promise<Blob> {
+  if (doc.motor !== "nuevo") throw new Error("Este documento no usa el motor nuevo.");
+
+  const valores = await resolverValoresPlanilla(supabase, doc.planillaKeys, donante, familiar);
+  if (doc.key === "certificado") {
+    aplicarReglasCertificado(valores);
+    const { generarCertificadoFallecimientoPdf } = await import("./documentos-nuevos/CertificadoFallecimiento");
+    return generarCertificadoFallecimientoPdf(donante, valores);
+  }
+  throw new Error(`Todavía no hay generador "nuevo" para ${doc.key}.`);
 }
 
 export function descargarPdf(bytes: Uint8Array, nombreArchivo: string) {
   const blob = new Blob([bytes as BlobPart], { type: "application/pdf" });
+  descargarBlob(blob, nombreArchivo);
+}
+
+export function descargarBlob(blob: Blob, nombreArchivo: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;

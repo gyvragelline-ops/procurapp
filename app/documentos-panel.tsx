@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { DOCUMENTOS, generarDocumentoPdf, descargarPdf } from "@/lib/procuracion/documentos-pdf";
+import { DOCUMENTOS, generarDocumentoPdf, generarDocumentoNuevo, descargarPdf, descargarBlob } from "@/lib/procuracion/documentos-pdf";
 import type { Donante, Familiar } from "@/lib/procuracion/types";
 
 const supabase = createClient();
@@ -13,12 +13,18 @@ export default function DocumentosPanel({ donante, familiar }: { donante: Donant
 
   async function handleDescargar(key: string) {
     const doc = DOCUMENTOS.find((d) => d.key === key);
-    if (!doc || !doc.archivo) return;
+    if (!doc) return;
     setError(null);
     setGenerando(key);
     try {
-      const bytes = await generarDocumentoPdf(supabase, doc, donante, familiar);
-      descargarPdf(bytes, `${doc.key}_${donante.nombre_completo ?? donante.id}.pdf`);
+      const nombreArchivo = `${doc.key}_${donante.nombre_completo ?? donante.id}.pdf`;
+      if (doc.motor === "nuevo") {
+        const blob = await generarDocumentoNuevo(supabase, doc, donante, familiar);
+        descargarBlob(blob, nombreArchivo);
+      } else {
+        const bytes = await generarDocumentoPdf(supabase, doc, donante, familiar);
+        descargarPdf(bytes, nombreArchivo);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo generar el PDF.");
     } finally {
@@ -42,7 +48,7 @@ export default function DocumentosPanel({ donante, familiar }: { donante: Donant
             <span>{doc.nombre}</span>
             <span className="tiny">{doc.fuente}</span>
           </span>
-          {doc.archivo ? (
+          {doc.motor === "nuevo" || doc.archivo ? (
             <button className="chip chip-gray" style={{ border: "none", cursor: "pointer" }} disabled={generando === doc.key} onClick={() => handleDescargar(doc.key)}>
               {generando === doc.key ? "Generando…" : "Descargar"}
             </button>
