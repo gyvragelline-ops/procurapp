@@ -18,6 +18,10 @@ const supabase = createClient();
 const MAX_DIM = 1600;
 const MAX_VIDEO_BYTES = 100 * 1024 * 1024; // 100MB
 
+// Borde de las miniaturas (destacado + carrusel) -- antes 1px
+// var(--border-soft), casi invisible sobre el fondo oscuro del panel.
+const BORDE_MINIATURA = "2px solid #4a5b70";
+
 function comprimirImagen(file: File): Promise<{ base64: string; mediaType: string }> {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -54,6 +58,7 @@ function fmtFecha(v: string) {
 }
 
 type Modo = "foto" | "video" | "galeria";
+type PasoCarga = "cerrado" | "categoria" | "modo";
 
 export default function ImagenesVideosPanel({ donanteId }: { donanteId: string }) {
   const camaraFotoInputRef = useRef<HTMLInputElement>(null);
@@ -66,6 +71,11 @@ export default function ImagenesVideosPanel({ donanteId }: { donanteId: string }
   const [procesandoEstudio, setProcesandoEstudio] = useState(false);
   const [errorEstudio, setErrorEstudio] = useState<string | null>(null);
   const [visorAbierto, setVisorAbierto] = useState<EstudioImagenRow | null>(null);
+
+  // Punto único de carga (punto 3 del rediseño): paso 1 elige categoría,
+  // paso 2 -- recién ahí -- elige Cámara/Video/Galería.
+  const [pasoCarga, setPasoCarga] = useState<PasoCarga>("cerrado");
+  const [categoriaParaCarga, setCategoriaParaCarga] = useState<TipoEstudio | null>(null);
 
   useEffect(() => {
     let vivo = true;
@@ -80,9 +90,15 @@ export default function ImagenesVideosPanel({ donanteId }: { donanteId: string }
     };
   }, [donanteId]);
 
-  function iniciarCarga(tipo: TipoEstudio, modo: Modo) {
-    if (procesandoEstudio) return;
-    setCategoriaActiva(tipo);
+  function elegirCategoriaParaCarga(tipo: TipoEstudio) {
+    setCategoriaParaCarga(tipo);
+    setPasoCarga("modo");
+  }
+
+  function elegirModoParaCarga(modo: Modo) {
+    if (!categoriaParaCarga) return;
+    setCategoriaActiva(categoriaParaCarga);
+    setPasoCarga("cerrado");
     if (modo === "foto") camaraFotoInputRef.current?.click();
     else if (modo === "video") camaraVideoInputRef.current?.click();
     else galeriaInputRef.current?.click();
@@ -154,6 +170,7 @@ export default function ImagenesVideosPanel({ donanteId }: { donanteId: string }
     } finally {
       setProcesandoEstudio(false);
       setCategoriaActiva(null);
+      setCategoriaParaCarga(null);
       if (camaraFotoInputRef.current) camaraFotoInputRef.current.value = "";
       if (camaraVideoInputRef.current) camaraVideoInputRef.current.value = "";
       if (galeriaInputRef.current) galeriaInputRef.current.value = "";
@@ -210,6 +227,15 @@ export default function ImagenesVideosPanel({ donanteId }: { donanteId: string }
         }}
       />
 
+      <button
+        className="btn btn-accent"
+        style={{ width: "100%", marginBottom: 12 }}
+        disabled={procesandoEstudio}
+        onClick={() => setPasoCarga("categoria")}
+      >
+        {procesandoEstudio ? "Subiendo…" : "Agregar estudio"}
+      </button>
+
       {errorEstudio && (
         <div className="tiny" style={{ color: "var(--red)", marginBottom: 8 }}>
           {errorEstudio}
@@ -217,50 +243,122 @@ export default function ImagenesVideosPanel({ donanteId }: { donanteId: string }
       )}
 
       {TIPOS_ESTUDIO_INFO.map((info) => (
-        <TarjetaCategoria
-          key={info.valor}
-          info={info}
-          estudios={porTipo.get(info.valor) ?? []}
-          bloqueado={procesandoEstudio}
-          subiendoAca={procesandoEstudio && categoriaActiva === info.valor}
-          onElegir={(modo) => iniciarCarga(info.valor, modo)}
-          onAbrir={setVisorAbierto}
-        />
+        <TarjetaCategoria key={info.valor} info={info} estudios={porTipo.get(info.valor) ?? []} onAbrir={setVisorAbierto} />
       ))}
-
-      {visorAbierto && (
-        <VisorEstudio estudio={visorAbierto} onCerrar={() => setVisorAbierto(null)} onBorrar={handleBorrar} />
-      )}
 
       {cargado && estudios.length === 0 && (
         <div className="tiny" style={{ marginTop: 4 }}>
           Sin imágenes ni videos cargados todavía.
         </div>
       )}
+
+      {pasoCarga === "categoria" && (
+        <SelectorCarga titulo="¿Qué vas a subir?" onCerrar={() => setPasoCarga("cerrado")}>
+          {TIPOS_ESTUDIO_INFO.map((info) => (
+            <button
+              key={info.valor}
+              type="button"
+              onClick={() => elegirCategoriaParaCarga(info.valor)}
+              className="chip chip-gray"
+              style={{ width: "100%", textAlign: "left", border: "none", cursor: "pointer", padding: "10px 12px" }}
+            >
+              {info.etiqueta}
+              {info.nota && (
+                <div className="tiny" style={{ color: "var(--amber, #b45309)", marginTop: 2 }}>
+                  {info.nota}
+                </div>
+              )}
+            </button>
+          ))}
+        </SelectorCarga>
+      )}
+
+      {pasoCarga === "modo" && categoriaParaCarga && (
+        <SelectorCarga
+          titulo={TIPOS_ESTUDIO_INFO.find((i) => i.valor === categoriaParaCarga)?.etiqueta ?? ""}
+          onCerrar={() => setPasoCarga("cerrado")}
+          onVolver={() => setPasoCarga("categoria")}
+        >
+          <div style={{ display: "flex", gap: 8 }}>
+            <button className="btn btn-accent" style={{ flex: 1 }} onClick={() => elegirModoParaCarga("foto")}>
+              Cámara
+            </button>
+            <button className="btn btn-accent" style={{ flex: 1 }} onClick={() => elegirModoParaCarga("video")}>
+              Video
+            </button>
+            <button className="btn btn-accent" style={{ flex: 1 }} onClick={() => elegirModoParaCarga("galeria")}>
+              Galería
+            </button>
+          </div>
+        </SelectorCarga>
+      )}
+
+      {visorAbierto && (
+        <VisorEstudio estudio={visorAbierto} onCerrar={() => setVisorAbierto(null)} onBorrar={handleBorrar} />
+      )}
     </div>
   );
 }
 
-function Botones3({
-  onElegir,
-  disabled,
-  compacto,
+function SelectorCarga({
+  titulo,
+  onCerrar,
+  onVolver,
+  children,
 }: {
-  onElegir: (modo: Modo) => void;
-  disabled: boolean;
-  compacto?: boolean;
+  titulo: string;
+  onCerrar: () => void;
+  onVolver?: () => void;
+  children: React.ReactNode;
 }) {
   return (
-    <div style={{ display: "flex", gap: 8, marginTop: compacto ? 8 : 0 }}>
-      <button className="btn btn-accent" style={{ flex: 1 }} disabled={disabled} onClick={() => onElegir("foto")}>
-        Cámara
-      </button>
-      <button className="btn btn-accent" style={{ flex: 1 }} disabled={disabled} onClick={() => onElegir("video")}>
-        Video
-      </button>
-      <button className="btn btn-accent" style={{ flex: 1 }} disabled={disabled} onClick={() => onElegir("galeria")}>
-        Galería
-      </button>
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 40,
+        display: "flex",
+        alignItems: "flex-end",
+        justifyContent: "center",
+        background: "rgba(0,0,0,0.6)",
+        padding: 16,
+      }}
+    >
+      <div
+        style={{
+          width: "100%",
+          maxWidth: 420,
+          borderRadius: 16,
+          background: "var(--bg, #111)",
+          border: "1px solid var(--border-soft)",
+          padding: 16,
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+          <p style={{ fontSize: 14, fontWeight: 600 }}>{titulo}</p>
+          <button
+            type="button"
+            onClick={onCerrar}
+            style={{ background: "none", border: "none", cursor: "pointer", fontSize: 16, padding: 4 }}
+            aria-label="Cerrar"
+          >
+            ✕
+          </button>
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>{children}</div>
+
+        {onVolver && (
+          <button
+            type="button"
+            onClick={onVolver}
+            className="tiny"
+            style={{ background: "none", border: "none", cursor: "pointer", marginTop: 10, padding: 0, color: "var(--accent)" }}
+          >
+            ← Elegir otra categoría
+          </button>
+        )}
+      </div>
     </div>
   );
 }
@@ -279,7 +377,7 @@ function MiniaturaChica({ estudio, onClick }: { estudio: EstudioImagenRow; onCli
         height: 64,
         borderRadius: 10,
         overflow: "hidden",
-        border: "1px solid var(--border-soft)",
+        border: BORDE_MINIATURA,
         padding: 0,
         position: "relative",
         background: "var(--border-soft)",
@@ -305,19 +403,12 @@ function MiniaturaChica({ estudio, onClick }: { estudio: EstudioImagenRow; onCli
 function TarjetaCategoria({
   info,
   estudios,
-  bloqueado,
-  subiendoAca,
-  onElegir,
   onAbrir,
 }: {
   info: { valor: TipoEstudio; etiqueta: string; nota?: string };
   estudios: EstudioImagenRow[];
-  bloqueado: boolean;
-  subiendoAca: boolean;
-  onElegir: (modo: Modo) => void;
   onAbrir: (estudio: EstudioImagenRow) => void;
 }) {
-  const [agregando, setAgregando] = useState(false);
   const carruselRef = useRef<HTMLDivElement>(null);
   const hero = estudios.length > 0 ? estudios[estudios.length - 1] : null;
 
@@ -325,11 +416,6 @@ function TarjetaCategoria({
     const el = carruselRef.current;
     if (el) el.scrollLeft = el.scrollWidth;
   }, [estudios.length]);
-
-  function elegir(modo: Modo) {
-    setAgregando(false);
-    onElegir(modo);
-  }
 
   return (
     <div style={{ border: "1px solid var(--border-soft)", borderRadius: 12, padding: 12, marginBottom: 12 }}>
@@ -343,17 +429,7 @@ function TarjetaCategoria({
       )}
 
       {!hero ? (
-        <div>
-          <p className="tiny" style={{ marginBottom: 6 }}>
-            Sin cargas todavía.
-          </p>
-          <Botones3 onElegir={elegir} disabled={bloqueado} />
-          {subiendoAca && (
-            <p className="tiny" style={{ marginTop: 6 }}>
-              Subiendo…
-            </p>
-          )}
-        </div>
+        <p className="tiny">Sin cargas todavía.</p>
       ) : (
         <div>
           <button
@@ -363,7 +439,7 @@ function TarjetaCategoria({
               display: "block",
               width: "100%",
               padding: 0,
-              border: "1px solid var(--border-soft)",
+              border: BORDE_MINIATURA,
               borderRadius: 10,
               overflow: "hidden",
               background: "none",
@@ -389,33 +465,7 @@ function TarjetaCategoria({
             {estudios.map((e) => (
               <MiniaturaChica key={e.id} estudio={e} onClick={() => onAbrir(e)} />
             ))}
-            <button
-              type="button"
-              disabled={bloqueado}
-              onClick={() => setAgregando((v) => !v)}
-              aria-label={`Agregar en ${info.etiqueta}`}
-              style={{
-                flex: "0 0 auto",
-                width: 64,
-                height: 64,
-                borderRadius: 10,
-                border: "2px dashed var(--border-soft)",
-                background: "none",
-                color: "var(--accent)",
-                fontSize: 22,
-                cursor: "pointer",
-              }}
-            >
-              +
-            </button>
           </div>
-
-          {agregando && <Botones3 onElegir={elegir} disabled={bloqueado} compacto />}
-          {subiendoAca && (
-            <p className="tiny" style={{ marginTop: 6 }}>
-              Subiendo…
-            </p>
-          )}
         </div>
       )}
     </div>

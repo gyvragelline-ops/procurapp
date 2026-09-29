@@ -307,8 +307,7 @@ export default function Home() {
       key === "comMuerte" ||
       key === "comDonacion" ||
       key === "muestras" ||
-      key === "laboratorio" ||
-      key === "imagenesVideos" ||
+      key === "labImagenes" ||
       stageData[key] ||
       !donante
     )
@@ -522,8 +521,7 @@ export default function Home() {
                           s.key !== "comMuerte" &&
                           s.key !== "comDonacion" &&
                           s.key !== "muestras" &&
-                          s.key !== "laboratorio" &&
-                          s.key !== "imagenesVideos" &&
+                          s.key !== "labImagenes" &&
                           data?.loading && <div className="tiny">Cargando…</div>}
 
                         {data?.kind === "panel" && !data.loading && data.content && (
@@ -645,8 +643,15 @@ export default function Home() {
                           </>
                         )}
 
-                        {s.key === "laboratorio" && donante && <LaboratorioPanel donanteId={donante.id} />}
-                        {s.key === "imagenesVideos" && donante && <ImagenesVideosPanel donanteId={donante.id} />}
+                        {s.key === "labImagenes" && donante && (
+                          <>
+                            <LaboratorioPanel donanteId={donante.id} />
+                            <div className="section-label" style={{ marginTop: 18 }}>
+                              Imágenes y videos
+                            </div>
+                            <ImagenesVideosPanel donanteId={donante.id} />
+                          </>
+                        )}
 
                         {data?.kind === "organos" && !data.loading && data.organos && (
                           <>
