@@ -37,7 +37,8 @@ import RecomendacionesComMuerte from "./recomendaciones-com-muerte";
 import ComDonacionPanel from "./com-donacion-panel";
 import ComDonacionRealizada from "./com-donacion-realizada";
 import FamiliarContactoPanel from "./familiar-contacto-panel";
-import LabImagenesPanel from "./lab-imagenes-panel";
+import LaboratorioPanel from "./laboratorio-panel";
+import ImagenesVideosPanel from "./imagenes-videos-panel";
 import DocumentosPanel from "./documentos-panel";
 import NuevoDonante from "./nuevo-donante";
 
@@ -306,7 +307,8 @@ export default function Home() {
       key === "comMuerte" ||
       key === "comDonacion" ||
       key === "muestras" ||
-      key === "labImagenes" ||
+      key === "laboratorio" ||
+      key === "imagenesVideos" ||
       stageData[key] ||
       !donante
     )
@@ -520,7 +522,8 @@ export default function Home() {
                           s.key !== "comMuerte" &&
                           s.key !== "comDonacion" &&
                           s.key !== "muestras" &&
-                          s.key !== "labImagenes" &&
+                          s.key !== "laboratorio" &&
+                          s.key !== "imagenesVideos" &&
                           data?.loading && <div className="tiny">Cargando…</div>}
 
                         {data?.kind === "panel" && !data.loading && data.content && (
@@ -642,7 +645,8 @@ export default function Home() {
                           </>
                         )}
 
-                        {s.key === "labImagenes" && donante && <LabImagenesPanel donanteId={donante.id} />}
+                        {s.key === "laboratorio" && donante && <LaboratorioPanel donanteId={donante.id} />}
+                        {s.key === "imagenesVideos" && donante && <ImagenesVideosPanel donanteId={donante.id} />}
 
                         {data?.kind === "organos" && !data.loading && data.organos && (
                           <>

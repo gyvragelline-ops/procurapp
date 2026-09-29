@@ -35,6 +35,50 @@ export type LabParamOP2 = (typeof LAB_PARAMS_OP2)[number];
 
 export const EXTRACCION_COLS = ["extraccion1", "extraccion2", "extraccion3", "extraccion4", "extraccion5"] as const;
 
+// 6 perfiles fijos para agrupar la vista de Laboratorio. Los 25 de
+// LAB_PARAMS_OP2 quedan repartidos entre renal/hepatico/cardiaco/
+// hematologico (los 25 caen ahí, ninguno sobra); gasometrico y pulmonar
+// no tienen parámetros en la grilla real del OP2 (build_op2_p3.py) --
+// sus valores van a laboratorio_biblioteca igual que cualquier parámetro
+// no reconocido, pero agrupados bajo su perfil (ver matchParametroExtendido).
+export type PerfilLab = "renal" | "hepatico" | "gasometrico" | "cardiaco" | "pulmonar" | "hematologico";
+
+export const PERFILES_LAB: { key: PerfilLab; label: string; paramsOP2: LabParamOP2[] }[] = [
+  { key: "renal", label: "Perfil renal", paramsOP2: ["Urea", "Creatinina", "Na", "K", "Cl", "Sedimento", "Proteinuria"] },
+  {
+    key: "hepatico",
+    label: "Perfil hepático",
+    paramsOP2: ["Bilirrubina_T", "Bilirrubina_D", "TGO", "TGP", "FA", "LDH", "Gama_GT", "Amilasa", "Glucemia"],
+  },
+  { key: "gasometrico", label: "Perfil gasométrico", paramsOP2: [] },
+  { key: "cardiaco", label: "Perfil cardíaco", paramsOP2: ["CPK", "CPK_MB"] },
+  { key: "pulmonar", label: "Perfil pulmonar", paramsOP2: [] },
+  {
+    key: "hematologico",
+    label: "Perfil hematológico",
+    paramsOP2: ["Hematocrito", "Leucocitos", "Hemoglobina", "Neutrofilos", "Plaquetas", "KPTT", "Protombina"],
+  },
+];
+
+export function perfilDeParametroOP2(param: LabParamOP2): PerfilLab {
+  return PERFILES_LAB.find((p) => (p.paramsOP2 as string[]).includes(param))!.key;
+}
+
+// Parámetros de gasometría/pulmón -- NO forman parte de la grilla del
+// OP2 (no hay campo_pdf real para ellos), así que van a
+// laboratorio_biblioteca como cualquier parámetro no reconocido, pero
+// con su perfil ya identificado por nombre (mismo mecanismo de sinónimos
+// que matchParametroOP2, no depende de la IA para esto).
+const PARAMS_EXTENDIDOS: { nombre: string; perfil: PerfilLab; sinonimos: string[] }[] = [
+  { nombre: "pH", perfil: "gasometrico", sinonimos: ["ph"] },
+  { nombre: "PCO2", perfil: "gasometrico", sinonimos: ["pco2", "paco2", "co2"] },
+  { nombre: "PO2", perfil: "gasometrico", sinonimos: ["po2", "pao2"] },
+  { nombre: "CO3H", perfil: "gasometrico", sinonimos: ["co3h", "hco3", "bicarbonato"] },
+  { nombre: "EB", perfil: "gasometrico", sinonimos: ["eb", "exceso de base", "be"] },
+  { nombre: "SatO2", perfil: "pulmonar", sinonimos: ["sato2", "saturacion", "saturacion de oxigeno", "spo2"] },
+  { nombre: "FiO2", perfil: "pulmonar", sinonimos: ["fio2"] },
+];
+
 // Sinónimos/abreviaturas comunes que puede devolver la IA al leer una foto
 // de laboratorio real -- se comparan ya normalizados (ver normalizar()).
 const SINONIMOS: Record<LabParamOP2, string[]> = {
@@ -92,23 +136,43 @@ export function matchParametroOP2(nombreIA: string): LabParamOP2 | null {
   return parcial ? parcial.canonico : null;
 }
 
-export type ValorExtraido = { parametro: string; valor: string; unidad: string | null };
+const VARIANTES_EXTENDIDAS: { nombre: string; perfil: PerfilLab; normal: string }[] = PARAMS_EXTENDIDOS.flatMap(
+  (p) => [p.nombre, ...p.sinonimos].map((v) => ({ nombre: p.nombre, perfil: p.perfil, normal: normalizar(v) }))
+).sort((a, b) => b.normal.length - a.normal.length);
+
+// Mismo mecanismo que matchParametroOP2, para los 7 parámetros de
+// gasometría/pulmón que no están en la grilla del OP2.
+export function matchParametroExtendido(nombreIA: string): { nombre: string; perfil: PerfilLab } | null {
+  const n = normalizar(nombreIA);
+  if (!n) return null;
+  const exacto = VARIANTES_EXTENDIDAS.find((v) => v.normal === n);
+  if (exacto) return { nombre: exacto.nombre, perfil: exacto.perfil };
+  const parcial = VARIANTES_EXTENDIDAS.find((v) => {
+    const re = new RegExp(`\\b${v.normal.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`);
+    return re.test(n);
+  });
+  return parcial ? { nombre: parcial.nombre, perfil: parcial.perfil } : null;
+}
+
+export type ValorExtraido = {
+  parametro: string;
+  valor: string;
+  unidad: string | null;
+  // Sugerencia de la IA (solo tiene sentido cuando el parámetro no matchea
+  // ni el OP2 ni los extendidos -- ver guardarValorLaboratorio) para
+  // parámetros no enumerados a mano (troponinas, hormonas, etc.).
+  grupoSugerido?: PerfilLab | null;
+};
 
 export type ResultadoGuardado =
   | { tipo: "op2"; parametroCanonico: LabParamOP2; columna: string }
   | { tipo: "biblioteca" }
   | { tipo: "bloqueado"; parametroCanonico: LabParamOP2 };
 
-function fechaHoraActual() {
-  const d = new Date();
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return {
-    dia: pad(d.getDate()),
-    mes: pad(d.getMonth() + 1),
-    anio: String(d.getFullYear()),
-    hora: `${pad(d.getHours())}:${pad(d.getMinutes())}`,
-  };
-}
+// Antes se estampaba con new Date() del lado del cliente en el momento
+// de guardar; ahora la carga el médico a mano en el panel (con esta
+// misma forma, default "ahora" editable) -- ver LaboratorioPanel.
+export type FechaHoraManual = { dia: string; mes: string; anio: string; hora: string };
 
 function formatValor(valor: string, unidad: string | null): string {
   return unidad ? `${valor} ${unidad}` : valor;
@@ -117,25 +181,31 @@ function formatValor(valor: string, unidad: string | null): string {
 /**
  * Guarda un valor extraído de una foto: si matchea uno de los 25 campos
  * del OP2, lo escribe en planilla_valores (op2_p3) usando la primera
- * columna de extracción libre; si las 5 ya están ocupadas, no guarda nada
- * y devuelve "bloqueado" para que el panel avise. Si no matchea, va a la
- * biblioteca abierta.
+ * columna de extracción libre (con la fecha/hora que cargó el médico a
+ * mano); si las 5 ya están ocupadas, no guarda nada y devuelve
+ * "bloqueado" para que el panel avise. Si no matchea, va a la biblioteca
+ * abierta, agrupada por perfil si matchea uno de los 7 parámetros
+ * extendidos (gasometría/pulmón) o si la IA sugirió un grupo.
  */
 export async function guardarValorLaboratorio(
   supabase: SupabaseClient,
   donanteId: string,
   extraido: ValorExtraido,
-  imagenUrl: string | null
+  imagenUrl: string | null,
+  fechaHora: FechaHoraManual
 ): Promise<ResultadoGuardado> {
   const match = matchParametroOP2(extraido.parametro);
 
   if (!match) {
+    const extendido = matchParametroExtendido(extraido.parametro);
+    const grupo = extendido?.perfil ?? extraido.grupoSugerido ?? null;
     await supabase.from("laboratorio_biblioteca").insert({
       donante_id: donanteId,
       parametro: extraido.parametro,
       valor: extraido.valor,
       unidad: extraido.unidad,
       imagen_url: imagenUrl,
+      grupo_sugerido: grupo,
     });
     return { tipo: "biblioteca" };
   }
@@ -181,7 +251,7 @@ export async function guardarValorLaboratorio(
     .maybeSingle();
 
   if (!fechaExistente?.valor) {
-    const { dia, mes, anio, hora } = fechaHoraActual();
+    const { dia, mes, anio, hora } = fechaHora;
     const filas = [
       { sub: "dia", valor: dia },
       { sub: "mes", valor: mes },
@@ -205,13 +275,14 @@ export type BibliotecaRow = {
   valor: string | null;
   unidad: string | null;
   imagen_url: string | null;
+  grupo_sugerido: PerfilLab | null;
   created_at: string;
 };
 
 export async function cargarBibliotecaAbierta(supabase: SupabaseClient, donanteId: string): Promise<BibliotecaRow[]> {
   const { data } = await supabase
     .from("laboratorio_biblioteca")
-    .select("id, parametro, valor, unidad, imagen_url, created_at")
+    .select("id, parametro, valor, unidad, imagen_url, grupo_sugerido, created_at")
     .eq("donante_id", donanteId)
     .order("created_at", { ascending: false });
   return (data as BibliotecaRow[]) ?? [];
@@ -240,4 +311,40 @@ export async function cargarCamposOP2Detectados(supabase: SupabaseClient, donant
   }
   resultado.sort((a, b) => a.parametro.localeCompare(b.parametro) || a.columna.localeCompare(b.columna));
   return resultado;
+}
+
+// Agrupa lo ya cargado (OP2 + biblioteca) por perfil, para el render de
+// LaboratorioPanel -- un solo lugar con la lógica de "a qué perfil
+// pertenece esto", tanto para lo estructurado (25 del OP2) como para lo
+// que cayó en biblioteca con grupo_sugerido (gasometría/pulmón, o lo que
+// la IA haya sugerido para un parámetro no enumerado).
+export type PerfilAgrupado = {
+  key: PerfilLab;
+  label: string;
+  totalParams: number; // cuántos parámetros DISTINTOS puede tener este perfil (solo cuenta los del OP2 -- gasometrico/pulmonar no tienen un total fijo)
+  paramsConValor: number;
+  camposOP2: CampoOP2Detectado[];
+  filasBiblioteca: BibliotecaRow[];
+};
+
+export function agruparPorPerfil(camposOP2: CampoOP2Detectado[], biblioteca: BibliotecaRow[]): PerfilAgrupado[] {
+  return PERFILES_LAB.map((perfil) => {
+    const camposDelPerfil = camposOP2.filter((c) => perfil.paramsOP2.includes(c.parametro));
+    const filasDelPerfil = biblioteca.filter((b) => b.grupo_sugerido === perfil.key);
+    const paramsConValor = new Set(camposDelPerfil.map((c) => c.parametro)).size;
+    return {
+      key: perfil.key,
+      label: perfil.label,
+      totalParams: perfil.paramsOP2.length,
+      paramsConValor,
+      camposOP2: camposDelPerfil,
+      filasBiblioteca: filasDelPerfil,
+    };
+  });
+}
+
+// Lo que no matchea NINGÚN perfil (ni por OP2 ni por grupo_sugerido) --
+// esto sigue siendo "Biblioteca abierta", sin cambios de comportamiento.
+export function bibliotecaSinPerfil(biblioteca: BibliotecaRow[]): BibliotecaRow[] {
+  return biblioteca.filter((b) => !b.grupo_sugerido);
 }
