@@ -3,13 +3,18 @@
 import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
+  actualizarItemDeCarga,
   agruparPorPerfil,
   bibliotecaSinPerfil,
   cargarBibliotecaAbierta,
   cargarCamposOP2Detectados,
+  cargarCargasLaboratorio,
   guardarValorLaboratorio,
+  registrarCargaLaboratorio,
   type BibliotecaRow,
   type CampoOP2Detectado,
+  type CargaItemGuardado,
+  type CargaLab,
   type FechaHoraManual,
   type LabParamOP2,
   type PerfilLab,
@@ -98,6 +103,9 @@ export default function LaboratorioPanel({ donanteId }: { donanteId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [bloqueados, setBloqueados] = useState<LabParamOP2[]>([]);
   const [abiertos, setAbiertos] = useState<Record<PerfilLab, boolean>>({} as Record<PerfilLab, boolean>);
+  const [vista, setVista] = useState<"carrusel" | "perfiles">("carrusel");
+  const [cargas, setCargas] = useState<CargaLab[]>([]);
+  const [cargaAbiertaId, setCargaAbiertaId] = useState<string | null>(null);
 
   // Revisión antes de guardar (fecha/hora + valores editables) -- ver
   // guardarValorLaboratorio en lib/procuracion/laboratorio.ts.
@@ -109,13 +117,15 @@ export default function LaboratorioPanel({ donanteId }: { donanteId: string }) {
   useEffect(() => {
     let vivo = true;
     (async () => {
-      const [op2, bib] = await Promise.all([
+      const [op2, bib, cargasDb] = await Promise.all([
         cargarCamposOP2Detectados(supabase, donanteId),
         cargarBibliotecaAbierta(supabase, donanteId),
+        cargarCargasLaboratorio(supabase, donanteId),
       ]);
       if (!vivo) return;
       setCamposOP2(op2);
       setBiblioteca(bib);
+      setCargas(cargasDb);
       setCargado(true);
     })();
     return () => {
@@ -195,21 +205,58 @@ export default function LaboratorioPanel({ donanteId }: { donanteId: string }) {
     const fechaHora = fechaHoraDeInputLocal(fechaHoraInput);
 
     const bloqueadosEnEsteLote: LabParamOP2[] = [];
+    const itemsGuardados: CargaItemGuardado[] = [];
     for (const item of pendientes) {
       const resultado = await guardarValorLaboratorio(supabase, donanteId, item, imagenUrlPendiente, fechaHora);
-      if (resultado.tipo === "bloqueado") bloqueadosEnEsteLote.push(resultado.parametroCanonico);
+      if (resultado.tipo === "bloqueado") {
+        bloqueadosEnEsteLote.push(resultado.parametroCanonico);
+        itemsGuardados.push({
+          parametro: item.parametro,
+          valor: item.valor,
+          unidad: item.unidad,
+          destino: { tipo: "bloqueado" },
+        });
+      } else if (resultado.tipo === "op2") {
+        itemsGuardados.push({
+          parametro: item.parametro,
+          valor: item.valor,
+          unidad: item.unidad,
+          destino: { tipo: "op2", parametroCanonico: resultado.parametroCanonico, columna: resultado.columna },
+        });
+      } else {
+        itemsGuardados.push({
+          parametro: item.parametro,
+          valor: item.valor,
+          unidad: item.unidad,
+          destino: { tipo: "biblioteca", bibliotecaId: resultado.id },
+        });
+      }
     }
     setBloqueados(bloqueadosEnEsteLote);
+    await registrarCargaLaboratorio(supabase, donanteId, imagenUrlPendiente, fechaHora, itemsGuardados);
     setPendientes(null);
     setImagenUrlPendiente(null);
 
-    const [op2, bib] = await Promise.all([
+    const [op2, bib, cargasDb] = await Promise.all([
       cargarCamposOP2Detectados(supabase, donanteId),
       cargarBibliotecaAbierta(supabase, donanteId),
+      cargarCargasLaboratorio(supabase, donanteId),
     ]);
     setCamposOP2(op2);
     setBiblioteca(bib);
+    setCargas(cargasDb);
     setGuardando(false);
+  }
+
+  async function refrescarTrasEdicionCarga() {
+    const [op2, bib, cargasDb] = await Promise.all([
+      cargarCamposOP2Detectados(supabase, donanteId),
+      cargarBibliotecaAbierta(supabase, donanteId),
+      cargarCargasLaboratorio(supabase, donanteId),
+    ]);
+    setCamposOP2(op2);
+    setBiblioteca(bib);
+    setCargas(cargasDb);
   }
 
   function toggle(key: PerfilLab) {
@@ -218,6 +265,7 @@ export default function LaboratorioPanel({ donanteId }: { donanteId: string }) {
 
   const perfiles = agruparPorPerfil(camposOP2, biblioteca);
   const bibliotecaAbierta = bibliotecaSinPerfil(biblioteca);
+  const cargaAbierta = cargas.find((c) => c.id === cargaAbiertaId) ?? null;
 
   return (
     <div>
@@ -321,7 +369,81 @@ export default function LaboratorioPanel({ donanteId }: { donanteId: string }) {
         </div>
       )}
 
-      {perfiles.map((p) => {
+      <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+        <button
+          type="button"
+          onClick={() => setVista("carrusel")}
+          className="chip chip-gray"
+          style={{
+            border: "none",
+            cursor: "pointer",
+            background: vista === "carrusel" ? "var(--accent-dim)" : undefined,
+            color: vista === "carrusel" ? "var(--accent)" : undefined,
+          }}
+        >
+          Fotos cargadas
+        </button>
+        <button
+          type="button"
+          onClick={() => setVista("perfiles")}
+          className="chip chip-gray"
+          style={{
+            border: "none",
+            cursor: "pointer",
+            background: vista === "perfiles" ? "var(--accent-dim)" : undefined,
+            color: vista === "perfiles" ? "var(--accent)" : undefined,
+          }}
+        >
+          Ver por perfil
+        </button>
+      </div>
+
+      {vista === "carrusel" && (
+        <div style={{ marginBottom: 14 }}>
+          {cargado && cargas.length === 0 && <div className="tiny">Sin fotos cargadas todavía.</div>}
+          {cargas.length > 0 && (
+            <div style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 8 }}>
+              {cargas.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => setCargaAbiertaId(c.id)}
+                  style={{
+                    flex: "0 0 auto",
+                    width: 100,
+                    textAlign: "left",
+                    background: "none",
+                    border: "1px solid var(--border-soft)",
+                    borderRadius: 12,
+                    overflow: "hidden",
+                    cursor: "pointer",
+                    padding: 0,
+                  }}
+                >
+                  {c.imagen_url ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={c.imagen_url}
+                      alt=""
+                      style={{ width: "100%", height: 76, objectFit: "cover", display: "block" }}
+                    />
+                  ) : (
+                    <div style={{ width: "100%", height: 76, background: "var(--border-soft)" }} />
+                  )}
+                  <div style={{ padding: "4px 6px" }}>
+                    <div className="tiny" style={{ fontWeight: 600 }}>
+                      {c.etiqueta}
+                    </div>
+                    <div className="tiny">{c.items.length} valor(es)</div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {vista === "perfiles" && perfiles.map((p) => {
         const camposPorParametro = agruparPorParametro(p.camposOP2);
         const contador = p.totalParams > 0 ? `${p.paramsConValor}/${p.totalParams}` : `${p.filasBiblioteca.length} cargado(s)`;
         return (
@@ -373,26 +495,172 @@ export default function LaboratorioPanel({ donanteId }: { donanteId: string }) {
         );
       })}
 
-      <div className="section-label" style={{ marginTop: 14 }}>
-        Biblioteca abierta
+      {vista === "perfiles" && (
+        <>
+          <div className="section-label" style={{ marginTop: 14 }}>
+            Biblioteca abierta
+          </div>
+          {cargado && bibliotecaAbierta.length === 0 && (
+            <div className="tiny">Sin parámetros fuera de los perfiles cargados todavía.</div>
+          )}
+          {bibliotecaAbierta.map((b) => (
+            <div className="field-row" key={b.id}>
+              <span className="field-label">{b.parametro}</span>
+              <span className="field-value">
+                {b.valor ?? "—"}
+                {b.unidad ? ` ${b.unidad}` : ""} · {fmtFecha(b.created_at)}
+              </span>
+            </div>
+          ))}
+          {bibliotecaAbierta.length > 0 && (
+            <div className="tiny" style={{ marginTop: 8 }}>
+              Historial de consulta — no alimenta ningún PDF por ahora.
+            </div>
+          )}
+        </>
+      )}
+
+      {cargaAbierta && (
+        <DetalleCargaModal
+          key={cargaAbierta.id}
+          carga={cargaAbierta}
+          onCerrar={() => setCargaAbiertaId(null)}
+          onActualizado={refrescarTrasEdicionCarga}
+        />
+      )}
+    </div>
+  );
+}
+
+function DetalleCargaModal({
+  carga,
+  onCerrar,
+  onActualizado,
+}: {
+  carga: CargaLab;
+  onCerrar: () => void;
+  onActualizado: () => Promise<void>;
+}) {
+  // El padre monta este componente con key={carga.id}: cada carga
+  // distinta arranca con su propio estado, sin necesidad de un effect
+  // para resincronizar "items" cuando cambia la prop.
+  const [items, setItems] = useState(carga.items);
+  const [guardandoIdx, setGuardandoIdx] = useState<number | null>(null);
+  const [errorDetalle, setErrorDetalle] = useState<string | null>(null);
+
+  function actualizarCampo(idx: number, campo: "parametro" | "valor" | "unidad", texto: string) {
+    setItems((prev) => prev.map((it, i) => (i === idx ? { ...it, [campo]: campo === "unidad" ? texto || null : texto } : it)));
+  }
+
+  async function guardarItem(idx: number) {
+    setGuardandoIdx(idx);
+    setErrorDetalle(null);
+    const it = items[idx];
+    const resultado = await actualizarItemDeCarga(supabase, carga, idx, {
+      parametro: it.parametro,
+      valor: it.valor,
+      unidad: it.unidad,
+    });
+    setGuardandoIdx(null);
+    if (!resultado.ok) {
+      setErrorDetalle(resultado.error);
+      return;
+    }
+    await onActualizado();
+  }
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 40,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        background: "rgba(0,0,0,0.6)",
+        padding: 24,
+      }}
+    >
+      <div
+        style={{
+          width: "100%",
+          maxWidth: 360,
+          maxHeight: "80vh",
+          overflowY: "auto",
+          borderRadius: 16,
+          background: "var(--bg, #111)",
+          border: "1px solid var(--border-soft)",
+          padding: 16,
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <p style={{ fontSize: 14, fontWeight: 600 }}>{carga.etiqueta}</p>
+          <button
+            type="button"
+            onClick={onCerrar}
+            style={{ background: "none", border: "none", cursor: "pointer", fontSize: 16, padding: 4 }}
+            aria-label="Cerrar"
+          >
+            ✕
+          </button>
+        </div>
+        {carga.imagen_url && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={carga.imagen_url} alt="" style={{ width: "100%", borderRadius: 8, marginTop: 8 }} />
+        )}
+        <p className="tiny" style={{ marginTop: 8 }}>
+          {fmtFecha(carga.fecha_hora_estudio)}
+        </p>
+
+        {errorDetalle && (
+          <div className="tiny" style={{ color: "var(--red)", marginTop: 8 }}>
+            {errorDetalle}
+          </div>
+        )}
+
+        {items.length === 0 && (
+          <div className="tiny" style={{ marginTop: 8 }}>
+            Sin valores registrados en esta carga.
+          </div>
+        )}
+
+        {items.map((it, idx) => (
+          <div key={idx} style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 8 }}>
+            <input
+              value={it.parametro}
+              onChange={(e) => actualizarCampo(idx, "parametro", e.target.value)}
+              style={{ ...inputStyle, flex: "1 1 32%" }}
+            />
+            <input
+              value={it.valor}
+              onChange={(e) => actualizarCampo(idx, "valor", e.target.value)}
+              style={{ ...inputStyle, flex: "1 1 24%" }}
+            />
+            <input
+              value={it.unidad ?? ""}
+              placeholder="unidad"
+              onChange={(e) => actualizarCampo(idx, "unidad", e.target.value)}
+              style={{ ...inputStyle, flex: "1 1 20%" }}
+            />
+            <button
+              type="button"
+              onClick={() => guardarItem(idx)}
+              disabled={guardandoIdx === idx}
+              style={{
+                background: "none",
+                border: "1px solid var(--border-soft)",
+                borderRadius: 6,
+                cursor: "pointer",
+                fontSize: 13,
+                padding: "4px 8px",
+              }}
+            >
+              {guardandoIdx === idx ? "…" : "✓"}
+            </button>
+          </div>
+        ))}
       </div>
-      {cargado && bibliotecaAbierta.length === 0 && (
-        <div className="tiny">Sin parámetros fuera de los perfiles cargados todavía.</div>
-      )}
-      {bibliotecaAbierta.map((b) => (
-        <div className="field-row" key={b.id}>
-          <span className="field-label">{b.parametro}</span>
-          <span className="field-value">
-            {b.valor ?? "—"}
-            {b.unidad ? ` ${b.unidad}` : ""} · {fmtFecha(b.created_at)}
-          </span>
-        </div>
-      ))}
-      {bibliotecaAbierta.length > 0 && (
-        <div className="tiny" style={{ marginTop: 8 }}>
-          Historial de consulta — no alimenta ningún PDF por ahora.
-        </div>
-      )}
     </div>
   );
 }

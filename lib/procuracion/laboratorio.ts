@@ -166,7 +166,7 @@ export type ValorExtraido = {
 
 export type ResultadoGuardado =
   | { tipo: "op2"; parametroCanonico: LabParamOP2; columna: string }
-  | { tipo: "biblioteca" }
+  | { tipo: "biblioteca"; id: string }
   | { tipo: "bloqueado"; parametroCanonico: LabParamOP2 };
 
 // Antes se estampaba con new Date() del lado del cliente en el momento
@@ -199,15 +199,19 @@ export async function guardarValorLaboratorio(
   if (!match) {
     const extendido = matchParametroExtendido(extraido.parametro);
     const grupo = extendido?.perfil ?? extraido.grupoSugerido ?? null;
-    await supabase.from("laboratorio_biblioteca").insert({
-      donante_id: donanteId,
-      parametro: extraido.parametro,
-      valor: extraido.valor,
-      unidad: extraido.unidad,
-      imagen_url: imagenUrl,
-      grupo_sugerido: grupo,
-    });
-    return { tipo: "biblioteca" };
+    const { data } = await supabase
+      .from("laboratorio_biblioteca")
+      .insert({
+        donante_id: donanteId,
+        parametro: extraido.parametro,
+        valor: extraido.valor,
+        unidad: extraido.unidad,
+        imagen_url: imagenUrl,
+        grupo_sugerido: grupo,
+      })
+      .select("id")
+      .single();
+    return { tipo: "biblioteca", id: (data as { id: string }).id };
   }
 
   const campos = EXTRACCION_COLS.map((col) => `lab_${match}_${col}`);
@@ -347,4 +351,109 @@ export function agruparPorPerfil(camposOP2: CampoOP2Detectado[], biblioteca: Bib
 // esto sigue siendo "Biblioteca abierta", sin cambios de comportamiento.
 export function bibliotecaSinPerfil(biblioteca: BibliotecaRow[]): BibliotecaRow[] {
   return biblioteca.filter((b) => !b.grupo_sugerido);
+}
+
+// Registro por-foto (laboratorio_cargas): una fila por cada foto subida,
+// con la lista de valores que salieron de ESA foto y dónde quedó guardado
+// cada uno (para poder editarlo después sin duplicar filas en
+// planilla_valores/laboratorio_biblioteca). Ver LaboratorioPanel: el
+// carrusel y el detalle tocable se arman a partir de esto.
+export type DestinoItem =
+  | { tipo: "op2"; parametroCanonico: LabParamOP2; columna: string }
+  | { tipo: "biblioteca"; bibliotecaId: string }
+  | { tipo: "bloqueado" };
+
+export type CargaItemGuardado = {
+  parametro: string;
+  valor: string;
+  unidad: string | null;
+  destino: DestinoItem;
+};
+
+export type CargaLab = {
+  id: string;
+  donante_id: string;
+  imagen_url: string | null;
+  fecha_hora_estudio: string;
+  etiqueta: string;
+  items: CargaItemGuardado[];
+  created_at: string;
+};
+
+export async function registrarCargaLaboratorio(
+  supabase: SupabaseClient,
+  donanteId: string,
+  imagenUrl: string | null,
+  fechaHora: FechaHoraManual,
+  items: CargaItemGuardado[]
+): Promise<CargaLab | null> {
+  const fechaHoraISO = new Date(
+    `${fechaHora.anio}-${fechaHora.mes}-${fechaHora.dia}T${fechaHora.hora}:00`
+  ).toISOString();
+  const etiqueta = `Laboratorio ${fechaHora.hora}`;
+  const { data } = await supabase
+    .from("laboratorio_cargas")
+    .insert({
+      donante_id: donanteId,
+      imagen_url: imagenUrl,
+      fecha_hora_estudio: fechaHoraISO,
+      etiqueta,
+      items,
+    })
+    .select()
+    .single();
+  return (data as CargaLab) ?? null;
+}
+
+export async function cargarCargasLaboratorio(supabase: SupabaseClient, donanteId: string): Promise<CargaLab[]> {
+  const { data } = await supabase
+    .from("laboratorio_cargas")
+    .select("id, donante_id, imagen_url, fecha_hora_estudio, etiqueta, items, created_at")
+    .eq("donante_id", donanteId)
+    .order("fecha_hora_estudio", { ascending: false });
+  return (data as CargaLab[]) ?? [];
+}
+
+/**
+ * Edita un ítem puntual dentro de una carga ya guardada: actualiza el
+ * storage estructurado donde haya quedado (planilla_valores u
+ * laboratorio_biblioteca, según destino) y refleja el cambio en el
+ * snapshot de items de la carga. Los ítems "bloqueados" no tienen
+ * storage estructurado que tocar -- solo se corrige el snapshot.
+ */
+export async function actualizarItemDeCarga(
+  supabase: SupabaseClient,
+  carga: CargaLab,
+  idx: number,
+  nuevo: { parametro: string; valor: string; unidad: string | null }
+): Promise<{ ok: true; items: CargaItemGuardado[] } | { ok: false; error: string }> {
+  const item = carga.items[idx];
+  if (!item) return { ok: false, error: "Ítem no encontrado." };
+
+  if (item.destino.tipo === "op2") {
+    const { error } = await supabase
+      .from("planilla_valores")
+      .update({ valor: formatValor(nuevo.valor, nuevo.unidad) })
+      .eq("donante_id", carga.donante_id)
+      .eq("planilla_key", "op2_p3")
+      .eq("campo_pdf", `lab_${item.destino.parametroCanonico}_${item.destino.columna}`);
+    if (error) return { ok: false, error: error.message };
+  } else if (item.destino.tipo === "biblioteca") {
+    const { error } = await supabase
+      .from("laboratorio_biblioteca")
+      .update({ parametro: nuevo.parametro, valor: nuevo.valor, unidad: nuevo.unidad })
+      .eq("id", item.destino.bibliotecaId);
+    if (error) return { ok: false, error: error.message };
+  }
+
+  const nuevosItems = carga.items.map((it, i) =>
+    i === idx ? { ...it, parametro: nuevo.parametro, valor: nuevo.valor, unidad: nuevo.unidad } : it
+  );
+  const { error: errorCarga } = await supabase
+    .from("laboratorio_cargas")
+    .update({ items: nuevosItems })
+    .eq("id", carga.id);
+  if (errorCarga) return { ok: false, error: errorCarga.message };
+
+  return { ok: true, items: nuevosItems };
 }
