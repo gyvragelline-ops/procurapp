@@ -386,13 +386,21 @@ export default function LaboratorioPanel({ donanteId }: { donanteId: string }) {
       <div className="section-label" style={{ marginTop: 0 }}>
         Laboratorio
       </div>
+      <button
+        className="btn btn-accent"
+        style={{ width: "100%", marginBottom: 10 }}
+        disabled={procesando || pendientes !== null}
+        onClick={abrirCarga}
+      >
+        Agregar foto de laboratorio
+      </button>
       <div style={{ marginBottom: 14 }}>
           {cargado && cargas.length === 0 && (
             <div className="tiny" style={{ marginBottom: 8 }}>
               Sin fotos cargadas todavía.
             </div>
           )}
-          {cargado && (
+          {cargas.length > 0 && (
             <div style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 8, alignItems: "flex-start" }}>
               {cargas.map((c) => (
                 <div key={c.id} style={{ flex: "0 0 auto", width: 100 }}>
@@ -449,25 +457,6 @@ export default function LaboratorioPanel({ donanteId }: { donanteId: string }) {
                   </button>
                 </div>
               ))}
-              <button
-                type="button"
-                onClick={abrirCarga}
-                disabled={procesando || pendientes !== null}
-                aria-label="Agregar foto de laboratorio"
-                style={{
-                  flex: "0 0 auto",
-                  width: 100,
-                  height: 76,
-                  borderRadius: 12,
-                  border: "2px dashed var(--border-soft)",
-                  background: "none",
-                  color: "var(--accent)",
-                  fontSize: 22,
-                  cursor: "pointer",
-                }}
-              >
-                +
-              </button>
             </div>
           )}
       </div>
