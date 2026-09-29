@@ -8,6 +8,8 @@
 // la recompresión aunque ya sea liviano, para garantizar que no lleve
 // audio (recomprimirConMediaRecorder es mudo por diseño).
 
+const LADO_MAX_MINIATURA = 480; // solo para el carrusel, no hace falta más
+
 const RESOLUCION_MAX_LADO_MAYOR = 720;
 const BITRATE_OBJETIVO_VIDEO = 1_750_000; // bits/seg, entre 1.5 y 2 Mbps
 const FPS_RECOMPRESION = 30;
@@ -141,6 +143,66 @@ function recomprimirConMediaRecorder(
         terminar(null);
       }
     };
+
+    video.src = url;
+  });
+}
+
+// Captura un fotograma del video (seg. 1, o el último frame disponible si
+// dura menos) y lo devuelve como JPEG comprimido -- portado tal cual de
+// PASE (lib/estudios.ts). Best-effort: cualquier falla resuelve null en
+// vez de tirar, para no bloquear la subida del video en sí. Puramente
+// mecánico (un frame-grab de <canvas>), no es análisis ni clasificación.
+export function capturarFotogramaDeVideo(archivo: Blob): Promise<Blob | null> {
+  return new Promise((resolve) => {
+    let resuelto = false;
+    const url = URL.createObjectURL(archivo);
+    const video = document.createElement("video");
+    video.preload = "metadata";
+    video.muted = true;
+    video.playsInline = true;
+
+    function terminar(resultado: Blob | null) {
+      if (resuelto) return;
+      resuelto = true;
+      URL.revokeObjectURL(url);
+      resolve(resultado);
+    }
+
+    video.onloadedmetadata = () => {
+      const duracion = video.duration;
+      let t = 1.0;
+      if (!Number.isFinite(duracion) || duracion <= 0) {
+        t = 0;
+      } else if (duracion < 1.0) {
+        t = Math.max(0, duracion - 0.05);
+      }
+      video.currentTime = t;
+    };
+
+    video.onseeked = () => {
+      const anchoNatural = video.videoWidth;
+      const altoNatural = video.videoHeight;
+      if (!anchoNatural || !altoNatural) return terminar(null);
+
+      const ladoMayor = Math.max(anchoNatural, altoNatural);
+      const factor = ladoMayor > LADO_MAX_MINIATURA ? LADO_MAX_MINIATURA / ladoMayor : 1;
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(anchoNatural * factor));
+      canvas.height = Math.max(1, Math.round(altoNatural * factor));
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return terminar(null);
+
+      try {
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      } catch {
+        return terminar(null);
+      }
+      canvas.toBlob((blob) => terminar(blob), "image/jpeg", 0.7);
+    };
+
+    video.onerror = () => terminar(null);
+    setTimeout(() => terminar(null), 5000);
 
     video.src = url;
   });

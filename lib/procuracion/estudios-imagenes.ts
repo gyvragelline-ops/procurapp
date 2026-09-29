@@ -1,30 +1,19 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-export type TipoEstudio =
-  | "Laboratorio"
-  | "Rx_torax"
-  | "TAC_torax"
-  | "Foto_paciente"
-  | "ECG"
-  | "Ecografia"
-  | "Radiografia"
-  | "Foto_monitor"
-  | "Video"
-  | "Otro";
+export type TipoEstudio = "Laboratorio" | "Rx_torax" | "TAC_torax" | "Ecografia" | "Fotos_cuerpo";
 
-// Orden fijo pedido: las primeras 4 van siempre arriba (Laboratorio
-// preseleccionada por defecto), el resto son las que ya existían.
+// 5 categorías fijas, siempre visibles como tarjeta propia (una por
+// donante) -- ver ImagenesVideosPanel. Orden fijo pedido.
 export const TIPOS_ESTUDIO_INFO: { valor: TipoEstudio; etiqueta: string; nota?: string }[] = [
   { valor: "Laboratorio", etiqueta: "Laboratorio" },
   { valor: "Rx_torax", etiqueta: "Rx de tórax" },
   { valor: "TAC_torax", etiqueta: "TAC de tórax" },
-  { valor: "Foto_paciente", etiqueta: "Foto del paciente", nota: "No debe verse la cara" },
-  { valor: "ECG", etiqueta: "ECG" },
   { valor: "Ecografia", etiqueta: "Ecografía" },
-  { valor: "Radiografia", etiqueta: "Radiografía" },
-  { valor: "Foto_monitor", etiqueta: "Foto de monitor" },
-  { valor: "Video", etiqueta: "Video" },
-  { valor: "Otro", etiqueta: "Otro" },
+  {
+    valor: "Fotos_cuerpo",
+    etiqueta: "Fotos del cuerpo",
+    nota: "Tórax, abdomen, tatuajes o marcas identificativas — sin mostrar la cara.",
+  },
 ];
 
 export type EstudioImagenRow = {
@@ -71,6 +60,16 @@ function rutaDesdeUrlPublica(url: string): string | null {
   return url.slice(i + marca.length);
 }
 
+// Miniatura de un video por convención de nombre (mismo timestamp, sufijo
+// "-thumb.jpg"), igual que rutaMiniaturaVideo en PASE -- sin columna
+// nueva. Si la miniatura no se pudo generar o subir al momento de cargar
+// el video (best-effort, ver capturarFotogramaDeVideo en
+// comprimir-video.ts), la URL simplemente no resuelve y el carrusel cae
+// al ícono genérico.
+export function rutaMiniaturaVideo(archivoUrl: string): string {
+  return archivoUrl.replace(/\.[^./]+$/, "-thumb.jpg");
+}
+
 // Borrado real: fila primero (si falla, no queda un archivo huérfano sin
 // registro apuntándolo); el archivo de Storage después (si eso falla,
 // queda basura huérfana en el bucket, pero la tabla ya quedó consistente).
@@ -83,7 +82,10 @@ export async function borrarEstudioImagen(
   if (error) return { ok: false, error: error.message };
 
   const ruta = rutaDesdeUrlPublica(estudio.archivo_url);
-  if (ruta) await supabase.storage.from("estudios-imagenes").remove([ruta]);
+  if (ruta) {
+    const rutaThumb = rutaDesdeUrlPublica(rutaMiniaturaVideo(estudio.archivo_url));
+    await supabase.storage.from("estudios-imagenes").remove(rutaThumb ? [ruta, rutaThumb] : [ruta]);
+  }
 
   return { ok: true };
 }
