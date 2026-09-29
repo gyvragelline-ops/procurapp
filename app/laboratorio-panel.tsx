@@ -1,6 +1,6 @@
 "use client";
 
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
   actualizarItemDeCarga,
@@ -114,12 +114,7 @@ const inputStyle: React.CSSProperties = {
 
 type ItemPendiente = ValorExtraido;
 
-export type LaboratorioPanelHandle = { abrirCarga: () => void };
-
-const LaboratorioPanel = forwardRef<LaboratorioPanelHandle, { donanteId: string }>(function LaboratorioPanel(
-  { donanteId },
-  ref
-) {
+export default function LaboratorioPanel({ donanteId }: { donanteId: string }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [cargado, setCargado] = useState(false);
   const [procesando, setProcesando] = useState(false);
@@ -136,15 +131,10 @@ const LaboratorioPanel = forwardRef<LaboratorioPanelHandle, { donanteId: string 
   const [fechaHoraInput, setFechaHoraInput] = useState(ahoraParaInputLocal());
   const [guardando, setGuardando] = useState(false);
 
-  // El botón propio ("Cargar foto de laboratorio") se sacó de acá -- la
-  // carga arranca siempre desde el selector único "¿Qué vas a subir?" de
-  // ImagenesVideosPanel (ver page.tsx), que dispara esto por ref.
-  useImperativeHandle(ref, () => ({
-    abrirCarga: () => {
-      if (procesando || pendientes !== null) return;
-      fileInputRef.current?.click();
-    },
-  }));
+  function abrirCarga() {
+    if (procesando || pendientes !== null) return;
+    fileInputRef.current?.click();
+  }
 
   useEffect(() => {
     let vivo = true;
@@ -394,8 +384,12 @@ const LaboratorioPanel = forwardRef<LaboratorioPanelHandle, { donanteId: string 
       )}
 
       <div style={{ marginBottom: 14 }}>
-          {cargado && cargas.length === 0 && <div className="tiny">Sin fotos cargadas todavía.</div>}
-          {cargas.length > 0 && (
+          {cargado && cargas.length === 0 && (
+            <div className="tiny" style={{ marginBottom: 8 }}>
+              Sin fotos cargadas todavía.
+            </div>
+          )}
+          {cargado && (
             <div style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 8, alignItems: "flex-start" }}>
               {cargas.map((c) => (
                 <div key={c.id} style={{ flex: "0 0 auto", width: 100 }}>
@@ -441,8 +435,8 @@ const LaboratorioPanel = forwardRef<LaboratorioPanelHandle, { donanteId: string 
                       marginTop: 4,
                       background: "none",
                       border: "none",
-                      color: "var(--red)",
-                      fontSize: 11,
+                      color: "var(--text-dim, #8e99a6)",
+                      fontSize: 10,
                       cursor: "pointer",
                       padding: 0,
                       textAlign: "center",
@@ -452,6 +446,25 @@ const LaboratorioPanel = forwardRef<LaboratorioPanelHandle, { donanteId: string 
                   </button>
                 </div>
               ))}
+              <button
+                type="button"
+                onClick={abrirCarga}
+                disabled={procesando || pendientes !== null}
+                aria-label="Agregar foto de laboratorio"
+                style={{
+                  flex: "0 0 auto",
+                  width: 100,
+                  height: 76,
+                  borderRadius: 12,
+                  border: "2px dashed var(--border-soft)",
+                  background: "none",
+                  color: "var(--accent)",
+                  fontSize: 22,
+                  cursor: "pointer",
+                }}
+              >
+                +
+              </button>
             </div>
           )}
       </div>
@@ -475,9 +488,7 @@ const LaboratorioPanel = forwardRef<LaboratorioPanelHandle, { donanteId: string 
       )}
     </div>
   );
-});
-
-export default LaboratorioPanel;
+}
 
 function DetalleCargaModal({
   carga,

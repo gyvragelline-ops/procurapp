@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import {
   borrarEstudioImagen,
   cargarEstudiosImagenes,
+  compartirEstudios,
   guardarEstudioImagen,
   rutaMiniaturaVideo,
   TIPOS_ESTUDIO_INFO,
@@ -90,17 +91,7 @@ function fmtFecha(v: string) {
 type Modo = "foto" | "video" | "galeria";
 type PasoCarga = "cerrado" | "categoria" | "modo";
 
-export default function ImagenesVideosPanel({
-  donanteId,
-  onElegirLaboratorio,
-}: {
-  donanteId: string;
-  // Si se pasa, elegir "Laboratorio" en el selector no abre el flujo de
-  // archivo-sin-IA de acá -- dispara esto en su lugar (el flujo con IA
-  // que ya tiene LaboratorioPanel, ver page.tsx). Sin esto, cae al
-  // comportamiento propio de siempre.
-  onElegirLaboratorio?: () => void;
-}) {
+export default function ImagenesVideosPanel({ donanteId }: { donanteId: string }) {
   const camaraFotoInputRef = useRef<HTMLInputElement>(null);
   const camaraVideoInputRef = useRef<HTMLInputElement>(null);
   const galeriaInputRef = useRef<HTMLInputElement>(null);
@@ -147,11 +138,6 @@ export default function ImagenesVideosPanel({
   }, [subidas, donanteId, descartarSubidaVideo]);
 
   function elegirCategoriaParaCarga(tipo: TipoEstudio) {
-    if (tipo === "Laboratorio" && onElegirLaboratorio) {
-      setPasoCarga("cerrado");
-      onElegirLaboratorio();
-      return;
-    }
     setCategoriaParaCarga(tipo);
     setPasoCarga("modo");
   }
@@ -161,13 +147,21 @@ export default function ImagenesVideosPanel({
     setConfirmarAlAbrir(true);
   }
 
-  function elegirModoParaCarga(modo: Modo) {
-    if (!categoriaParaCarga) return;
-    setCategoriaActiva(categoriaParaCarga);
-    setPasoCarga("cerrado");
+  // Dispara la carga directo a una categoría ya conocida -- usado tanto
+  // por el paso 2 del selector (categoriaParaCarga) como por el "+" de
+  // una tarjeta que ya tiene contenido (agregar otro sin volver a elegir
+  // categoría desde cero, ver TarjetaCategoria).
+  function iniciarCargaDirecta(tipo: TipoEstudio, modo: Modo) {
+    setCategoriaActiva(tipo);
     if (modo === "foto") camaraFotoInputRef.current?.click();
     else if (modo === "video") camaraVideoInputRef.current?.click();
     else galeriaInputRef.current?.click();
+  }
+
+  function elegirModoParaCarga(modo: Modo) {
+    if (!categoriaParaCarga) return;
+    setPasoCarga("cerrado");
+    iniciarCargaDirecta(categoriaParaCarga, modo);
   }
 
   // Solo fotos -- el video ya no pasa por acá, ver handleEstudioFile.
@@ -319,6 +313,7 @@ export default function ImagenesVideosPanel({
           estudios={porTipo.get(info.valor) ?? []}
           onAbrir={setVisorAbierto}
           onBorrar={abrirParaBorrar}
+          onAgregarDirecto={(modo) => iniciarCargaDirecta(info.valor, modo)}
         />
       ))}
 
@@ -514,8 +509,8 @@ function MiniaturaChica({
           marginTop: 4,
           background: "none",
           border: "none",
-          color: "var(--red)",
-          fontSize: 11,
+          color: "var(--text-dim, #8e99a6)",
+          fontSize: 10,
           cursor: "pointer",
           padding: 0,
           textAlign: "center",
@@ -527,16 +522,85 @@ function MiniaturaChica({
   );
 }
 
+// Tile "+" al final del carrusel de una categoría que ya tiene contenido
+// -- agrega otro archivo a ESA categoría sin volver a pasar por "¿Qué
+// vas a subir?" (punto 3 del ajuste: antes no existía, era un paso
+// atrás respecto del pedido original de este carrusel).
+function TileAgregar({ onElegir }: { onElegir: (modo: Modo) => void }) {
+  const [abierto, setAbierto] = useState(false);
+
+  if (!abierto) {
+    return (
+      <button
+        type="button"
+        onClick={() => setAbierto(true)}
+        aria-label="Agregar otro a esta categoría"
+        style={{
+          flex: "0 0 auto",
+          width: 64,
+          height: 64,
+          borderRadius: 10,
+          border: "2px dashed var(--border-soft)",
+          background: "none",
+          color: "var(--accent)",
+          fontSize: 22,
+          cursor: "pointer",
+        }}
+      >
+        +
+      </button>
+    );
+  }
+
+  return (
+    <div
+      style={{
+        flex: "0 0 auto",
+        display: "flex",
+        gap: 4,
+        border: "1px solid var(--border-soft)",
+        borderRadius: 10,
+        padding: 4,
+        background: "var(--bg-elev, #181f27)",
+      }}
+    >
+      {(["foto", "video", "galeria"] as const).map((modo) => (
+        <button
+          key={modo}
+          type="button"
+          onClick={() => {
+            setAbierto(false);
+            onElegir(modo);
+          }}
+          className="tiny"
+          style={{
+            background: "none",
+            border: "1px solid var(--border-soft)",
+            borderRadius: 6,
+            cursor: "pointer",
+            padding: "4px 6px",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {modo === "foto" ? "Cámara" : modo === "video" ? "Video" : "Galería"}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function TarjetaCategoria({
   info,
   estudios,
   onAbrir,
   onBorrar,
+  onAgregarDirecto,
 }: {
   info: { valor: TipoEstudio; etiqueta: string; nota?: string };
   estudios: EstudioImagenRow[];
   onAbrir: (estudio: EstudioImagenRow) => void;
   onBorrar: (estudio: EstudioImagenRow) => void;
+  onAgregarDirecto: (modo: Modo) => void;
 }) {
   const carruselRef = useRef<HTMLDivElement>(null);
   const hero = estudios.length > 0 ? estudios[estudios.length - 1] : null;
@@ -586,18 +650,24 @@ function TarjetaCategoria({
               />
             )}
           </button>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4 }}>
-            <p className="tiny" style={{ margin: 0 }}>
-              {fmtFecha(hero.created_at)}
-            </p>
+          <p className="tiny" style={{ margin: "4px 0 0" }}>
+            {fmtFecha(hero.created_at)}
+            {" · "}
             <button
               type="button"
               onClick={() => onBorrar(hero)}
-              style={{ background: "none", border: "none", color: "var(--red)", fontSize: 12, cursor: "pointer", padding: 0 }}
+              style={{
+                background: "none",
+                border: "none",
+                color: "var(--text-dim, #8e99a6)",
+                fontSize: 11,
+                cursor: "pointer",
+                padding: 0,
+              }}
             >
               Eliminar
             </button>
-          </div>
+          </p>
 
           <div
             ref={carruselRef}
@@ -606,6 +676,7 @@ function TarjetaCategoria({
             {estudios.map((e) => (
               <MiniaturaChica key={e.id} estudio={e} onAbrir={() => onAbrir(e)} onBorrar={() => onBorrar(e)} />
             ))}
+            <TileAgregar onElegir={onAgregarDirecto} />
           </div>
         </div>
       )}
@@ -626,12 +697,22 @@ function VisorEstudio({
 }) {
   const [confirmando, setConfirmando] = useState(confirmarInicial ?? false);
   const [borrando, setBorrando] = useState(false);
+  const [compartiendo, setCompartiendo] = useState(false);
+  const [errorCompartir, setErrorCompartir] = useState<string | null>(null);
 
   async function confirmarBorrado() {
     setBorrando(true);
     const ok = await onBorrar(estudio);
     setBorrando(false);
     if (ok) onCerrar();
+  }
+
+  async function compartir() {
+    setCompartiendo(true);
+    setErrorCompartir(null);
+    const resultado = await compartirEstudios([estudio]);
+    setCompartiendo(false);
+    if (!resultado.ok) setErrorCompartir(resultado.error);
   }
 
   return (
@@ -678,16 +759,25 @@ function VisorEstudio({
           <img src={estudio.archivo_url} alt="" style={{ width: "100%", borderRadius: 8 }} />
         )}
 
+        <button type="button" className="btn btn-accent" style={{ width: "100%", marginTop: 12 }} disabled={compartiendo} onClick={compartir}>
+          {compartiendo ? "Compartiendo…" : "Compartir"}
+        </button>
+        {errorCompartir && (
+          <div className="tiny" style={{ color: "var(--red)", marginTop: 6 }}>
+            {errorCompartir}
+          </div>
+        )}
+
         {!confirmando ? (
           <button
             type="button"
             onClick={() => setConfirmando(true)}
             style={{
-              marginTop: 12,
+              marginTop: 10,
               background: "none",
               border: "none",
-              color: "var(--red)",
-              fontSize: 13,
+              color: "var(--text-dim, #8e99a6)",
+              fontSize: 12,
               cursor: "pointer",
               padding: 0,
             }}

@@ -89,3 +89,50 @@ export async function borrarEstudioImagen(
 
   return { ok: true };
 }
+
+function extensionDeUrl(url: string): string {
+  const ext = url.split("?")[0].split(".").pop();
+  return ext ? ext.toLowerCase() : "dat";
+}
+
+function nombreArchivoCompartido(estudio: Pick<EstudioImagenRow, "tipo_estudio" | "archivo_url" | "created_at">): string {
+  return `${estudio.tipo_estudio}-${estudio.created_at.slice(0, 10)}.${extensionDeUrl(estudio.archivo_url)}`;
+}
+
+// Compartir con la Web Share API nativa (WhatsApp, mail, etc. sin sumar
+// ninguna librería) -- portado tal cual de PASE (lib/estudios.ts,
+// compartirEstudios). Acá archivo_url ya es pública (el bucket lo es),
+// así que no hace falta el paso de URL firmada que tiene PASE -- se
+// puede fetch() directo.
+export async function compartirEstudios(
+  estudios: Pick<EstudioImagenRow, "tipo_estudio" | "archivo_url" | "archivo_tipo" | "created_at">[]
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (typeof navigator === "undefined" || !navigator.share) {
+    return { ok: false, error: "Este navegador no permite compartir archivos." };
+  }
+
+  const archivos: File[] = [];
+  for (const estudio of estudios) {
+    const respuesta = await fetch(estudio.archivo_url);
+    if (!respuesta.ok) return { ok: false, error: "No se pudo preparar un archivo para compartir." };
+    const blob = await respuesta.blob();
+    archivos.push(
+      new File([blob], nombreArchivoCompartido(estudio), {
+        type: blob.type || (estudio.archivo_tipo === "video" ? "video/mp4" : "image/jpeg"),
+      })
+    );
+  }
+
+  if (navigator.canShare && !navigator.canShare({ files: archivos })) {
+    return { ok: false, error: "El navegador no admite compartir este tipo de archivo." };
+  }
+
+  try {
+    await navigator.share({ files: archivos });
+    return { ok: true };
+  } catch (e) {
+    // AbortError: el usuario cerró el panel de compartir sin elegir nada -- no es un error real.
+    if (e instanceof DOMException && e.name === "AbortError") return { ok: true };
+    return { ok: false, error: "No se pudo compartir." };
+  }
+}

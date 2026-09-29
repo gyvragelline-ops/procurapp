@@ -37,7 +37,7 @@ import RecomendacionesComMuerte from "./recomendaciones-com-muerte";
 import ComDonacionPanel from "./com-donacion-panel";
 import ComDonacionRealizada from "./com-donacion-realizada";
 import FamiliarContactoPanel from "./familiar-contacto-panel";
-import LaboratorioPanel, { type LaboratorioPanelHandle } from "./laboratorio-panel";
+import LaboratorioPanel from "./laboratorio-panel";
 import ImagenesVideosPanel from "./imagenes-videos-panel";
 import DocumentosPanel from "./documentos-panel";
 import NuevoDonante from "./nuevo-donante";
@@ -53,11 +53,6 @@ type StageData =
   | { kind: "organos"; loading: boolean; organos?: OrganoRow[] };
 
 export default function Home() {
-  // Punto único de carga de "Laboratorio e imágenes": el selector "¿Qué
-  // vas a subir?" vive en ImagenesVideosPanel; cuando se elige la
-  // categoría "Laboratorio" dispara esto por ref en vez de abrir su
-  // propio flujo de archivo (ver imagenes-videos-panel.tsx).
-  const laboratorioRef = useRef<LaboratorioPanelHandle>(null);
   const [donantes, setDonantes] = useState<Donante[] | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [donante, setDonante] = useState<Donante | null>(null);
@@ -650,14 +645,11 @@ export default function Home() {
 
                         {s.key === "labImagenes" && donante && (
                           <>
-                            <LaboratorioPanel ref={laboratorioRef} donanteId={donante.id} />
+                            <LaboratorioPanel donanteId={donante.id} />
                             <div className="section-label" style={{ marginTop: 18 }}>
                               Imágenes y videos
                             </div>
-                            <ImagenesVideosPanel
-                              donanteId={donante.id}
-                              onElegirLaboratorio={() => laboratorioRef.current?.abrirCarga()}
-                            />
+                            <ImagenesVideosPanel donanteId={donante.id} />
                           </>
                         )}
 
