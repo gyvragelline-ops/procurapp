@@ -1,18 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
   actualizarItemDeCarga,
-  agruparPorPerfil,
-  bibliotecaSinPerfil,
-  cargarBibliotecaAbierta,
-  cargarCamposOP2Detectados,
   cargarCargasLaboratorio,
   guardarValorLaboratorio,
   registrarCargaLaboratorio,
-  type BibliotecaRow,
-  type CampoOP2Detectado,
   type CargaItemGuardado,
   type CargaLab,
   type FechaHoraManual,
@@ -77,13 +71,6 @@ function fechaHoraDeInputLocal(v: string): FechaHoraManual {
   };
 }
 
-function agruparPorParametro(campos: CampoOP2Detectado[]) {
-  return campos.reduce<Record<string, CampoOP2Detectado[]>>((acc, c) => {
-    (acc[c.parametro] ??= []).push(c);
-    return acc;
-  }, {});
-}
-
 const inputStyle: React.CSSProperties = {
   border: "1px solid var(--border-soft)",
   borderRadius: 6,
@@ -94,16 +81,17 @@ const inputStyle: React.CSSProperties = {
 
 type ItemPendiente = ValorExtraido;
 
-export default function LaboratorioPanel({ donanteId }: { donanteId: string }) {
+export type LaboratorioPanelHandle = { abrirCarga: () => void };
+
+const LaboratorioPanel = forwardRef<LaboratorioPanelHandle, { donanteId: string }>(function LaboratorioPanel(
+  { donanteId },
+  ref
+) {
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [camposOP2, setCamposOP2] = useState<CampoOP2Detectado[]>([]);
-  const [biblioteca, setBiblioteca] = useState<BibliotecaRow[]>([]);
   const [cargado, setCargado] = useState(false);
   const [procesando, setProcesando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [bloqueados, setBloqueados] = useState<LabParamOP2[]>([]);
-  const [abiertos, setAbiertos] = useState<Record<PerfilLab, boolean>>({} as Record<PerfilLab, boolean>);
-  const [vista, setVista] = useState<"carrusel" | "perfiles">("carrusel");
   const [cargas, setCargas] = useState<CargaLab[]>([]);
   const [cargaAbiertaId, setCargaAbiertaId] = useState<string | null>(null);
 
@@ -114,17 +102,21 @@ export default function LaboratorioPanel({ donanteId }: { donanteId: string }) {
   const [fechaHoraInput, setFechaHoraInput] = useState(ahoraParaInputLocal());
   const [guardando, setGuardando] = useState(false);
 
+  // El botón propio ("Cargar foto de laboratorio") se sacó de acá -- la
+  // carga arranca siempre desde el selector único "¿Qué vas a subir?" de
+  // ImagenesVideosPanel (ver page.tsx), que dispara esto por ref.
+  useImperativeHandle(ref, () => ({
+    abrirCarga: () => {
+      if (procesando || pendientes !== null) return;
+      fileInputRef.current?.click();
+    },
+  }));
+
   useEffect(() => {
     let vivo = true;
     (async () => {
-      const [op2, bib, cargasDb] = await Promise.all([
-        cargarCamposOP2Detectados(supabase, donanteId),
-        cargarBibliotecaAbierta(supabase, donanteId),
-        cargarCargasLaboratorio(supabase, donanteId),
-      ]);
+      const cargasDb = await cargarCargasLaboratorio(supabase, donanteId);
       if (!vivo) return;
-      setCamposOP2(op2);
-      setBiblioteca(bib);
       setCargas(cargasDb);
       setCargado(true);
     })();
@@ -237,34 +229,14 @@ export default function LaboratorioPanel({ donanteId }: { donanteId: string }) {
     setPendientes(null);
     setImagenUrlPendiente(null);
 
-    const [op2, bib, cargasDb] = await Promise.all([
-      cargarCamposOP2Detectados(supabase, donanteId),
-      cargarBibliotecaAbierta(supabase, donanteId),
-      cargarCargasLaboratorio(supabase, donanteId),
-    ]);
-    setCamposOP2(op2);
-    setBiblioteca(bib);
-    setCargas(cargasDb);
+    setCargas(await cargarCargasLaboratorio(supabase, donanteId));
     setGuardando(false);
   }
 
   async function refrescarTrasEdicionCarga() {
-    const [op2, bib, cargasDb] = await Promise.all([
-      cargarCamposOP2Detectados(supabase, donanteId),
-      cargarBibliotecaAbierta(supabase, donanteId),
-      cargarCargasLaboratorio(supabase, donanteId),
-    ]);
-    setCamposOP2(op2);
-    setBiblioteca(bib);
-    setCargas(cargasDb);
+    setCargas(await cargarCargasLaboratorio(supabase, donanteId));
   }
 
-  function toggle(key: PerfilLab) {
-    setAbiertos((prev) => ({ ...prev, [key]: !prev[key] }));
-  }
-
-  const perfiles = agruparPorPerfil(camposOP2, biblioteca);
-  const bibliotecaAbierta = bibliotecaSinPerfil(biblioteca);
   const cargaAbierta = cargas.find((c) => c.id === cargaAbiertaId) ?? null;
 
   return (
@@ -280,14 +252,11 @@ export default function LaboratorioPanel({ donanteId }: { donanteId: string }) {
           if (f) handleFile(f);
         }}
       />
-      <button
-        className="btn btn-accent"
-        style={{ width: "100%", marginBottom: 8 }}
-        disabled={procesando || pendientes !== null}
-        onClick={() => fileInputRef.current?.click()}
-      >
-        {procesando ? "Procesando foto…" : "Cargar foto de laboratorio"}
-      </button>
+      {procesando && (
+        <div className="tiny" style={{ marginBottom: 8 }}>
+          Procesando foto…
+        </div>
+      )}
 
       {error && (
         <div className="tiny" style={{ color: "var(--red)", marginBottom: 8 }}>
@@ -369,37 +338,7 @@ export default function LaboratorioPanel({ donanteId }: { donanteId: string }) {
         </div>
       )}
 
-      <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-        <button
-          type="button"
-          onClick={() => setVista("carrusel")}
-          className="chip chip-gray"
-          style={{
-            border: "none",
-            cursor: "pointer",
-            background: vista === "carrusel" ? "var(--accent-dim)" : undefined,
-            color: vista === "carrusel" ? "var(--accent)" : undefined,
-          }}
-        >
-          Fotos cargadas
-        </button>
-        <button
-          type="button"
-          onClick={() => setVista("perfiles")}
-          className="chip chip-gray"
-          style={{
-            border: "none",
-            cursor: "pointer",
-            background: vista === "perfiles" ? "var(--accent-dim)" : undefined,
-            color: vista === "perfiles" ? "var(--accent)" : undefined,
-          }}
-        >
-          Ver por perfil
-        </button>
-      </div>
-
-      {vista === "carrusel" && (
-        <div style={{ marginBottom: 14 }}>
+      <div style={{ marginBottom: 14 }}>
           {cargado && cargas.length === 0 && <div className="tiny">Sin fotos cargadas todavía.</div>}
           {cargas.length > 0 && (
             <div style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 8 }}>
@@ -413,7 +352,7 @@ export default function LaboratorioPanel({ donanteId }: { donanteId: string }) {
                     width: 100,
                     textAlign: "left",
                     background: "none",
-                    border: "1px solid var(--border-soft)",
+                    border: "2px solid #4a5b70",
                     borderRadius: 12,
                     overflow: "hidden",
                     cursor: "pointer",
@@ -440,85 +379,7 @@ export default function LaboratorioPanel({ donanteId }: { donanteId: string }) {
               ))}
             </div>
           )}
-        </div>
-      )}
-
-      {vista === "perfiles" && perfiles.map((p) => {
-        const camposPorParametro = agruparPorParametro(p.camposOP2);
-        const contador = p.totalParams > 0 ? `${p.paramsConValor}/${p.totalParams}` : `${p.filasBiblioteca.length} cargado(s)`;
-        return (
-          <div key={p.key} style={{ marginBottom: 8 }}>
-            <button
-              type="button"
-              onClick={() => toggle(p.key)}
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                width: "100%",
-                background: "none",
-                border: "none",
-                cursor: "pointer",
-                padding: "8px 0",
-                borderBottom: "1px solid var(--border-soft)",
-              }}
-            >
-              <span style={{ fontWeight: 600, fontSize: 13 }}>{p.label}</span>
-              <span className="tiny">
-                {contador} {abiertos[p.key] ? "▾" : "▸"}
-              </span>
-            </button>
-            {abiertos[p.key] && (
-              <div style={{ paddingTop: 6 }}>
-                {p.camposOP2.length === 0 && p.filasBiblioteca.length === 0 && (
-                  <div className="tiny">Sin valores cargados todavía.</div>
-                )}
-                {Object.entries(camposPorParametro).map(([parametro, filas]) => (
-                  <div className="field-row" key={parametro}>
-                    <span className="field-label">{parametro.replace(/_/g, " ")}</span>
-                    <span className="field-value">
-                      {filas.map((f) => f.valor).join(" · ")} ({filas.length}/5)
-                    </span>
-                  </div>
-                ))}
-                {p.filasBiblioteca.map((b) => (
-                  <div className="field-row" key={b.id}>
-                    <span className="field-label">{b.parametro}</span>
-                    <span className="field-value">
-                      {b.valor ?? "—"}
-                      {b.unidad ? ` ${b.unidad}` : ""} · {fmtFecha(b.created_at)}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        );
-      })}
-
-      {vista === "perfiles" && (
-        <>
-          <div className="section-label" style={{ marginTop: 14 }}>
-            Biblioteca abierta
-          </div>
-          {cargado && bibliotecaAbierta.length === 0 && (
-            <div className="tiny">Sin parámetros fuera de los perfiles cargados todavía.</div>
-          )}
-          {bibliotecaAbierta.map((b) => (
-            <div className="field-row" key={b.id}>
-              <span className="field-label">{b.parametro}</span>
-              <span className="field-value">
-                {b.valor ?? "—"}
-                {b.unidad ? ` ${b.unidad}` : ""} · {fmtFecha(b.created_at)}
-              </span>
-            </div>
-          ))}
-          {bibliotecaAbierta.length > 0 && (
-            <div className="tiny" style={{ marginTop: 8 }}>
-              Historial de consulta — no alimenta ningún PDF por ahora.
-            </div>
-          )}
-        </>
-      )}
+      </div>
 
       {cargaAbierta && (
         <DetalleCargaModal
@@ -530,7 +391,9 @@ export default function LaboratorioPanel({ donanteId }: { donanteId: string }) {
       )}
     </div>
   );
-}
+});
+
+export default LaboratorioPanel;
 
 function DetalleCargaModal({
   carga,

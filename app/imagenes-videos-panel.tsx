@@ -60,7 +60,17 @@ function fmtFecha(v: string) {
 type Modo = "foto" | "video" | "galeria";
 type PasoCarga = "cerrado" | "categoria" | "modo";
 
-export default function ImagenesVideosPanel({ donanteId }: { donanteId: string }) {
+export default function ImagenesVideosPanel({
+  donanteId,
+  onElegirLaboratorio,
+}: {
+  donanteId: string;
+  // Si se pasa, elegir "Laboratorio" en el selector no abre el flujo de
+  // archivo-sin-IA de acá -- dispara esto en su lugar (el flujo con IA
+  // que ya tiene LaboratorioPanel, ver page.tsx). Sin esto, cae al
+  // comportamiento propio de siempre.
+  onElegirLaboratorio?: () => void;
+}) {
   const camaraFotoInputRef = useRef<HTMLInputElement>(null);
   const camaraVideoInputRef = useRef<HTMLInputElement>(null);
   const galeriaInputRef = useRef<HTMLInputElement>(null);
@@ -71,6 +81,7 @@ export default function ImagenesVideosPanel({ donanteId }: { donanteId: string }
   const [procesandoEstudio, setProcesandoEstudio] = useState(false);
   const [errorEstudio, setErrorEstudio] = useState<string | null>(null);
   const [visorAbierto, setVisorAbierto] = useState<EstudioImagenRow | null>(null);
+  const [confirmarAlAbrir, setConfirmarAlAbrir] = useState(false);
 
   // Punto único de carga (punto 3 del rediseño): paso 1 elige categoría,
   // paso 2 -- recién ahí -- elige Cámara/Video/Galería.
@@ -91,8 +102,18 @@ export default function ImagenesVideosPanel({ donanteId }: { donanteId: string }
   }, [donanteId]);
 
   function elegirCategoriaParaCarga(tipo: TipoEstudio) {
+    if (tipo === "Laboratorio" && onElegirLaboratorio) {
+      setPasoCarga("cerrado");
+      onElegirLaboratorio();
+      return;
+    }
     setCategoriaParaCarga(tipo);
     setPasoCarga("modo");
+  }
+
+  function abrirParaBorrar(estudio: EstudioImagenRow) {
+    setVisorAbierto(estudio);
+    setConfirmarAlAbrir(true);
   }
 
   function elegirModoParaCarga(modo: Modo) {
@@ -243,7 +264,13 @@ export default function ImagenesVideosPanel({ donanteId }: { donanteId: string }
       )}
 
       {TIPOS_ESTUDIO_INFO.map((info) => (
-        <TarjetaCategoria key={info.valor} info={info} estudios={porTipo.get(info.valor) ?? []} onAbrir={setVisorAbierto} />
+        <TarjetaCategoria
+          key={info.valor}
+          info={info}
+          estudios={porTipo.get(info.valor) ?? []}
+          onAbrir={setVisorAbierto}
+          onBorrar={abrirParaBorrar}
+        />
       ))}
 
       {cargado && estudios.length === 0 && (
@@ -259,12 +286,26 @@ export default function ImagenesVideosPanel({ donanteId }: { donanteId: string }
               key={info.valor}
               type="button"
               onClick={() => elegirCategoriaParaCarga(info.valor)}
-              className="chip chip-gray"
-              style={{ width: "100%", textAlign: "left", border: "none", cursor: "pointer", padding: "10px 12px" }}
+              style={{
+                display: "block",
+                width: "100%",
+                textAlign: "left",
+                border: "1px solid var(--border-soft)",
+                background: "var(--bg-elev, #181f27)",
+                borderRadius: 10,
+                cursor: "pointer",
+                padding: "10px 12px",
+                whiteSpace: "normal",
+                wordBreak: "break-word",
+                overflowWrap: "break-word",
+              }}
             >
               {info.etiqueta}
               {info.nota && (
-                <div className="tiny" style={{ color: "var(--amber, #b45309)", marginTop: 2 }}>
+                <div
+                  className="tiny"
+                  style={{ color: "var(--amber, #b45309)", marginTop: 2, whiteSpace: "normal", wordBreak: "break-word" }}
+                >
                   {info.nota}
                 </div>
               )}
@@ -294,7 +335,16 @@ export default function ImagenesVideosPanel({ donanteId }: { donanteId: string }
       )}
 
       {visorAbierto && (
-        <VisorEstudio estudio={visorAbierto} onCerrar={() => setVisorAbierto(null)} onBorrar={handleBorrar} />
+        <VisorEstudio
+          key={visorAbierto.id}
+          estudio={visorAbierto}
+          confirmarInicial={confirmarAlAbrir}
+          onCerrar={() => {
+            setVisorAbierto(null);
+            setConfirmarAlAbrir(false);
+          }}
+          onBorrar={handleBorrar}
+        />
       )}
     </div>
   );
@@ -363,40 +413,68 @@ function SelectorCarga({
   );
 }
 
-function MiniaturaChica({ estudio, onClick }: { estudio: EstudioImagenRow; onClick: () => void }) {
+function MiniaturaChica({
+  estudio,
+  onAbrir,
+  onBorrar,
+}: {
+  estudio: EstudioImagenRow;
+  onAbrir: () => void;
+  onBorrar: () => void;
+}) {
   const [posterFallo, setPosterFallo] = useState(false);
   const srcMiniatura = estudio.archivo_tipo === "video" ? rutaMiniaturaVideo(estudio.archivo_url) : estudio.archivo_url;
 
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      style={{
-        flex: "0 0 auto",
-        width: 64,
-        height: 64,
-        borderRadius: 10,
-        overflow: "hidden",
-        border: BORDE_MINIATURA,
-        padding: 0,
-        position: "relative",
-        background: "var(--border-soft)",
-      }}
-    >
-      {!posterFallo ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={srcMiniatura}
-          alt=""
-          onError={() => setPosterFallo(true)}
-          style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-        />
-      ) : (
-        <div className="tiny" style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%" }}>
-          {estudio.archivo_tipo === "video" ? "Video" : "—"}
-        </div>
-      )}
-    </button>
+    <div style={{ flex: "0 0 auto", width: 64 }}>
+      <button
+        type="button"
+        onClick={onAbrir}
+        style={{
+          display: "block",
+          width: 64,
+          height: 64,
+          borderRadius: 10,
+          overflow: "hidden",
+          border: BORDE_MINIATURA,
+          padding: 0,
+          background: "var(--border-soft)",
+        }}
+      >
+        {!posterFallo ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={srcMiniatura}
+            alt=""
+            onError={() => setPosterFallo(true)}
+            style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+          />
+        ) : (
+          <div className="tiny" style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%" }}>
+            {estudio.archivo_tipo === "video" ? "Video" : "—"}
+          </div>
+        )}
+      </button>
+      <button
+        type="button"
+        onClick={onBorrar}
+        aria-label="Eliminar"
+        style={{
+          display: "block",
+          width: "100%",
+          marginTop: 4,
+          background: "none",
+          border: "none",
+          color: "var(--red)",
+          fontSize: 11,
+          cursor: "pointer",
+          padding: 0,
+          textAlign: "center",
+        }}
+      >
+        Eliminar
+      </button>
+    </div>
   );
 }
 
@@ -404,10 +482,12 @@ function TarjetaCategoria({
   info,
   estudios,
   onAbrir,
+  onBorrar,
 }: {
   info: { valor: TipoEstudio; etiqueta: string; nota?: string };
   estudios: EstudioImagenRow[];
   onAbrir: (estudio: EstudioImagenRow) => void;
+  onBorrar: (estudio: EstudioImagenRow) => void;
 }) {
   const carruselRef = useRef<HTMLDivElement>(null);
   const hero = estudios.length > 0 ? estudios[estudios.length - 1] : null;
@@ -457,13 +537,25 @@ function TarjetaCategoria({
               />
             )}
           </button>
-          <p className="tiny" style={{ marginTop: 4 }}>
-            {fmtFecha(hero.created_at)}
-          </p>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4 }}>
+            <p className="tiny" style={{ margin: 0 }}>
+              {fmtFecha(hero.created_at)}
+            </p>
+            <button
+              type="button"
+              onClick={() => onBorrar(hero)}
+              style={{ background: "none", border: "none", color: "var(--red)", fontSize: 12, cursor: "pointer", padding: 0 }}
+            >
+              Eliminar
+            </button>
+          </div>
 
-          <div ref={carruselRef} style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4, marginTop: 8 }}>
+          <div
+            ref={carruselRef}
+            style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4, marginTop: 8, alignItems: "flex-start" }}
+          >
             {estudios.map((e) => (
-              <MiniaturaChica key={e.id} estudio={e} onClick={() => onAbrir(e)} />
+              <MiniaturaChica key={e.id} estudio={e} onAbrir={() => onAbrir(e)} onBorrar={() => onBorrar(e)} />
             ))}
           </div>
         </div>
@@ -474,14 +566,16 @@ function TarjetaCategoria({
 
 function VisorEstudio({
   estudio,
+  confirmarInicial,
   onCerrar,
   onBorrar,
 }: {
   estudio: EstudioImagenRow;
+  confirmarInicial?: boolean;
   onCerrar: () => void;
   onBorrar: (estudio: EstudioImagenRow) => Promise<boolean>;
 }) {
-  const [confirmando, setConfirmando] = useState(false);
+  const [confirmando, setConfirmando] = useState(confirmarInicial ?? false);
   const [borrando, setBorrando] = useState(false);
 
   async function confirmarBorrado() {
