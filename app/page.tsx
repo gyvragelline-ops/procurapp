@@ -14,6 +14,7 @@ import {
   computeCertAuxEstado,
   computeComMuerteEstado,
   computeComDonacionEstado,
+  computeLabImagenesEstado,
   computeMuestrasEstado,
   stagesForTipo,
   stripStagesForTipo,
@@ -38,6 +39,7 @@ import ComDonacionPanel from "./com-donacion-panel";
 import ComDonacionRealizada from "./com-donacion-realizada";
 import FamiliarContactoPanel from "./familiar-contacto-panel";
 import ImagenesVideosPanel from "./imagenes-videos-panel";
+import LabImagenesCompleto from "./lab-imagenes-completo";
 import DocumentosPanel from "./documentos-panel";
 import NuevoDonante from "./nuevo-donante";
 
@@ -64,6 +66,7 @@ export default function Home() {
   const [angiografiaMeta, setAngiografiaMeta] = useState<{ fecha?: string; hora?: string; informe?: string }>({});
   const [comMuerteRealizada, setComMuerteRealizada] = useState(false);
   const [comDonacionRealizada, setComDonacionRealizada] = useState(false);
+  const [labImagenesCompleto, setLabImagenesCompleto] = useState(false);
   const [muestras, setMuestras] = useState<MuestraRow[]>([]);
   const [planillasGeneradas, setPlanillasGeneradas] = useState<Record<string, PlanillaGeneradaRow>>({});
   const [generandoPdfs, setGenerandoPdfs] = useState(false);
@@ -153,12 +156,19 @@ export default function Home() {
         .eq("item_key", "realizada")
         .maybeSingle(),
       supabase
+        .from("documentacion_estado")
+        .select("estado")
+        .eq("donante_id", selectedId)
+        .eq("categoria", "labImagenes")
+        .eq("item_key", "completo")
+        .maybeSingle(),
+      supabase
         .from("planillas_generadas")
         .select("planilla_key, archivo_url, generado_en")
         .eq("donante_id", selectedId)
         .order("generado_en", { ascending: false }),
       supabase.from("muestras").select("paquete_key, nombre, tubos, obtenida, retirada").eq("donante_id", selectedId),
-    ]).then(([donanteRes, familiarRes, etapasRes, judicialRes, meRes, certificadoCierreRes, dopplerRes, certAuxRes, comMuerteRes, comDonacionRes, planillasRes, muestrasRes]) => {
+    ]).then(([donanteRes, familiarRes, etapasRes, judicialRes, meRes, certificadoCierreRes, dopplerRes, certAuxRes, comMuerteRes, comDonacionRes, labImagenesRes, planillasRes, muestrasRes]) => {
       const donanteData = (donanteRes.data as Donante) ?? null;
       setDonante(donanteData);
       setFamiliar((familiarRes.data as Familiar) ?? null);
@@ -191,6 +201,7 @@ export default function Home() {
       setAngiografiaMeta((angioRow?.meta as { fecha?: string; hora?: string; informe?: string } | null) ?? {});
       setComMuerteRealizada((comMuerteRes.data as { estado: string | null } | null)?.estado === "si");
       setComDonacionRealizada((comDonacionRes.data as { estado: string | null } | null)?.estado === "si");
+      setLabImagenesCompleto((labImagenesRes.data as { estado: string | null } | null)?.estado === "si");
       const planillasMap: Record<string, PlanillaGeneradaRow> = {};
       ((planillasRes.data as PlanillaGeneradaRow[]) ?? []).forEach((r) => {
         if (!planillasMap[r.planilla_key]) planillasMap[r.planilla_key] = r;
@@ -277,6 +288,7 @@ export default function Home() {
     if (key === "certificacion") return computeCertAuxEstado(certAuxCampos);
     if (key === "comMuerte") return computeComMuerteEstado(comMuerteRealizada);
     if (key === "comDonacion") return computeComDonacionEstado(comDonacionRealizada);
+    if (key === "labImagenes") return computeLabImagenesEstado(labImagenesCompleto);
     if (key === "muestras") return computeMuestrasEstado(muestras);
     return etapas[key];
   }
@@ -642,7 +654,16 @@ export default function Home() {
                           </>
                         )}
 
-                        {s.key === "labImagenes" && donante && <ImagenesVideosPanel donanteId={donante.id} />}
+                        {s.key === "labImagenes" && donante && (
+                          <>
+                            <LabImagenesCompleto
+                              donanteId={donante.id}
+                              completo={labImagenesCompleto}
+                              onChange={setLabImagenesCompleto}
+                            />
+                            <ImagenesVideosPanel donanteId={donante.id} />
+                          </>
+                        )}
 
                         {data?.kind === "organos" && !data.loading && data.organos && (
                           <>

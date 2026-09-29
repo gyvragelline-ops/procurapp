@@ -263,6 +263,13 @@ export function computeComDonacionEstado(realizada: boolean): EstadoEtapa {
   return realizada ? "green" : "gray";
 }
 
+// Sin criterio automático a propósito -- decisión manual del procurador,
+// igual que comMuerte/comDonacion (no depende de cuántas categorías del
+// panel tengan archivos cargados).
+export function computeLabImagenesEstado(completo: boolean): EstadoEtapa {
+  return completo ? "green" : "gray";
+}
+
 export function computeMuestrasEstado(muestras: { obtenida: boolean }[]): EstadoEtapa {
   if (muestras.length === 0) return "gray";
   const obtenidas = muestras.filter((m) => m.obtenida).length;
