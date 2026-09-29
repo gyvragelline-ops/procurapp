@@ -10,10 +10,18 @@ import {
   type CampoOP2Detectado,
   type LabParamOP2,
 } from "@/lib/procuracion/laboratorio";
+import {
+  cargarEstudiosImagenes,
+  guardarEstudioImagen,
+  TIPOS_ESTUDIO,
+  type EstudioImagenRow,
+  type TipoEstudio,
+} from "@/lib/procuracion/estudios-imagenes";
 
 const supabase = createClient();
 
 const MAX_DIM = 1600;
+const MAX_VIDEO_BYTES = 100 * 1024 * 1024; // 100MB
 
 function comprimirImagen(file: File): Promise<{ base64: string; mediaType: string }> {
   return new Promise((resolve, reject) => {
@@ -51,6 +59,8 @@ function fmtFecha(v: string) {
 }
 
 export default function LabImagenesPanel({ donanteId }: { donanteId: string }) {
+  const [tab, setTab] = useState<"laboratorio" | "estudios">("laboratorio");
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [camposOP2, setCamposOP2] = useState<CampoOP2Detectado[]>([]);
   const [biblioteca, setBiblioteca] = useState<BibliotecaRow[]>([]);
@@ -59,22 +69,78 @@ export default function LabImagenesPanel({ donanteId }: { donanteId: string }) {
   const [bloqueados, setBloqueados] = useState<LabParamOP2[]>([]);
   const [cargado, setCargado] = useState(false);
 
+  const fotoEstudioInputRef = useRef<HTMLInputElement>(null);
+  const videoEstudioInputRef = useRef<HTMLInputElement>(null);
+  const [tipoEstudioSel, setTipoEstudioSel] = useState<TipoEstudio>("ECG");
+  const [estudios, setEstudios] = useState<EstudioImagenRow[]>([]);
+  const [procesandoEstudio, setProcesandoEstudio] = useState(false);
+  const [errorEstudio, setErrorEstudio] = useState<string | null>(null);
+
   useEffect(() => {
     let vivo = true;
     (async () => {
-      const [op2, bib] = await Promise.all([
+      const [op2, bib, est] = await Promise.all([
         cargarCamposOP2Detectados(supabase, donanteId),
         cargarBibliotecaAbierta(supabase, donanteId),
+        cargarEstudiosImagenes(supabase, donanteId),
       ]);
       if (!vivo) return;
       setCamposOP2(op2);
       setBiblioteca(bib);
+      setEstudios(est);
       setCargado(true);
     })();
     return () => {
       vivo = false;
     };
   }, [donanteId]);
+
+  async function handleEstudioFile(file: File, esVideo: boolean) {
+    setErrorEstudio(null);
+    setProcesandoEstudio(true);
+    try {
+      if (esVideo && file.size > MAX_VIDEO_BYTES) {
+        setErrorEstudio("El video pesa más de 100MB — grabá un clip más corto.");
+        return;
+      }
+
+      let uploadBody: Blob | Uint8Array = file;
+      let contentType = file.type || (esVideo ? "video/mp4" : "image/jpeg");
+      let ext = esVideo ? file.name.split(".").pop() || "mp4" : "jpg";
+
+      if (!esVideo) {
+        const comprimida = await comprimirImagen(file);
+        uploadBody = Uint8Array.from(atob(comprimida.base64), (c) => c.charCodeAt(0));
+        contentType = comprimida.mediaType;
+        ext = "jpg";
+      }
+
+      const path = `${donanteId}/${Date.now()}.${ext}`;
+      const { error: uploadError } = await supabase.storage
+        .from("estudios-imagenes")
+        .upload(path, uploadBody, { contentType, upsert: true });
+      if (uploadError) {
+        setErrorEstudio(`No se pudo subir el archivo: ${uploadError.message}`);
+        return;
+      }
+      const { data: pub } = supabase.storage.from("estudios-imagenes").getPublicUrl(path);
+
+      await guardarEstudioImagen(supabase, donanteId, {
+        tipoEstudio: tipoEstudioSel,
+        archivoUrl: pub.publicUrl,
+        archivoTipo: esVideo ? "video" : "image",
+        mimeType: contentType,
+      });
+
+      setEstudios(await cargarEstudiosImagenes(supabase, donanteId));
+    } catch (e) {
+      setErrorEstudio(e instanceof Error ? e.message : "Error inesperado al procesar el archivo.");
+    } finally {
+      setProcesandoEstudio(false);
+      if (fotoEstudioInputRef.current) fotoEstudioInputRef.current.value = "";
+      if (videoEstudioInputRef.current) videoEstudioInputRef.current.value = "";
+    }
+  }
 
   async function handleFile(file: File) {
     setError(null);
@@ -139,73 +205,190 @@ export default function LabImagenesPanel({ donanteId }: { donanteId: string }) {
 
   return (
     <div>
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/*"
-        capture="environment"
-        style={{ display: "none" }}
-        onChange={(e) => {
-          const f = e.target.files?.[0];
-          if (f) handleFile(f);
-        }}
-      />
-      <button
-        className="btn btn-accent"
-        style={{ width: "100%", marginBottom: 8 }}
-        disabled={procesando}
-        onClick={() => fileInputRef.current?.click()}
-      >
-        {procesando ? "Procesando foto…" : "Cargar foto de laboratorio o estudio"}
-      </button>
-
-      {error && (
-        <div className="tiny" style={{ color: "var(--red)", marginBottom: 8 }}>
-          {error}
-        </div>
-      )}
-
-      {bloqueados.length > 0 && (
-        <div className="tiny" style={{ color: "var(--amber, #b45309)", marginBottom: 8 }}>
-          {bloqueados.map((p) => p.replace(/_/g, " ")).join(", ")}: ya tiene las 5 extracciones completas en el OP2.
-          El valor nuevo no se guardó — hay que resolver manualmente dónde va.
-        </div>
-      )}
-
-      <div className="section-label" style={{ marginTop: 4 }}>
-        Campos OP2 detectados
+      <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+        <button
+          className="chip chip-gray"
+          style={{
+            border: "none",
+            cursor: "pointer",
+            flex: 1,
+            background: tab === "laboratorio" ? "var(--accent-dim)" : undefined,
+            color: tab === "laboratorio" ? "var(--accent)" : undefined,
+          }}
+          onClick={() => setTab("laboratorio")}
+        >
+          Fotos de laboratorio
+        </button>
+        <button
+          className="chip chip-gray"
+          style={{
+            border: "none",
+            cursor: "pointer",
+            flex: 1,
+            background: tab === "estudios" ? "var(--accent-dim)" : undefined,
+            color: tab === "estudios" ? "var(--accent)" : undefined,
+          }}
+          onClick={() => setTab("estudios")}
+        >
+          Imágenes y videos
+        </button>
       </div>
-      {cargado && Object.keys(camposPorParametro).length === 0 && (
-        <div className="tiny">Sin valores de laboratorio del OP2 cargados todavía.</div>
-      )}
-      {Object.entries(camposPorParametro).map(([parametro, filas]) => (
-        <div className="field-row" key={parametro}>
-          <span className="field-label">{parametro.replace(/_/g, " ")}</span>
-          <span className="field-value">
-            {filas.map((f) => f.valor).join(" · ")} ({filas.length}/5)
-          </span>
-        </div>
-      ))}
 
-      <div className="section-label" style={{ marginTop: 14 }}>
-        Biblioteca abierta
-      </div>
-      {cargado && biblioteca.length === 0 && (
-        <div className="tiny">Sin estudios ni parámetros fuera del OP2 cargados todavía.</div>
+      {tab === "laboratorio" && (
+        <>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            style={{ display: "none" }}
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) handleFile(f);
+            }}
+          />
+          <button
+            className="btn btn-accent"
+            style={{ width: "100%", marginBottom: 8 }}
+            disabled={procesando}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            {procesando ? "Procesando foto…" : "Cargar foto de laboratorio o estudio"}
+          </button>
+
+          {error && (
+            <div className="tiny" style={{ color: "var(--red)", marginBottom: 8 }}>
+              {error}
+            </div>
+          )}
+
+          {bloqueados.length > 0 && (
+            <div className="tiny" style={{ color: "var(--amber, #b45309)", marginBottom: 8 }}>
+              {bloqueados.map((p) => p.replace(/_/g, " ")).join(", ")}: ya tiene las 5 extracciones completas en el OP2.
+              El valor nuevo no se guardó — hay que resolver manualmente dónde va.
+            </div>
+          )}
+
+          <div className="section-label" style={{ marginTop: 4 }}>
+            Campos OP2 detectados
+          </div>
+          {cargado && Object.keys(camposPorParametro).length === 0 && (
+            <div className="tiny">Sin valores de laboratorio del OP2 cargados todavía.</div>
+          )}
+          {Object.entries(camposPorParametro).map(([parametro, filas]) => (
+            <div className="field-row" key={parametro}>
+              <span className="field-label">{parametro.replace(/_/g, " ")}</span>
+              <span className="field-value">
+                {filas.map((f) => f.valor).join(" · ")} ({filas.length}/5)
+              </span>
+            </div>
+          ))}
+
+          <div className="section-label" style={{ marginTop: 14 }}>
+            Biblioteca abierta
+          </div>
+          {cargado && biblioteca.length === 0 && (
+            <div className="tiny">Sin estudios ni parámetros fuera del OP2 cargados todavía.</div>
+          )}
+          {biblioteca.map((b) => (
+            <div className="field-row" key={b.id}>
+              <span className="field-label">{b.parametro}</span>
+              <span className="field-value">
+                {b.valor ?? "—"}
+                {b.unidad ? ` ${b.unidad}` : ""} · {fmtFecha(b.created_at)}
+              </span>
+            </div>
+          ))}
+          {biblioteca.length > 0 && (
+            <div className="tiny" style={{ marginTop: 8 }}>
+              Historial de consulta — no alimenta ningún PDF por ahora.
+            </div>
+          )}
+        </>
       )}
-      {biblioteca.map((b) => (
-        <div className="field-row" key={b.id}>
-          <span className="field-label">{b.parametro}</span>
-          <span className="field-value">
-            {b.valor ?? "—"}
-            {b.unidad ? ` ${b.unidad}` : ""} · {fmtFecha(b.created_at)}
-          </span>
-        </div>
-      ))}
-      {biblioteca.length > 0 && (
-        <div className="tiny" style={{ marginTop: 8 }}>
-          Historial de consulta — no alimenta ningún PDF por ahora.
-        </div>
+
+      {tab === "estudios" && (
+        <>
+          <input
+            ref={fotoEstudioInputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            style={{ display: "none" }}
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) handleEstudioFile(f, false);
+            }}
+          />
+          <input
+            ref={videoEstudioInputRef}
+            type="file"
+            accept="video/*"
+            capture="environment"
+            style={{ display: "none" }}
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) handleEstudioFile(f, true);
+            }}
+          />
+
+          <div className="field-row">
+            <span className="field-label">Tipo de estudio</span>
+            <select
+              className="field-value"
+              value={tipoEstudioSel}
+              onChange={(e) => setTipoEstudioSel(e.target.value as TipoEstudio)}
+              style={{ border: "1px solid var(--border-soft)", borderRadius: 6, padding: "2px 4px" }}
+            >
+              {TIPOS_ESTUDIO.map((t) => (
+                <option key={t} value={t}>
+                  {t.replace(/_/g, " ")}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div style={{ display: "flex", gap: 8, marginTop: 8, marginBottom: 8 }}>
+            <button
+              className="btn btn-accent"
+              style={{ flex: 1 }}
+              disabled={procesandoEstudio}
+              onClick={() => fotoEstudioInputRef.current?.click()}
+            >
+              {procesandoEstudio ? "Subiendo…" : "Foto / Cámara"}
+            </button>
+            <button
+              className="btn btn-accent"
+              style={{ flex: 1 }}
+              disabled={procesandoEstudio}
+              onClick={() => videoEstudioInputRef.current?.click()}
+            >
+              {procesandoEstudio ? "Subiendo…" : "Video"}
+            </button>
+          </div>
+
+          {errorEstudio && (
+            <div className="tiny" style={{ color: "var(--red)", marginBottom: 8 }}>
+              {errorEstudio}
+            </div>
+          )}
+
+          <div className="section-label" style={{ marginTop: 4 }}>
+            Cargados
+          </div>
+          {cargado && estudios.length === 0 && <div className="tiny">Sin imágenes ni videos cargados todavía.</div>}
+          {estudios.map((e) => (
+            <div className="field-row" key={e.id}>
+              <span className="field-label">{e.tipo_estudio.replace(/_/g, " ")}</span>
+              <span className="field-value">
+                {e.archivo_tipo === "video" ? "Video" : "Imagen"} · {fmtFecha(e.created_at)}{" "}
+                <a href={e.archivo_url} target="_blank" rel="noopener noreferrer">
+                  ver
+                </a>
+              </span>
+            </div>
+          ))}
+        </>
       )}
     </div>
   );
