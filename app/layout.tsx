@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import { Space_Grotesk, Inter, IBM_Plex_Mono } from "next/font/google";
 import SwRegister from "./sw-register";
+import SubidasVideoProvider from "./subidas-video-context";
+import SubidasVideoIndicator from "./subidas-video-indicator";
 import "./globals.css";
 
 const spaceGrotesk = Space_Grotesk({
@@ -45,7 +47,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     >
       <body className="min-h-full flex flex-col">
         <SwRegister />
-        {children}
+        <SubidasVideoProvider>
+          {children}
+          <SubidasVideoIndicator />
+        </SubidasVideoProvider>
       </body>
     </html>
   );

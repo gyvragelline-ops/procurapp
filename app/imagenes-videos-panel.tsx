@@ -11,7 +11,7 @@ import {
   type EstudioImagenRow,
   type TipoEstudio,
 } from "@/lib/procuracion/estudios-imagenes";
-import { capturarFotogramaDeVideo, comprimirVideoSiHaceFalta } from "@/lib/procuracion/comprimir-video";
+import { useSubidasVideo } from "./subidas-video-context";
 
 const supabase = createClient();
 
@@ -27,27 +27,57 @@ function comprimirImagen(file: File): Promise<{ base64: string; mediaType: strin
     const img = new Image();
     const url = URL.createObjectURL(file);
     img.onload = () => {
-      URL.revokeObjectURL(url);
-      const scale = Math.min(1, MAX_DIM / Math.max(img.width, img.height));
-      const w = Math.round(img.width * scale);
-      const h = Math.round(img.height * scale);
-      const canvas = document.createElement("canvas");
-      canvas.width = w;
-      canvas.height = h;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) {
-        reject(new Error("No se pudo procesar la imagen."));
-        return;
+      // Todo lo que pasa acá adentro corre en un callback del navegador,
+      // no en el executor del Promise -- si algo tira (canvas 0x0,
+      // toDataURL con canvas "tainted", etc.) sin este try/catch la
+      // promesa queda colgada para siempre (nunca resuelve NI rechaza),
+      // que es exactamente el síntoma de "Procesando..." que no termina.
+      try {
+        URL.revokeObjectURL(url);
+        const scale = Math.min(1, MAX_DIM / Math.max(img.width, img.height));
+        const w = Math.round(img.width * scale);
+        const h = Math.round(img.height * scale);
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          reject(new Error("No se pudo procesar la imagen."));
+          return;
+        }
+        ctx.drawImage(img, 0, 0, w, h);
+        const dataUrl = canvas.toDataURL("image/jpeg", 0.82);
+        resolve({ base64: dataUrl.split(",")[1], mediaType: "image/jpeg" });
+      } catch (e) {
+        reject(e instanceof Error ? e : new Error("No se pudo procesar la imagen."));
       }
-      ctx.drawImage(img, 0, 0, w, h);
-      const dataUrl = canvas.toDataURL("image/jpeg", 0.82);
-      resolve({ base64: dataUrl.split(",")[1], mediaType: "image/jpeg" });
     };
     img.onerror = () => {
       URL.revokeObjectURL(url);
       reject(new Error("No se pudo leer la imagen."));
     };
     img.src = url;
+  });
+}
+
+// Nunca dejar que "Subiendo..." quede colgado para siempre: si algo se
+// cuelga (conexión cortada, un callback que nunca dispara, etc.) esto
+// fuerza el error a los TIMEOUT_MS en vez de esperar indefinidamente.
+const TIMEOUT_MS = 45000;
+
+function conTimeout<T>(promesa: Promise<T>, mensaje: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(mensaje)), TIMEOUT_MS);
+    promesa.then(
+      (v) => {
+        clearTimeout(t);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(t);
+        reject(e);
+      }
+    );
   });
 }
 
@@ -74,6 +104,7 @@ export default function ImagenesVideosPanel({
   const camaraFotoInputRef = useRef<HTMLInputElement>(null);
   const camaraVideoInputRef = useRef<HTMLInputElement>(null);
   const galeriaInputRef = useRef<HTMLInputElement>(null);
+  const { subidas, iniciarSubidaVideo, descartar: descartarSubidaVideo } = useSubidasVideo();
 
   const [estudios, setEstudios] = useState<EstudioImagenRow[]>([]);
   const [cargado, setCargado] = useState(false);
@@ -101,6 +132,20 @@ export default function ImagenesVideosPanel({
     };
   }, [donanteId]);
 
+  // Las subidas de video corren en SubidasVideoProvider (layout.tsx),
+  // fuera de este panel -- acá solo se escucha cuándo una de ESTE
+  // donante terminó, para refrescar la lista y sacarla del indicador
+  // global (las que quedan en error se ven ahí para reintentar/
+  // descartar a mano; ver subidas-video-indicator.tsx).
+  useEffect(() => {
+    const listas = Object.values(subidas).filter((s) => s.donanteId === donanteId && s.etapa === "listo");
+    if (listas.length === 0) return;
+    (async () => {
+      setEstudios(await cargarEstudiosImagenes(supabase, donanteId));
+      for (const s of listas) descartarSubidaVideo(s.id);
+    })();
+  }, [subidas, donanteId, descartarSubidaVideo]);
+
   function elegirCategoriaParaCarga(tipo: TipoEstudio) {
     if (tipo === "Laboratorio" && onElegirLaboratorio) {
       setPasoCarga("cerrado");
@@ -125,68 +170,72 @@ export default function ImagenesVideosPanel({
     else galeriaInputRef.current?.click();
   }
 
+  // Solo fotos -- el video ya no pasa por acá, ver handleEstudioFile.
+  // Tira si algo falla; separado para poder envolverlo en conTimeout()
+  // sin mezclar el manejo de estado (procesando/error) con la subida.
+  async function subirFoto(file: File, tipoEstudio: TipoEstudio): Promise<void> {
+    const comprimida = await comprimirImagen(file);
+    const uploadBody = Uint8Array.from(atob(comprimida.base64), (c) => c.charCodeAt(0));
+    const contentType = comprimida.mediaType;
+
+    const stamp = Date.now();
+    const path = `${donanteId}/${stamp}.jpg`;
+    const { error: uploadError } = await supabase.storage
+      .from("estudios-imagenes")
+      .upload(path, uploadBody, { contentType, upsert: true });
+    if (uploadError) {
+      throw new Error(`No se pudo subir el archivo: ${uploadError.message}`);
+    }
+    const { data: pub } = supabase.storage.from("estudios-imagenes").getPublicUrl(path);
+
+    await guardarEstudioImagen(supabase, donanteId, {
+      tipoEstudio,
+      archivoUrl: pub.publicUrl,
+      archivoTipo: "image",
+      mimeType: contentType,
+    });
+  }
+
   async function handleEstudioFile(file: File, esVideo: boolean, esDeCamara: boolean) {
     const tipoEstudio = categoriaActiva;
     setErrorEstudio(null);
     if (!tipoEstudio) return;
+
+    // Video: se dispara y se suelta -- comprime+sube en segundo plano en
+    // SubidasVideoProvider (layout.tsx), sin bloquear este panel ni
+    // depender de que siga montado (el procurador puede cambiar de
+    // donante mientras tanto). Progreso real y reintentar/descartar
+    // manual desde el indicador global; sin cola offline -- si no hay
+    // señal, termina en error ahí, no en silencio.
+    if (esVideo) {
+      if (file.size > MAX_VIDEO_BYTES) {
+        setErrorEstudio("El video pesa más de 100MB — grabá un clip más corto.");
+      } else {
+        iniciarSubidaVideo({
+          donanteId,
+          tipoEstudio,
+          archivo: file,
+          extensionOriginal: file.name.split(".").pop() || "mp4",
+          esDeCamara,
+        });
+      }
+      setCategoriaActiva(null);
+      setCategoriaParaCarga(null);
+      if (camaraFotoInputRef.current) camaraFotoInputRef.current.value = "";
+      if (camaraVideoInputRef.current) camaraVideoInputRef.current.value = "";
+      if (galeriaInputRef.current) galeriaInputRef.current.value = "";
+      return;
+    }
+
     setProcesandoEstudio(true);
     try {
-      if (esVideo && file.size > MAX_VIDEO_BYTES) {
-        setErrorEstudio("El video pesa más de 100MB — grabá un clip más corto.");
-        return;
-      }
-
-      let uploadBody: Blob | Uint8Array = file;
-      let contentType = file.type || (esVideo ? "video/mp4" : "image/jpeg");
-      let ext = esVideo ? file.name.split(".").pop() || "mp4" : "jpg";
-
-      if (esVideo) {
-        const comprimido = await comprimirVideoSiHaceFalta(file, esDeCamara);
-        uploadBody = comprimido.blob;
-        if (comprimido.extension) {
-          ext = comprimido.extension;
-          contentType = ext === "mp4" ? "video/mp4" : "video/webm";
-        }
-      } else {
-        const comprimida = await comprimirImagen(file);
-        uploadBody = Uint8Array.from(atob(comprimida.base64), (c) => c.charCodeAt(0));
-        contentType = comprimida.mediaType;
-        ext = "jpg";
-      }
-
-      const stamp = Date.now();
-      const path = `${donanteId}/${stamp}.${ext}`;
-      const { error: uploadError } = await supabase.storage
-        .from("estudios-imagenes")
-        .upload(path, uploadBody, { contentType, upsert: true });
-      if (uploadError) {
-        setErrorEstudio(`No se pudo subir el archivo: ${uploadError.message}`);
-        return;
-      }
-      const { data: pub } = supabase.storage.from("estudios-imagenes").getPublicUrl(path);
-
-      if (esVideo) {
-        // Miniatura para el carrusel: best-effort, no bloquea la subida
-        // del video si falla (ver capturarFotogramaDeVideo).
-        const fotograma = await capturarFotogramaDeVideo(uploadBody as Blob);
-        if (fotograma) {
-          const rutaThumb = `${donanteId}/${stamp}-thumb.jpg`;
-          await supabase.storage.from("estudios-imagenes").upload(rutaThumb, fotograma, {
-            contentType: "image/jpeg",
-            upsert: true,
-          });
-        }
-      }
-
-      await guardarEstudioImagen(supabase, donanteId, {
-        tipoEstudio,
-        archivoUrl: pub.publicUrl,
-        archivoTipo: esVideo ? "video" : "image",
-        mimeType: contentType,
-      });
-
+      await conTimeout(
+        subirFoto(file, tipoEstudio),
+        "La carga está tardando demasiado -- puede haberse cortado la conexión. Probá de nuevo."
+      );
       setEstudios(await cargarEstudiosImagenes(supabase, donanteId));
     } catch (e) {
+      console.error("[ImagenesVideosPanel] Error al cargar estudio:", e);
       setErrorEstudio(e instanceof Error ? e.message : "Error inesperado al procesar el archivo.");
     } finally {
       setProcesandoEstudio(false);

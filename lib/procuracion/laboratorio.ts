@@ -457,3 +457,42 @@ export async function actualizarItemDeCarga(
 
   return { ok: true, items: nuevosItems };
 }
+
+/**
+ * Borra una carga completa: cada ítem "op2" borra su celda en
+ * planilla_valores, cada "biblioteca" borra su fila -- así no quedan
+ * valores huérfanos que ya no tienen foto que los respalde. Best-effort
+ * fila por fila (si una falla, sigue con el resto) para no dejar la
+ * carga a mitad de borrar; al final borra la fila de laboratorio_cargas
+ * y, si hay imagen_url propia (bucket laboratorio-fotos), el archivo.
+ */
+export async function borrarCargaLaboratorio(
+  supabase: SupabaseClient,
+  carga: CargaLab
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  for (const item of carga.items) {
+    if (item.destino.tipo === "op2") {
+      await supabase
+        .from("planilla_valores")
+        .delete()
+        .eq("donante_id", carga.donante_id)
+        .eq("planilla_key", "op2_p3")
+        .eq("campo_pdf", `lab_${item.destino.parametroCanonico}_${item.destino.columna}`);
+    } else if (item.destino.tipo === "biblioteca") {
+      await supabase.from("laboratorio_biblioteca").delete().eq("id", item.destino.bibliotecaId);
+    }
+  }
+
+  const { error } = await supabase.from("laboratorio_cargas").delete().eq("id", carga.id);
+  if (error) return { ok: false, error: error.message };
+
+  if (carga.imagen_url) {
+    const marca = "/laboratorio-fotos/";
+    const i = carga.imagen_url.indexOf(marca);
+    if (i !== -1) {
+      await supabase.storage.from("laboratorio-fotos").remove([carga.imagen_url.slice(i + marca.length)]);
+    }
+  }
+
+  return { ok: true };
+}

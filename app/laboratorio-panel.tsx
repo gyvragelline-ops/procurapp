@@ -4,6 +4,7 @@ import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "re
 import { createClient } from "@/lib/supabase/client";
 import {
   actualizarItemDeCarga,
+  borrarCargaLaboratorio,
   cargarCargasLaboratorio,
   guardarValorLaboratorio,
   registrarCargaLaboratorio,
@@ -24,27 +25,59 @@ function comprimirImagen(file: File): Promise<{ base64: string; mediaType: strin
     const img = new Image();
     const url = URL.createObjectURL(file);
     img.onload = () => {
-      URL.revokeObjectURL(url);
-      const scale = Math.min(1, MAX_DIM / Math.max(img.width, img.height));
-      const w = Math.round(img.width * scale);
-      const h = Math.round(img.height * scale);
-      const canvas = document.createElement("canvas");
-      canvas.width = w;
-      canvas.height = h;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) {
-        reject(new Error("No se pudo procesar la imagen."));
-        return;
+      // try/catch acá adentro a propósito: esto corre en un callback del
+      // navegador, no en el executor del Promise -- si algo tira sin
+      // este try/catch la promesa queda colgada para siempre (nunca
+      // resuelve NI rechaza), que es el síntoma de "Procesando..." que
+      // no termina.
+      try {
+        URL.revokeObjectURL(url);
+        const scale = Math.min(1, MAX_DIM / Math.max(img.width, img.height));
+        const w = Math.round(img.width * scale);
+        const h = Math.round(img.height * scale);
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          reject(new Error("No se pudo procesar la imagen."));
+          return;
+        }
+        ctx.drawImage(img, 0, 0, w, h);
+        const dataUrl = canvas.toDataURL("image/jpeg", 0.82);
+        resolve({ base64: dataUrl.split(",")[1], mediaType: "image/jpeg" });
+      } catch (e) {
+        reject(e instanceof Error ? e : new Error("No se pudo procesar la imagen."));
       }
-      ctx.drawImage(img, 0, 0, w, h);
-      const dataUrl = canvas.toDataURL("image/jpeg", 0.82);
-      resolve({ base64: dataUrl.split(",")[1], mediaType: "image/jpeg" });
     };
     img.onerror = () => {
       URL.revokeObjectURL(url);
       reject(new Error("No se pudo leer la imagen."));
     };
     img.src = url;
+  });
+}
+
+// Nunca dejar "Procesando foto..." colgado para siempre -- ver mismo
+// mecanismo en imagenes-videos-panel.tsx. Más largo que ahí (90s en vez
+// de 45s) porque acá adentro hay una llamada a IA con "thinking"
+// adaptativo y esfuerzo alto sobre una foto que puede tener muchos
+// parámetros -- unos segundos no alcanzan siempre.
+const TIMEOUT_MS = 90000;
+
+function conTimeout<T>(promesa: Promise<T>, mensaje: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(mensaje)), TIMEOUT_MS);
+    promesa.then(
+      (v) => {
+        clearTimeout(t);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(t);
+        reject(e);
+      }
+    );
   });
 }
 
@@ -94,6 +127,7 @@ const LaboratorioPanel = forwardRef<LaboratorioPanelHandle, { donanteId: string 
   const [bloqueados, setBloqueados] = useState<LabParamOP2[]>([]);
   const [cargas, setCargas] = useState<CargaLab[]>([]);
   const [cargaAbiertaId, setCargaAbiertaId] = useState<string | null>(null);
+  const [confirmarBorradoAlAbrir, setConfirmarBorradoAlAbrir] = useState(false);
 
   // Revisión antes de guardar (fecha/hora + valores editables) -- ver
   // guardarValorLaboratorio en lib/procuracion/laboratorio.ts.
@@ -125,48 +159,64 @@ const LaboratorioPanel = forwardRef<LaboratorioPanelHandle, { donanteId: string 
     };
   }, [donanteId]);
 
+  // Hace el trabajo real y devuelve el resultado (o un error puntual,
+  // como "sin datos legibles") -- separado de handleFile para poder
+  // envolverlo en conTimeout() sin mezclar con el manejo de estado.
+  async function extraerDeFoto(
+    file: File
+  ): Promise<{ items: ItemPendiente[]; imagenUrl: string | null } | { error: string }> {
+    const { base64, mediaType } = await comprimirImagen(file);
+
+    const path = `${donanteId}/${Date.now()}.jpg`;
+    const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+    const { error: uploadError } = await supabase.storage
+      .from("laboratorio-fotos")
+      .upload(path, bytes, { contentType: mediaType, upsert: true });
+    let imagenUrl: string | null = null;
+    if (!uploadError) {
+      const { data: pub } = supabase.storage.from("laboratorio-fotos").getPublicUrl(path);
+      imagenUrl = pub.publicUrl;
+    }
+
+    const res = await fetch("/api/extraer-laboratorio", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ imageBase64: base64, mediaType }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      return { error: data.error ?? "No se pudo extraer la información de la foto." };
+    }
+
+    const items: ItemPendiente[] = (
+      data.items as { parametro: string; valor: string; unidad: string | null; grupo_sugerido: PerfilLab | null }[]
+    ).map((it) => ({ parametro: it.parametro, valor: it.valor, unidad: it.unidad, grupoSugerido: it.grupo_sugerido }));
+
+    if (items.length === 0) {
+      return { error: "No se pudo leer ningún dato en la foto. Probá con mejor luz o encuadre." };
+    }
+
+    return { items, imagenUrl };
+  }
+
   async function handleFile(file: File) {
     setError(null);
     setBloqueados([]);
     setProcesando(true);
     try {
-      const { base64, mediaType } = await comprimirImagen(file);
-
-      const path = `${donanteId}/${Date.now()}.jpg`;
-      const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
-      const { error: uploadError } = await supabase.storage
-        .from("laboratorio-fotos")
-        .upload(path, bytes, { contentType: mediaType, upsert: true });
-      let imagenUrl: string | null = null;
-      if (!uploadError) {
-        const { data: pub } = supabase.storage.from("laboratorio-fotos").getPublicUrl(path);
-        imagenUrl = pub.publicUrl;
-      }
-
-      const res = await fetch("/api/extraer-laboratorio", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ imageBase64: base64, mediaType }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error ?? "No se pudo extraer la información de la foto.");
+      const resultado = await conTimeout(
+        extraerDeFoto(file),
+        "La carga está tardando demasiado -- puede haberse cortado la conexión. Probá de nuevo."
+      );
+      if ("error" in resultado) {
+        setError(resultado.error);
         return;
       }
-
-      const items: ItemPendiente[] = (
-        data.items as { parametro: string; valor: string; unidad: string | null; grupo_sugerido: PerfilLab | null }[]
-      ).map((it) => ({ parametro: it.parametro, valor: it.valor, unidad: it.unidad, grupoSugerido: it.grupo_sugerido }));
-
-      if (items.length === 0) {
-        setError("No se pudo leer ningún dato en la foto. Probá con mejor luz o encuadre.");
-        return;
-      }
-
-      setPendientes(items);
-      setImagenUrlPendiente(imagenUrl);
+      setPendientes(resultado.items);
+      setImagenUrlPendiente(resultado.imagenUrl);
       setFechaHoraInput(ahoraParaInputLocal());
     } catch (e) {
+      console.error("[LaboratorioPanel] Error al procesar foto:", e);
       setError(e instanceof Error ? e.message : "Error inesperado al procesar la foto.");
     } finally {
       setProcesando(false);
@@ -235,6 +285,11 @@ const LaboratorioPanel = forwardRef<LaboratorioPanelHandle, { donanteId: string 
 
   async function refrescarTrasEdicionCarga() {
     setCargas(await cargarCargasLaboratorio(supabase, donanteId));
+  }
+
+  function abrirParaBorrarCarga(id: string) {
+    setCargaAbiertaId(id);
+    setConfirmarBorradoAlAbrir(true);
   }
 
   const cargaAbierta = cargas.find((c) => c.id === cargaAbiertaId) ?? null;
@@ -341,41 +396,61 @@ const LaboratorioPanel = forwardRef<LaboratorioPanelHandle, { donanteId: string 
       <div style={{ marginBottom: 14 }}>
           {cargado && cargas.length === 0 && <div className="tiny">Sin fotos cargadas todavía.</div>}
           {cargas.length > 0 && (
-            <div style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 8 }}>
+            <div style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 8, alignItems: "flex-start" }}>
               {cargas.map((c) => (
-                <button
-                  key={c.id}
-                  type="button"
-                  onClick={() => setCargaAbiertaId(c.id)}
-                  style={{
-                    flex: "0 0 auto",
-                    width: 100,
-                    textAlign: "left",
-                    background: "none",
-                    border: "2px solid #4a5b70",
-                    borderRadius: 12,
-                    overflow: "hidden",
-                    cursor: "pointer",
-                    padding: 0,
-                  }}
-                >
-                  {c.imagen_url ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={c.imagen_url}
-                      alt=""
-                      style={{ width: "100%", height: 76, objectFit: "cover", display: "block" }}
-                    />
-                  ) : (
-                    <div style={{ width: "100%", height: 76, background: "var(--border-soft)" }} />
-                  )}
-                  <div style={{ padding: "4px 6px" }}>
-                    <div className="tiny" style={{ fontWeight: 600 }}>
-                      {c.etiqueta}
+                <div key={c.id} style={{ flex: "0 0 auto", width: 100 }}>
+                  <button
+                    type="button"
+                    onClick={() => setCargaAbiertaId(c.id)}
+                    style={{
+                      display: "block",
+                      width: "100%",
+                      textAlign: "left",
+                      background: "none",
+                      border: "2px solid #4a5b70",
+                      borderRadius: 12,
+                      overflow: "hidden",
+                      cursor: "pointer",
+                      padding: 0,
+                    }}
+                  >
+                    {c.imagen_url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={c.imagen_url}
+                        alt=""
+                        style={{ width: "100%", height: 76, objectFit: "cover", display: "block" }}
+                      />
+                    ) : (
+                      <div style={{ width: "100%", height: 76, background: "var(--border-soft)" }} />
+                    )}
+                    <div style={{ padding: "4px 6px" }}>
+                      <div className="tiny" style={{ fontWeight: 600 }}>
+                        {c.etiqueta}
+                      </div>
+                      <div className="tiny">{c.items.length} valor(es)</div>
                     </div>
-                    <div className="tiny">{c.items.length} valor(es)</div>
-                  </div>
-                </button>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => abrirParaBorrarCarga(c.id)}
+                    aria-label="Eliminar"
+                    style={{
+                      display: "block",
+                      width: "100%",
+                      marginTop: 4,
+                      background: "none",
+                      border: "none",
+                      color: "var(--red)",
+                      fontSize: 11,
+                      cursor: "pointer",
+                      padding: 0,
+                      textAlign: "center",
+                    }}
+                  >
+                    Eliminar
+                  </button>
+                </div>
               ))}
             </div>
           )}
@@ -385,8 +460,17 @@ const LaboratorioPanel = forwardRef<LaboratorioPanelHandle, { donanteId: string 
         <DetalleCargaModal
           key={cargaAbierta.id}
           carga={cargaAbierta}
-          onCerrar={() => setCargaAbiertaId(null)}
+          confirmarBorradoInicial={confirmarBorradoAlAbrir}
+          onCerrar={() => {
+            setCargaAbiertaId(null);
+            setConfirmarBorradoAlAbrir(false);
+          }}
           onActualizado={refrescarTrasEdicionCarga}
+          onBorrada={() => {
+            setCargaAbiertaId(null);
+            setConfirmarBorradoAlAbrir(false);
+            refrescarTrasEdicionCarga();
+          }}
         />
       )}
     </div>
@@ -397,12 +481,16 @@ export default LaboratorioPanel;
 
 function DetalleCargaModal({
   carga,
+  confirmarBorradoInicial,
   onCerrar,
   onActualizado,
+  onBorrada,
 }: {
   carga: CargaLab;
+  confirmarBorradoInicial?: boolean;
   onCerrar: () => void;
   onActualizado: () => Promise<void>;
+  onBorrada: () => void;
 }) {
   // El padre monta este componente con key={carga.id}: cada carga
   // distinta arranca con su propio estado, sin necesidad de un effect
@@ -410,6 +498,8 @@ function DetalleCargaModal({
   const [items, setItems] = useState(carga.items);
   const [guardandoIdx, setGuardandoIdx] = useState<number | null>(null);
   const [errorDetalle, setErrorDetalle] = useState<string | null>(null);
+  const [confirmandoBorrado, setConfirmandoBorrado] = useState(confirmarBorradoInicial ?? false);
+  const [borrando, setBorrando] = useState(false);
 
   function actualizarCampo(idx: number, campo: "parametro" | "valor" | "unidad", texto: string) {
     setItems((prev) => prev.map((it, i) => (i === idx ? { ...it, [campo]: campo === "unidad" ? texto || null : texto } : it)));
@@ -430,6 +520,18 @@ function DetalleCargaModal({
       return;
     }
     await onActualizado();
+  }
+
+  async function borrarCarga() {
+    setBorrando(true);
+    setErrorDetalle(null);
+    const resultado = await borrarCargaLaboratorio(supabase, carga);
+    setBorrando(false);
+    if (!resultado.ok) {
+      setErrorDetalle(resultado.error);
+      return;
+    }
+    onBorrada();
   }
 
   return (
@@ -523,6 +625,45 @@ function DetalleCargaModal({
             </button>
           </div>
         ))}
+
+        <div style={{ marginTop: 16, borderTop: "1px solid var(--border-soft)", paddingTop: 12 }}>
+          {!confirmandoBorrado ? (
+            <button
+              type="button"
+              onClick={() => setConfirmandoBorrado(true)}
+              style={{ background: "none", border: "none", color: "var(--red)", fontSize: 13, cursor: "pointer", padding: 0 }}
+            >
+              Eliminar esta carga
+            </button>
+          ) : (
+            <div>
+              <p className="tiny">
+                ¿Seguro que querés borrar esta carga? Se borran también los valores que vinieron de esta foto. No se
+                puede deshacer.
+              </p>
+              <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                <button
+                  type="button"
+                  onClick={() => setConfirmandoBorrado(false)}
+                  disabled={borrando}
+                  className="chip chip-gray"
+                  style={{ flex: 1, border: "none", cursor: "pointer" }}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={borrarCarga}
+                  disabled={borrando}
+                  className="chip"
+                  style={{ flex: 1, border: "none", cursor: "pointer", background: "var(--red)", color: "#fff" }}
+                >
+                  {borrando ? "Borrando…" : "Borrar"}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
