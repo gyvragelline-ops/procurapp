@@ -1,15 +1,20 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+// Panel "Laboratorio e imágenes" -- reescrito desde cero, versión
+// mínima. SIN IA: es solo carga y almacenamiento de archivos, para las
+// 5 categorías fijas. Nada de esto llama a ningún endpoint de IA --
+// confirmado con grep, ver commit.
+
+import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
   borrarEstudioImagen,
   cargarEstudiosImagenes,
-  compartirEstudios,
   guardarEstudioImagen,
   rutaMiniaturaVideo,
   TIPOS_ESTUDIO_INFO,
   type EstudioImagenRow,
+  type Modo,
   type TipoEstudio,
 } from "@/lib/procuracion/estudios-imagenes";
 import { useSubidasVideo } from "./subidas-video-context";
@@ -19,20 +24,14 @@ const supabase = createClient();
 const MAX_DIM = 1600;
 const MAX_VIDEO_BYTES = 100 * 1024 * 1024; // 100MB
 
-// Borde de las miniaturas (destacado + carrusel) -- antes 1px
-// var(--border-soft), casi invisible sobre el fondo oscuro del panel.
-const BORDE_MINIATURA = "2px solid #4a5b70";
-
 function comprimirImagen(file: File): Promise<{ base64: string; mediaType: string }> {
   return new Promise((resolve, reject) => {
     const img = new Image();
     const url = URL.createObjectURL(file);
     img.onload = () => {
-      // Todo lo que pasa acá adentro corre en un callback del navegador,
-      // no en el executor del Promise -- si algo tira (canvas 0x0,
-      // toDataURL con canvas "tainted", etc.) sin este try/catch la
-      // promesa queda colgada para siempre (nunca resuelve NI rechaza),
-      // que es exactamente el síntoma de "Procesando..." que no termina.
+      // try/catch a propósito: esto corre en un callback del navegador,
+      // no en el executor del Promise -- si algo tira sin este
+      // try/catch la promesa queda colgada para siempre.
       try {
         URL.revokeObjectURL(url);
         const scale = Math.min(1, MAX_DIM / Math.max(img.width, img.height));
@@ -61,9 +60,6 @@ function comprimirImagen(file: File): Promise<{ base64: string; mediaType: strin
   });
 }
 
-// Nunca dejar que "Subiendo..." quede colgado para siempre: si algo se
-// cuelga (conexión cortada, un callback que nunca dispara, etc.) esto
-// fuerza el error a los TIMEOUT_MS en vez de esperar indefinidamente.
 const TIMEOUT_MS = 45000;
 
 function conTimeout<T>(promesa: Promise<T>, mensaje: string): Promise<T> {
@@ -88,20 +84,9 @@ function fmtFecha(v: string) {
   return d.toLocaleString("es-AR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
 
-type Modo = "foto" | "video" | "galeria";
-type PasoCarga = "cerrado" | "categoria" | "modo";
+const ETIQUETA_MODO: Record<Modo, string> = { foto: "Cámara", video: "Video", galeria: "Galería" };
 
-export default function ImagenesVideosPanel({
-  donanteId,
-  onElegirLaboratorio,
-}: {
-  donanteId: string;
-  // Si se pasa, elegir "Laboratorio" en el selector dispara esto en vez
-  // de abrir el flujo de archivo-sin-IA de acá (un solo botón "Agregar
-  // estudio", pero adentro decide: Laboratorio va al flujo con IA de
-  // LaboratorioPanel por ref; el resto sigue siendo archivo simple).
-  onElegirLaboratorio?: () => void;
-}) {
+export default function ImagenesVideosPanel({ donanteId }: { donanteId: string }) {
   const camaraFotoInputRef = useRef<HTMLInputElement>(null);
   const camaraVideoInputRef = useRef<HTMLInputElement>(null);
   const galeriaInputRef = useRef<HTMLInputElement>(null);
@@ -110,22 +95,9 @@ export default function ImagenesVideosPanel({
   const [estudios, setEstudios] = useState<EstudioImagenRow[]>([]);
   const [cargado, setCargado] = useState(false);
   const [categoriaActiva, setCategoriaActiva] = useState<TipoEstudio | null>(null);
-  const [procesandoEstudio, setProcesandoEstudio] = useState(false);
-  const [errorEstudio, setErrorEstudio] = useState<string | null>(null);
+  const [procesando, setProcesando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [visorAbierto, setVisorAbierto] = useState<EstudioImagenRow | null>(null);
-  const [confirmarAlAbrir, setConfirmarAlAbrir] = useState(false);
-
-  // Selección múltiple entre categorías, para compartir/exportar en
-  // lote -- mismo patrón que TimelineEstudios en PASE.
-  const [modoSeleccion, setModoSeleccion] = useState(false);
-  const [seleccionados, setSeleccionados] = useState<Set<string>>(new Set());
-  const [compartiendoLote, setCompartiendoLote] = useState(false);
-  const [errorCompartirLote, setErrorCompartirLote] = useState<string | null>(null);
-
-  // Punto único de carga (punto 3 del rediseño): paso 1 elige categoría,
-  // paso 2 -- recién ahí -- elige Cámara/Video/Galería.
-  const [pasoCarga, setPasoCarga] = useState<PasoCarga>("cerrado");
-  const [categoriaParaCarga, setCategoriaParaCarga] = useState<TipoEstudio | null>(null);
 
   useEffect(() => {
     let vivo = true;
@@ -143,8 +115,7 @@ export default function ImagenesVideosPanel({
   // Las subidas de video corren en SubidasVideoProvider (layout.tsx),
   // fuera de este panel -- acá solo se escucha cuándo una de ESTE
   // donante terminó, para refrescar la lista y sacarla del indicador
-  // global (las que quedan en error se ven ahí para reintentar/
-  // descartar a mano; ver subidas-video-indicator.tsx).
+  // global.
   useEffect(() => {
     const listas = Object.values(subidas).filter((s) => s.donanteId === donanteId && s.etapa === "listo");
     if (listas.length === 0) return;
@@ -154,41 +125,16 @@ export default function ImagenesVideosPanel({
     })();
   }, [subidas, donanteId, descartarSubidaVideo]);
 
-  function elegirCategoriaParaCarga(tipo: TipoEstudio) {
-    if (tipo === "Laboratorio" && onElegirLaboratorio) {
-      setPasoCarga("cerrado");
-      onElegirLaboratorio();
-      return;
-    }
-    setCategoriaParaCarga(tipo);
-    setPasoCarga("modo");
-  }
-
-  function abrirParaBorrar(estudio: EstudioImagenRow) {
-    setVisorAbierto(estudio);
-    setConfirmarAlAbrir(true);
-  }
-
-  // Dispara la carga directo a una categoría ya conocida -- usado tanto
-  // por el paso 2 del selector (categoriaParaCarga) como por el "+" de
-  // una tarjeta que ya tiene contenido (agregar otro sin volver a elegir
-  // categoría desde cero, ver TarjetaCategoria).
-  function iniciarCargaDirecta(tipo: TipoEstudio, modo: Modo) {
+  function iniciarCarga(tipo: TipoEstudio, modo: Modo) {
     setCategoriaActiva(tipo);
     if (modo === "foto") camaraFotoInputRef.current?.click();
     else if (modo === "video") camaraVideoInputRef.current?.click();
     else galeriaInputRef.current?.click();
   }
 
-  function elegirModoParaCarga(modo: Modo) {
-    if (!categoriaParaCarga) return;
-    setPasoCarga("cerrado");
-    iniciarCargaDirecta(categoriaParaCarga, modo);
-  }
-
-  // Solo fotos -- el video ya no pasa por acá, ver handleEstudioFile.
-  // Tira si algo falla; separado para poder envolverlo en conTimeout()
-  // sin mezclar el manejo de estado (procesando/error) con la subida.
+  // Solo fotos -- el video se dispara y se suelta en SubidasVideoProvider
+  // (ver handleEstudioFile). Tira si algo falla; separado para poder
+  // envolverlo en conTimeout() sin mezclar con el manejo de estado.
   async function subirFoto(file: File, tipoEstudio: TipoEstudio): Promise<void> {
     const comprimida = await comprimirImagen(file);
     const uploadBody = Uint8Array.from(atob(comprimida.base64), (c) => c.charCodeAt(0));
@@ -214,18 +160,12 @@ export default function ImagenesVideosPanel({
 
   async function handleEstudioFile(file: File, esVideo: boolean, esDeCamara: boolean) {
     const tipoEstudio = categoriaActiva;
-    setErrorEstudio(null);
+    setError(null);
     if (!tipoEstudio) return;
 
-    // Video: se dispara y se suelta -- comprime+sube en segundo plano en
-    // SubidasVideoProvider (layout.tsx), sin bloquear este panel ni
-    // depender de que siga montado (el procurador puede cambiar de
-    // donante mientras tanto). Progreso real y reintentar/descartar
-    // manual desde el indicador global; sin cola offline -- si no hay
-    // señal, termina en error ahí, no en silencio.
     if (esVideo) {
       if (file.size > MAX_VIDEO_BYTES) {
-        setErrorEstudio("El video pesa más de 100MB — grabá un clip más corto.");
+        setError("El video pesa más de 100MB — grabá un clip más corto.");
       } else {
         iniciarSubidaVideo({
           donanteId,
@@ -236,14 +176,13 @@ export default function ImagenesVideosPanel({
         });
       }
       setCategoriaActiva(null);
-      setCategoriaParaCarga(null);
       if (camaraFotoInputRef.current) camaraFotoInputRef.current.value = "";
       if (camaraVideoInputRef.current) camaraVideoInputRef.current.value = "";
       if (galeriaInputRef.current) galeriaInputRef.current.value = "";
       return;
     }
 
-    setProcesandoEstudio(true);
+    setProcesando(true);
     try {
       await conTimeout(
         subirFoto(file, tipoEstudio),
@@ -252,50 +191,20 @@ export default function ImagenesVideosPanel({
       setEstudios(await cargarEstudiosImagenes(supabase, donanteId));
     } catch (e) {
       console.error("[ImagenesVideosPanel] Error al cargar estudio:", e);
-      setErrorEstudio(e instanceof Error ? e.message : "Error inesperado al procesar el archivo.");
+      setError(e instanceof Error ? e.message : "Error inesperado al procesar el archivo.");
     } finally {
-      setProcesandoEstudio(false);
+      setProcesando(false);
       setCategoriaActiva(null);
-      setCategoriaParaCarga(null);
       if (camaraFotoInputRef.current) camaraFotoInputRef.current.value = "";
       if (camaraVideoInputRef.current) camaraVideoInputRef.current.value = "";
       if (galeriaInputRef.current) galeriaInputRef.current.value = "";
     }
   }
 
-  function alternarSeleccion(estudioId: string) {
-    setSeleccionados((prev) => {
-      const nuevo = new Set(prev);
-      if (nuevo.has(estudioId)) nuevo.delete(estudioId);
-      else nuevo.add(estudioId);
-      return nuevo;
-    });
-  }
-
-  function cancelarSeleccion() {
-    setModoSeleccion(false);
-    setSeleccionados(new Set());
-    setErrorCompartirLote(null);
-  }
-
-  async function compartirSeleccionados() {
-    const elegidos = estudios.filter((e) => seleccionados.has(e.id));
-    if (elegidos.length === 0) return;
-    setCompartiendoLote(true);
-    setErrorCompartirLote(null);
-    const resultado = await compartirEstudios(elegidos);
-    setCompartiendoLote(false);
-    if (!resultado.ok) {
-      setErrorCompartirLote(resultado.error);
-      return;
-    }
-    cancelarSeleccion();
-  }
-
-  async function handleBorrar(estudio: EstudioImagenRow) {
+  async function handleBorrar(estudio: EstudioImagenRow): Promise<boolean> {
     const resultado = await borrarEstudioImagen(supabase, estudio);
     if (!resultado.ok) {
-      setErrorEstudio(`No se pudo borrar: ${resultado.error}`);
+      setError(`No se pudo borrar: ${resultado.error}`);
       return false;
     }
     setEstudios((prev) => prev.filter((e) => e.id !== estudio.id));
@@ -331,6 +240,9 @@ export default function ImagenesVideosPanel({
           if (f) handleEstudioFile(f, true, true);
         }}
       />
+      {/* Galería: sin "capture" -- accept mixto solo es seguro acá (si
+          se mezcla con capture, varios navegadores móviles ignoran la
+          cámara y muestran el picker genérico de todos modos). */}
       <input
         ref={galeriaInputRef}
         type="file"
@@ -342,77 +254,26 @@ export default function ImagenesVideosPanel({
         }}
       />
 
-      <button
-        className="btn btn-accent"
-        style={{ width: "100%", marginBottom: 12 }}
-        disabled={procesandoEstudio}
-        onClick={() => setPasoCarga("categoria")}
-      >
-        {procesandoEstudio ? "Subiendo…" : "Agregar estudio"}
-      </button>
-
-      {errorEstudio && (
+      {error && (
         <div className="tiny" style={{ color: "var(--red)", marginBottom: 8 }}>
-          {errorEstudio}
+          {error}
+        </div>
+      )}
+      {procesando && (
+        <div className="tiny" style={{ marginBottom: 8 }}>
+          Subiendo…
         </div>
       )}
 
-      {estudios.length > 0 && (
-        <div style={{ marginBottom: 10 }}>
-          {!modoSeleccion ? (
-            <button
-              type="button"
-              onClick={() => setModoSeleccion(true)}
-              className="tiny"
-              style={{ background: "none", border: "none", cursor: "pointer", color: "var(--accent)", padding: 0 }}
-            >
-              Seleccionar
-            </button>
-          ) : (
-            <>
-              <p className="tiny" style={{ marginBottom: 6 }}>
-                {seleccionados.size === 0
-                  ? "Elegí uno o más estudios, de cualquier categoría"
-                  : `${seleccionados.size} seleccionado${seleccionados.size === 1 ? "" : "s"}`}
-              </p>
-              <button
-                className="btn btn-accent"
-                style={{ width: "100%", marginBottom: 6 }}
-                disabled={seleccionados.size === 0 || compartiendoLote}
-                onClick={compartirSeleccionados}
-              >
-                {compartiendoLote ? "Compartiendo…" : `Compartir${seleccionados.size > 0 ? ` (${seleccionados.size})` : ""}`}
-              </button>
-              <button
-                type="button"
-                onClick={cancelarSeleccion}
-                disabled={compartiendoLote}
-                className="chip chip-gray"
-                style={{ width: "100%", border: "none", cursor: "pointer" }}
-              >
-                Cancelar
-              </button>
-              {errorCompartirLote && (
-                <div className="tiny" style={{ color: "var(--red)", marginTop: 6 }}>
-                  {errorCompartirLote}
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      )}
-
-      {TIPOS_ESTUDIO_INFO.filter((info) => info.valor !== "Laboratorio").map((info) => (
-        <TarjetaCategoria
+      {TIPOS_ESTUDIO_INFO.map((info) => (
+        <FilaCategoria
           key={info.valor}
           info={info}
           estudios={porTipo.get(info.valor) ?? []}
+          bloqueado={procesando}
+          onElegirModo={(modo) => iniciarCarga(info.valor, modo)}
           onAbrir={setVisorAbierto}
-          onBorrar={abrirParaBorrar}
-          onAgregarDirecto={(modo) => iniciarCargaDirecta(info.valor, modo)}
-          modoSeleccion={modoSeleccion}
-          seleccionados={seleccionados}
-          onAlternarSeleccion={alternarSeleccion}
+          onBorrar={handleBorrar}
         />
       ))}
 
@@ -422,451 +283,215 @@ export default function ImagenesVideosPanel({
         </div>
       )}
 
-      {pasoCarga === "categoria" && (
-        <SelectorCarga titulo="¿Qué vas a subir?" onCerrar={() => setPasoCarga("cerrado")}>
-          {TIPOS_ESTUDIO_INFO.map((info) => (
+      {visorAbierto && (
+        <Visor estudio={visorAbierto} onCerrar={() => setVisorAbierto(null)} onBorrar={handleBorrar} />
+      )}
+    </div>
+  );
+}
+
+function FilaCategoria({
+  info,
+  estudios,
+  bloqueado,
+  onElegirModo,
+  onAbrir,
+  onBorrar,
+}: {
+  info: { valor: TipoEstudio; etiqueta: string; nota?: string; modos: Modo[] };
+  estudios: EstudioImagenRow[];
+  bloqueado: boolean;
+  onElegirModo: (modo: Modo) => void;
+  onAbrir: (estudio: EstudioImagenRow) => void;
+  onBorrar: (estudio: EstudioImagenRow) => Promise<boolean>;
+}) {
+  const [abierto, setAbierto] = useState(false);
+
+  return (
+    <div style={{ paddingBottom: 10, marginBottom: 10, borderBottom: "1px solid var(--border-soft)" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+        <span style={{ fontWeight: 600, fontSize: 13 }}>{info.etiqueta}</span>
+        <button
+          type="button"
+          onClick={() => setAbierto((v) => !v)}
+          disabled={bloqueado}
+          className="chip chip-gray"
+          style={{ border: "none", cursor: "pointer", flexShrink: 0 }}
+        >
+          Subir
+        </button>
+      </div>
+
+      {info.nota && (
+        <div className="tiny" style={{ color: "var(--amber, #b45309)", marginTop: 2 }}>
+          {info.nota}
+        </div>
+      )}
+
+      {abierto && (
+        <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+          {info.modos.map((modo) => (
             <button
-              key={info.valor}
+              key={modo}
               type="button"
-              onClick={() => elegirCategoriaParaCarga(info.valor)}
-              style={{
-                display: "block",
-                width: "100%",
-                textAlign: "left",
-                border: "1px solid var(--border-soft)",
-                background: "var(--bg-elev, #181f27)",
-                borderRadius: 10,
-                cursor: "pointer",
-                padding: "10px 12px",
-                whiteSpace: "normal",
-                wordBreak: "break-word",
-                overflowWrap: "break-word",
+              onClick={() => {
+                setAbierto(false);
+                onElegirModo(modo);
               }}
+              className="tiny"
+              style={{ background: "none", border: "1px solid var(--border-soft)", borderRadius: 6, cursor: "pointer", padding: "4px 8px" }}
             >
-              {info.etiqueta}
-              {info.nota && (
-                <div
-                  className="tiny"
-                  style={{ color: "var(--amber, #b45309)", marginTop: 2, whiteSpace: "normal", wordBreak: "break-word" }}
-                >
-                  {info.nota}
-                </div>
-              )}
+              {ETIQUETA_MODO[modo]}
             </button>
           ))}
-        </SelectorCarga>
-      )}
-
-      {pasoCarga === "modo" && categoriaParaCarga && (
-        <SelectorCarga
-          titulo={TIPOS_ESTUDIO_INFO.find((i) => i.valor === categoriaParaCarga)?.etiqueta ?? ""}
-          onCerrar={() => setPasoCarga("cerrado")}
-          onVolver={() => setPasoCarga("categoria")}
-        >
-          <div style={{ display: "flex", gap: 8 }}>
-            <button className="btn btn-accent" style={{ flex: 1 }} onClick={() => elegirModoParaCarga("foto")}>
-              Cámara
-            </button>
-            <button className="btn btn-accent" style={{ flex: 1 }} onClick={() => elegirModoParaCarga("video")}>
-              Video
-            </button>
-            <button className="btn btn-accent" style={{ flex: 1 }} onClick={() => elegirModoParaCarga("galeria")}>
-              Galería
-            </button>
-          </div>
-        </SelectorCarga>
-      )}
-
-      {visorAbierto && (
-        <VisorEstudio
-          key={visorAbierto.id}
-          estudio={visorAbierto}
-          confirmarInicial={confirmarAlAbrir}
-          onCerrar={() => {
-            setVisorAbierto(null);
-            setConfirmarAlAbrir(false);
-          }}
-          onBorrar={handleBorrar}
-        />
-      )}
-    </div>
-  );
-}
-
-function SelectorCarga({
-  titulo,
-  onCerrar,
-  onVolver,
-  children,
-}: {
-  titulo: string;
-  onCerrar: () => void;
-  onVolver?: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 40,
-        display: "flex",
-        alignItems: "flex-end",
-        justifyContent: "center",
-        background: "rgba(0,0,0,0.6)",
-        padding: 16,
-      }}
-    >
-      <div
-        style={{
-          width: "100%",
-          maxWidth: 420,
-          borderRadius: 16,
-          background: "var(--bg, #111)",
-          border: "1px solid var(--border-soft)",
-          padding: 16,
-        }}
-      >
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-          <p style={{ fontSize: 14, fontWeight: 600 }}>{titulo}</p>
-          <button
-            type="button"
-            onClick={onCerrar}
-            style={{ background: "none", border: "none", cursor: "pointer", fontSize: 16, padding: 4 }}
-            aria-label="Cerrar"
-          >
-            ✕
-          </button>
         </div>
+      )}
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>{children}</div>
-
-        {onVolver && (
-          <button
-            type="button"
-            onClick={onVolver}
-            className="tiny"
-            style={{ background: "none", border: "none", cursor: "pointer", marginTop: 10, padding: 0, color: "var(--accent)" }}
-          >
-            ← Elegir otra categoría
-          </button>
-        )}
-      </div>
+      {estudios.length === 0 ? (
+        <p className="tiny" style={{ marginTop: 6 }}>
+          Sin cargas.
+        </p>
+      ) : (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
+          {estudios.map((e) => (
+            <Miniatura key={e.id} estudio={e} onAbrir={() => onAbrir(e)} onBorrar={() => onBorrar(e)} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
-function MarcaSeleccion({ seleccionado }: { seleccionado: boolean }) {
-  return (
-    <span
-      style={{
-        position: "absolute",
-        top: 4,
-        right: 4,
-        width: 18,
-        height: 18,
-        borderRadius: "50%",
-        border: "2px solid #fff",
-        background: seleccionado ? "var(--accent)" : "rgba(0,0,0,0.35)",
-        color: "#fff",
-        fontSize: 11,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        lineHeight: 1,
-      }}
-    >
-      {seleccionado ? "✓" : ""}
-    </span>
-  );
-}
-
-function MiniaturaChica({
+function Miniatura({
   estudio,
   onAbrir,
   onBorrar,
-  modoSeleccion,
-  seleccionado,
-  onAlternarSeleccion,
 }: {
   estudio: EstudioImagenRow;
   onAbrir: () => void;
-  onBorrar: () => void;
-  modoSeleccion: boolean;
-  seleccionado: boolean;
-  onAlternarSeleccion: () => void;
+  onBorrar: () => Promise<boolean>;
 }) {
   const [posterFallo, setPosterFallo] = useState(false);
-  const srcMiniatura = estudio.archivo_tipo === "video" ? rutaMiniaturaVideo(estudio.archivo_url) : estudio.archivo_url;
+  const [confirmando, setConfirmando] = useState(false);
+  const [borrando, setBorrando] = useState(false);
+  const src = estudio.archivo_tipo === "video" ? rutaMiniaturaVideo(estudio.archivo_url) : estudio.archivo_url;
+
+  async function confirmar() {
+    setBorrando(true);
+    await onBorrar();
+    setBorrando(false);
+  }
 
   return (
-    <div style={{ flex: "0 0 auto", width: 64 }}>
+    <div style={{ position: "relative", width: 44, height: 44 }}>
       <button
         type="button"
-        onClick={modoSeleccion ? onAlternarSeleccion : onAbrir}
+        onClick={onAbrir}
         style={{
           display: "block",
-          width: 64,
-          height: 64,
-          borderRadius: 10,
+          width: 44,
+          height: 44,
+          borderRadius: 6,
           overflow: "hidden",
-          border: BORDE_MINIATURA,
+          border: "1px solid #4a5b70",
           padding: 0,
           background: "var(--border-soft)",
-          position: "relative",
         }}
       >
-        {modoSeleccion && <MarcaSeleccion seleccionado={seleccionado} />}
         {!posterFallo ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={srcMiniatura}
+            src={src}
             alt=""
             onError={() => setPosterFallo(true)}
             style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
           />
         ) : (
           <div className="tiny" style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%" }}>
-            {estudio.archivo_tipo === "video" ? "Video" : "—"}
+            {estudio.archivo_tipo === "video" ? "▶" : "—"}
           </div>
         )}
       </button>
-      {!modoSeleccion && (
+
+      {!confirmando ? (
         <button
           type="button"
-          onClick={onBorrar}
+          onClick={() => setConfirmando(true)}
           aria-label="Eliminar"
           style={{
-            display: "block",
-            width: "100%",
-            marginTop: 4,
-            background: "none",
-            border: "none",
-            color: "var(--text-dim, #8e99a6)",
-            fontSize: 10,
+            position: "absolute",
+            top: -5,
+            right: -5,
+            width: 16,
+            height: 16,
+            borderRadius: "50%",
+            background: "rgba(0,0,0,0.65)",
+            color: "#fff",
+            border: "1px solid #fff",
+            fontSize: 9,
+            lineHeight: 1,
             cursor: "pointer",
             padding: 0,
-            textAlign: "center",
           }}
         >
-          Eliminar
+          ✕
         </button>
-      )}
-    </div>
-  );
-}
-
-// Tile "+" al final del carrusel de una categoría que ya tiene contenido
-// -- agrega otro archivo a ESA categoría sin volver a pasar por "¿Qué
-// vas a subir?" (punto 3 del ajuste: antes no existía, era un paso
-// atrás respecto del pedido original de este carrusel).
-function TileAgregar({ onElegir }: { onElegir: (modo: Modo) => void }) {
-  const [abierto, setAbierto] = useState(false);
-
-  if (!abierto) {
-    return (
-      <button
-        type="button"
-        onClick={() => setAbierto(true)}
-        aria-label="Agregar otro a esta categoría"
-        style={{
-          flex: "0 0 auto",
-          width: 64,
-          height: 64,
-          borderRadius: 10,
-          border: "2px dashed var(--border-soft)",
-          background: "none",
-          color: "var(--accent)",
-          fontSize: 22,
-          cursor: "pointer",
-        }}
-      >
-        +
-      </button>
-    );
-  }
-
-  return (
-    <div
-      style={{
-        flex: "0 0 auto",
-        display: "flex",
-        gap: 4,
-        border: "1px solid var(--border-soft)",
-        borderRadius: 10,
-        padding: 4,
-        background: "var(--bg-elev, #181f27)",
-      }}
-    >
-      {(["foto", "video", "galeria"] as const).map((modo) => (
-        <button
-          key={modo}
-          type="button"
-          onClick={() => {
-            setAbierto(false);
-            onElegir(modo);
-          }}
-          className="tiny"
+      ) : (
+        <div
           style={{
-            background: "none",
+            position: "absolute",
+            top: -8,
+            left: "50%",
+            transform: "translateX(-50%)",
+            display: "flex",
+            gap: 2,
+            background: "var(--bg, #111)",
             border: "1px solid var(--border-soft)",
             borderRadius: 6,
-            cursor: "pointer",
-            padding: "4px 6px",
+            padding: 2,
             whiteSpace: "nowrap",
+            zIndex: 5,
           }}
         >
-          {modo === "foto" ? "Cámara" : modo === "video" ? "Video" : "Galería"}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function TarjetaCategoria({
-  info,
-  estudios,
-  onAbrir,
-  onBorrar,
-  onAgregarDirecto,
-  modoSeleccion,
-  seleccionados,
-  onAlternarSeleccion,
-}: {
-  info: { valor: TipoEstudio; etiqueta: string; nota?: string };
-  estudios: EstudioImagenRow[];
-  onAbrir: (estudio: EstudioImagenRow) => void;
-  onBorrar: (estudio: EstudioImagenRow) => void;
-  onAgregarDirecto: (modo: Modo) => void;
-  modoSeleccion: boolean;
-  seleccionados: Set<string>;
-  onAlternarSeleccion: (estudioId: string) => void;
-}) {
-  const carruselRef = useRef<HTMLDivElement>(null);
-  const hero = estudios.length > 0 ? estudios[estudios.length - 1] : null;
-
-  useLayoutEffect(() => {
-    const el = carruselRef.current;
-    if (el) el.scrollLeft = el.scrollWidth;
-  }, [estudios.length]);
-
-  return (
-    <div style={{ border: "1px solid var(--border-soft)", borderRadius: 12, padding: 12, marginBottom: 12 }}>
-      <div className="section-label" style={{ marginTop: 0 }}>
-        {info.etiqueta}
-      </div>
-      {info.nota && (
-        <div className="tiny" style={{ color: "var(--amber, #b45309)", marginBottom: 6 }}>
-          {info.nota}
-        </div>
-      )}
-
-      {!hero ? (
-        <p className="tiny">Sin cargas todavía.</p>
-      ) : (
-        <div>
           <button
             type="button"
-            onClick={() => (modoSeleccion ? onAlternarSeleccion(hero.id) : onAbrir(hero))}
-            style={{
-              display: "block",
-              width: "100%",
-              padding: 0,
-              border: BORDE_MINIATURA,
-              borderRadius: 10,
-              overflow: "hidden",
-              background: "none",
-              textAlign: "left",
-              position: "relative",
-            }}
+            onClick={confirmar}
+            disabled={borrando}
+            style={{ fontSize: 9, padding: "2px 5px", background: "var(--red)", color: "#fff", border: "none", borderRadius: 3, cursor: "pointer" }}
           >
-            {modoSeleccion && <MarcaSeleccion seleccionado={seleccionados.has(hero.id)} />}
-            {hero.archivo_tipo === "video" ? (
-              <video src={hero.archivo_url} controls={!modoSeleccion} style={{ width: "100%", maxHeight: 220, display: "block" }} />
-            ) : (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={hero.archivo_url}
-                alt=""
-                style={{ width: "100%", maxHeight: 220, objectFit: "cover", display: "block" }}
-              />
-            )}
+            {borrando ? "…" : "Sí"}
           </button>
-          <p className="tiny" style={{ margin: "4px 0 0" }}>
-            {fmtFecha(hero.created_at)}
-            {!modoSeleccion && (
-              <>
-                {" · "}
-                <button
-                  type="button"
-                  onClick={() => onBorrar(hero)}
-                  style={{
-                    background: "none",
-                    border: "none",
-                    color: "var(--text-dim, #8e99a6)",
-                    fontSize: 11,
-                    cursor: "pointer",
-                    padding: 0,
-                  }}
-                >
-                  Eliminar
-                </button>
-              </>
-            )}
-          </p>
-
-          <div
-            ref={carruselRef}
-            style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4, marginTop: 8, alignItems: "flex-start" }}
+          <button
+            type="button"
+            onClick={() => setConfirmando(false)}
+            disabled={borrando}
+            style={{ fontSize: 9, padding: "2px 5px", background: "none", border: "1px solid var(--border-soft)", borderRadius: 3, cursor: "pointer" }}
           >
-            {estudios.map((e) => (
-              <MiniaturaChica
-                key={e.id}
-                estudio={e}
-                onAbrir={() => onAbrir(e)}
-                onBorrar={() => onBorrar(e)}
-                modoSeleccion={modoSeleccion}
-                seleccionado={seleccionados.has(e.id)}
-                onAlternarSeleccion={() => onAlternarSeleccion(e.id)}
-              />
-            ))}
-            {!modoSeleccion && <TileAgregar onElegir={onAgregarDirecto} />}
-          </div>
+            No
+          </button>
         </div>
       )}
     </div>
   );
 }
 
-function VisorEstudio({
+function Visor({
   estudio,
-  confirmarInicial,
   onCerrar,
   onBorrar,
 }: {
   estudio: EstudioImagenRow;
-  confirmarInicial?: boolean;
   onCerrar: () => void;
   onBorrar: (estudio: EstudioImagenRow) => Promise<boolean>;
 }) {
-  const [confirmando, setConfirmando] = useState(confirmarInicial ?? false);
+  const [confirmando, setConfirmando] = useState(false);
   const [borrando, setBorrando] = useState(false);
-  const [compartiendo, setCompartiendo] = useState(false);
-  const [errorCompartir, setErrorCompartir] = useState<string | null>(null);
 
   async function confirmarBorrado() {
     setBorrando(true);
     const ok = await onBorrar(estudio);
     setBorrando(false);
     if (ok) onCerrar();
-  }
-
-  async function compartir() {
-    setCompartiendo(true);
-    setErrorCompartir(null);
-    const resultado = await compartirEstudios([estudio]);
-    setCompartiendo(false);
-    if (!resultado.ok) setErrorCompartir(resultado.error);
   }
 
   return (
@@ -913,15 +538,6 @@ function VisorEstudio({
           <img src={estudio.archivo_url} alt="" style={{ width: "100%", borderRadius: 8 }} />
         )}
 
-        <button type="button" className="btn btn-accent" style={{ width: "100%", marginTop: 12 }} disabled={compartiendo} onClick={compartir}>
-          {compartiendo ? "Compartiendo…" : "Compartir"}
-        </button>
-        {errorCompartir && (
-          <div className="tiny" style={{ color: "var(--red)", marginTop: 6 }}>
-            {errorCompartir}
-          </div>
-        )}
-
         {!confirmando ? (
           <button
             type="button"
@@ -939,7 +555,7 @@ function VisorEstudio({
             Eliminar
           </button>
         ) : (
-          <div style={{ marginTop: 12 }}>
+          <div style={{ marginTop: 10 }}>
             <p className="tiny">¿Seguro que querés borrar este archivo? No se puede deshacer.</p>
             <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
               <button

@@ -37,7 +37,6 @@ import RecomendacionesComMuerte from "./recomendaciones-com-muerte";
 import ComDonacionPanel from "./com-donacion-panel";
 import ComDonacionRealizada from "./com-donacion-realizada";
 import FamiliarContactoPanel from "./familiar-contacto-panel";
-import LaboratorioPanel, { type LaboratorioPanelHandle } from "./laboratorio-panel";
 import ImagenesVideosPanel from "./imagenes-videos-panel";
 import DocumentosPanel from "./documentos-panel";
 import NuevoDonante from "./nuevo-donante";
@@ -53,10 +52,6 @@ type StageData =
   | { kind: "organos"; loading: boolean; organos?: OrganoRow[] };
 
 export default function Home() {
-  // Un solo botón "Agregar estudio" (vive en ImagenesVideosPanel): si se
-  // elige la categoría "Laboratorio", dispara esto por ref en vez de
-  // abrir su propio flujo sin IA.
-  const laboratorioRef = useRef<LaboratorioPanelHandle>(null);
   const [donantes, setDonantes] = useState<Donante[] | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [donante, setDonante] = useState<Donante | null>(null);
@@ -647,17 +642,7 @@ export default function Home() {
                           </>
                         )}
 
-                        {s.key === "labImagenes" && donante && (
-                          <>
-                            <ImagenesVideosPanel
-                              donanteId={donante.id}
-                              onElegirLaboratorio={() => laboratorioRef.current?.abrirCarga()}
-                            />
-                            <div style={{ marginTop: 18 }}>
-                              <LaboratorioPanel ref={laboratorioRef} donanteId={donante.id} />
-                            </div>
-                          </>
-                        )}
+                        {s.key === "labImagenes" && donante && <ImagenesVideosPanel donanteId={donante.id} />}
 
                         {data?.kind === "organos" && !data.loading && data.organos && (
                           <>
