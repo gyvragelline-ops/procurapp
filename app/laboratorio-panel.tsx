@@ -383,6 +383,9 @@ export default function LaboratorioPanel({ donanteId }: { donanteId: string }) {
         </div>
       )}
 
+      <div className="section-label" style={{ marginTop: 0 }}>
+        Laboratorio
+      </div>
       <div style={{ marginBottom: 14 }}>
           {cargado && cargas.length === 0 && (
             <div className="tiny" style={{ marginBottom: 8 }}>

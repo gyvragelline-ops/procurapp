@@ -105,6 +105,13 @@ export default function ImagenesVideosPanel({ donanteId }: { donanteId: string }
   const [visorAbierto, setVisorAbierto] = useState<EstudioImagenRow | null>(null);
   const [confirmarAlAbrir, setConfirmarAlAbrir] = useState(false);
 
+  // Selección múltiple entre categorías, para compartir/exportar en
+  // lote -- mismo patrón que TimelineEstudios en PASE.
+  const [modoSeleccion, setModoSeleccion] = useState(false);
+  const [seleccionados, setSeleccionados] = useState<Set<string>>(new Set());
+  const [compartiendoLote, setCompartiendoLote] = useState(false);
+  const [errorCompartirLote, setErrorCompartirLote] = useState<string | null>(null);
+
   // Punto único de carga (punto 3 del rediseño): paso 1 elige categoría,
   // paso 2 -- recién ahí -- elige Cámara/Video/Galería.
   const [pasoCarga, setPasoCarga] = useState<PasoCarga>("cerrado");
@@ -241,6 +248,35 @@ export default function ImagenesVideosPanel({ donanteId }: { donanteId: string }
     }
   }
 
+  function alternarSeleccion(estudioId: string) {
+    setSeleccionados((prev) => {
+      const nuevo = new Set(prev);
+      if (nuevo.has(estudioId)) nuevo.delete(estudioId);
+      else nuevo.add(estudioId);
+      return nuevo;
+    });
+  }
+
+  function cancelarSeleccion() {
+    setModoSeleccion(false);
+    setSeleccionados(new Set());
+    setErrorCompartirLote(null);
+  }
+
+  async function compartirSeleccionados() {
+    const elegidos = estudios.filter((e) => seleccionados.has(e.id));
+    if (elegidos.length === 0) return;
+    setCompartiendoLote(true);
+    setErrorCompartirLote(null);
+    const resultado = await compartirEstudios(elegidos);
+    setCompartiendoLote(false);
+    if (!resultado.ok) {
+      setErrorCompartirLote(resultado.error);
+      return;
+    }
+    cancelarSeleccion();
+  }
+
   async function handleBorrar(estudio: EstudioImagenRow) {
     const resultado = await borrarEstudioImagen(supabase, estudio);
     if (!resultado.ok) {
@@ -306,6 +342,51 @@ export default function ImagenesVideosPanel({ donanteId }: { donanteId: string }
         </div>
       )}
 
+      {estudios.length > 0 && (
+        <div style={{ marginBottom: 10 }}>
+          {!modoSeleccion ? (
+            <button
+              type="button"
+              onClick={() => setModoSeleccion(true)}
+              className="tiny"
+              style={{ background: "none", border: "none", cursor: "pointer", color: "var(--accent)", padding: 0 }}
+            >
+              Seleccionar
+            </button>
+          ) : (
+            <>
+              <p className="tiny" style={{ marginBottom: 6 }}>
+                {seleccionados.size === 0
+                  ? "Elegí uno o más estudios, de cualquier categoría"
+                  : `${seleccionados.size} seleccionado${seleccionados.size === 1 ? "" : "s"}`}
+              </p>
+              <button
+                className="btn btn-accent"
+                style={{ width: "100%", marginBottom: 6 }}
+                disabled={seleccionados.size === 0 || compartiendoLote}
+                onClick={compartirSeleccionados}
+              >
+                {compartiendoLote ? "Compartiendo…" : `Compartir${seleccionados.size > 0 ? ` (${seleccionados.size})` : ""}`}
+              </button>
+              <button
+                type="button"
+                onClick={cancelarSeleccion}
+                disabled={compartiendoLote}
+                className="chip chip-gray"
+                style={{ width: "100%", border: "none", cursor: "pointer" }}
+              >
+                Cancelar
+              </button>
+              {errorCompartirLote && (
+                <div className="tiny" style={{ color: "var(--red)", marginTop: 6 }}>
+                  {errorCompartirLote}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
       {TIPOS_ESTUDIO_INFO.map((info) => (
         <TarjetaCategoria
           key={info.valor}
@@ -314,6 +395,9 @@ export default function ImagenesVideosPanel({ donanteId }: { donanteId: string }
           onAbrir={setVisorAbierto}
           onBorrar={abrirParaBorrar}
           onAgregarDirecto={(modo) => iniciarCargaDirecta(info.valor, modo)}
+          modoSeleccion={modoSeleccion}
+          seleccionados={seleccionados}
+          onAlternarSeleccion={alternarSeleccion}
         />
       ))}
 
@@ -457,14 +541,45 @@ function SelectorCarga({
   );
 }
 
+function MarcaSeleccion({ seleccionado }: { seleccionado: boolean }) {
+  return (
+    <span
+      style={{
+        position: "absolute",
+        top: 4,
+        right: 4,
+        width: 18,
+        height: 18,
+        borderRadius: "50%",
+        border: "2px solid #fff",
+        background: seleccionado ? "var(--accent)" : "rgba(0,0,0,0.35)",
+        color: "#fff",
+        fontSize: 11,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        lineHeight: 1,
+      }}
+    >
+      {seleccionado ? "✓" : ""}
+    </span>
+  );
+}
+
 function MiniaturaChica({
   estudio,
   onAbrir,
   onBorrar,
+  modoSeleccion,
+  seleccionado,
+  onAlternarSeleccion,
 }: {
   estudio: EstudioImagenRow;
   onAbrir: () => void;
   onBorrar: () => void;
+  modoSeleccion: boolean;
+  seleccionado: boolean;
+  onAlternarSeleccion: () => void;
 }) {
   const [posterFallo, setPosterFallo] = useState(false);
   const srcMiniatura = estudio.archivo_tipo === "video" ? rutaMiniaturaVideo(estudio.archivo_url) : estudio.archivo_url;
@@ -473,7 +588,7 @@ function MiniaturaChica({
     <div style={{ flex: "0 0 auto", width: 64 }}>
       <button
         type="button"
-        onClick={onAbrir}
+        onClick={modoSeleccion ? onAlternarSeleccion : onAbrir}
         style={{
           display: "block",
           width: 64,
@@ -483,8 +598,10 @@ function MiniaturaChica({
           border: BORDE_MINIATURA,
           padding: 0,
           background: "var(--border-soft)",
+          position: "relative",
         }}
       >
+        {modoSeleccion && <MarcaSeleccion seleccionado={seleccionado} />}
         {!posterFallo ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
@@ -499,25 +616,27 @@ function MiniaturaChica({
           </div>
         )}
       </button>
-      <button
-        type="button"
-        onClick={onBorrar}
-        aria-label="Eliminar"
-        style={{
-          display: "block",
-          width: "100%",
-          marginTop: 4,
-          background: "none",
-          border: "none",
-          color: "var(--text-dim, #8e99a6)",
-          fontSize: 10,
-          cursor: "pointer",
-          padding: 0,
-          textAlign: "center",
-        }}
-      >
-        Eliminar
-      </button>
+      {!modoSeleccion && (
+        <button
+          type="button"
+          onClick={onBorrar}
+          aria-label="Eliminar"
+          style={{
+            display: "block",
+            width: "100%",
+            marginTop: 4,
+            background: "none",
+            border: "none",
+            color: "var(--text-dim, #8e99a6)",
+            fontSize: 10,
+            cursor: "pointer",
+            padding: 0,
+            textAlign: "center",
+          }}
+        >
+          Eliminar
+        </button>
+      )}
     </div>
   );
 }
@@ -595,12 +714,18 @@ function TarjetaCategoria({
   onAbrir,
   onBorrar,
   onAgregarDirecto,
+  modoSeleccion,
+  seleccionados,
+  onAlternarSeleccion,
 }: {
   info: { valor: TipoEstudio; etiqueta: string; nota?: string };
   estudios: EstudioImagenRow[];
   onAbrir: (estudio: EstudioImagenRow) => void;
   onBorrar: (estudio: EstudioImagenRow) => void;
   onAgregarDirecto: (modo: Modo) => void;
+  modoSeleccion: boolean;
+  seleccionados: Set<string>;
+  onAlternarSeleccion: (estudioId: string) => void;
 }) {
   const carruselRef = useRef<HTMLDivElement>(null);
   const hero = estudios.length > 0 ? estudios[estudios.length - 1] : null;
@@ -627,7 +752,7 @@ function TarjetaCategoria({
         <div>
           <button
             type="button"
-            onClick={() => onAbrir(hero)}
+            onClick={() => (modoSeleccion ? onAlternarSeleccion(hero.id) : onAbrir(hero))}
             style={{
               display: "block",
               width: "100%",
@@ -637,10 +762,12 @@ function TarjetaCategoria({
               overflow: "hidden",
               background: "none",
               textAlign: "left",
+              position: "relative",
             }}
           >
+            {modoSeleccion && <MarcaSeleccion seleccionado={seleccionados.has(hero.id)} />}
             {hero.archivo_tipo === "video" ? (
-              <video src={hero.archivo_url} controls style={{ width: "100%", maxHeight: 220, display: "block" }} />
+              <video src={hero.archivo_url} controls={!modoSeleccion} style={{ width: "100%", maxHeight: 220, display: "block" }} />
             ) : (
               // eslint-disable-next-line @next/next/no-img-element
               <img
@@ -652,21 +779,25 @@ function TarjetaCategoria({
           </button>
           <p className="tiny" style={{ margin: "4px 0 0" }}>
             {fmtFecha(hero.created_at)}
-            {" · "}
-            <button
-              type="button"
-              onClick={() => onBorrar(hero)}
-              style={{
-                background: "none",
-                border: "none",
-                color: "var(--text-dim, #8e99a6)",
-                fontSize: 11,
-                cursor: "pointer",
-                padding: 0,
-              }}
-            >
-              Eliminar
-            </button>
+            {!modoSeleccion && (
+              <>
+                {" · "}
+                <button
+                  type="button"
+                  onClick={() => onBorrar(hero)}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: "var(--text-dim, #8e99a6)",
+                    fontSize: 11,
+                    cursor: "pointer",
+                    padding: 0,
+                  }}
+                >
+                  Eliminar
+                </button>
+              </>
+            )}
           </p>
 
           <div
@@ -674,9 +805,17 @@ function TarjetaCategoria({
             style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4, marginTop: 8, alignItems: "flex-start" }}
           >
             {estudios.map((e) => (
-              <MiniaturaChica key={e.id} estudio={e} onAbrir={() => onAbrir(e)} onBorrar={() => onBorrar(e)} />
+              <MiniaturaChica
+                key={e.id}
+                estudio={e}
+                onAbrir={() => onAbrir(e)}
+                onBorrar={() => onBorrar(e)}
+                modoSeleccion={modoSeleccion}
+                seleccionado={seleccionados.has(e.id)}
+                onAlternarSeleccion={() => onAlternarSeleccion(e.id)}
+              />
             ))}
-            <TileAgregar onElegir={onAgregarDirecto} />
+            {!modoSeleccion && <TileAgregar onElegir={onAgregarDirecto} />}
           </div>
         </div>
       )}
