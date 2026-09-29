@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
   actualizarItemDeCarga,
@@ -114,7 +114,12 @@ const inputStyle: React.CSSProperties = {
 
 type ItemPendiente = ValorExtraido;
 
-export default function LaboratorioPanel({ donanteId }: { donanteId: string }) {
+export type LaboratorioPanelHandle = { abrirCarga: () => void };
+
+const LaboratorioPanel = forwardRef<LaboratorioPanelHandle, { donanteId: string }>(function LaboratorioPanel(
+  { donanteId },
+  ref
+) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [cargado, setCargado] = useState(false);
   const [procesando, setProcesando] = useState(false);
@@ -135,6 +140,11 @@ export default function LaboratorioPanel({ donanteId }: { donanteId: string }) {
     if (procesando || pendientes !== null) return;
     fileInputRef.current?.click();
   }
+
+  // Un solo botón "Agregar estudio" en ImagenesVideosPanel: elegir
+  // "Laboratorio" ahí dispara esto por ref, en vez de tener un botón
+  // propio acá (redundante con ese, y los dos abrían cámara/galería).
+  useImperativeHandle(ref, () => ({ abrirCarga }));
 
   useEffect(() => {
     let vivo = true;
@@ -386,14 +396,6 @@ export default function LaboratorioPanel({ donanteId }: { donanteId: string }) {
       <div className="section-label" style={{ marginTop: 0 }}>
         Laboratorio
       </div>
-      <button
-        className="btn btn-accent"
-        style={{ width: "100%", marginBottom: 10 }}
-        disabled={procesando || pendientes !== null}
-        onClick={abrirCarga}
-      >
-        Agregar foto de laboratorio
-      </button>
       <div style={{ marginBottom: 14 }}>
           {cargado && cargas.length === 0 && (
             <div className="tiny" style={{ marginBottom: 8 }}>
@@ -480,7 +482,9 @@ export default function LaboratorioPanel({ donanteId }: { donanteId: string }) {
       )}
     </div>
   );
-}
+});
+
+export default LaboratorioPanel;
 
 function DetalleCargaModal({
   carga,

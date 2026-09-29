@@ -91,7 +91,17 @@ function fmtFecha(v: string) {
 type Modo = "foto" | "video" | "galeria";
 type PasoCarga = "cerrado" | "categoria" | "modo";
 
-export default function ImagenesVideosPanel({ donanteId }: { donanteId: string }) {
+export default function ImagenesVideosPanel({
+  donanteId,
+  onElegirLaboratorio,
+}: {
+  donanteId: string;
+  // Si se pasa, elegir "Laboratorio" en el selector dispara esto en vez
+  // de abrir el flujo de archivo-sin-IA de acá (un solo botón "Agregar
+  // estudio", pero adentro decide: Laboratorio va al flujo con IA de
+  // LaboratorioPanel por ref; el resto sigue siendo archivo simple).
+  onElegirLaboratorio?: () => void;
+}) {
   const camaraFotoInputRef = useRef<HTMLInputElement>(null);
   const camaraVideoInputRef = useRef<HTMLInputElement>(null);
   const galeriaInputRef = useRef<HTMLInputElement>(null);
@@ -145,6 +155,11 @@ export default function ImagenesVideosPanel({ donanteId }: { donanteId: string }
   }, [subidas, donanteId, descartarSubidaVideo]);
 
   function elegirCategoriaParaCarga(tipo: TipoEstudio) {
+    if (tipo === "Laboratorio" && onElegirLaboratorio) {
+      setPasoCarga("cerrado");
+      onElegirLaboratorio();
+      return;
+    }
     setCategoriaParaCarga(tipo);
     setPasoCarga("modo");
   }
@@ -387,7 +402,7 @@ export default function ImagenesVideosPanel({ donanteId }: { donanteId: string }
         </div>
       )}
 
-      {TIPOS_ESTUDIO_INFO.map((info) => (
+      {TIPOS_ESTUDIO_INFO.filter((info) => info.valor !== "Laboratorio").map((info) => (
         <TarjetaCategoria
           key={info.valor}
           info={info}
