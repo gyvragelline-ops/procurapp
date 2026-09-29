@@ -9,6 +9,7 @@ export const STAGES_MULTIORGANICO: { key: string; label: string }[] = [
   { key: "comMuerte", label: "Comunicación de muerte" },
   { key: "comDonacion", label: "Comunicación de donación" },
   { key: "muestras", label: "Muestras" },
+  { key: "medidas", label: "Medidas antropométricas" },
   { key: "labImagenes", label: "Laboratorio e imágenes" },
   { key: "documentacion", label: "Documentación" },
   { key: "mantenimiento", label: "Mantenimiento" },
@@ -38,6 +39,7 @@ export const STRIP_STAGES_MULTIORGANICO = [
   "comMuerte",
   "comDonacion",
   "muestras",
+  "medidas",
   "labImagenes",
   "documentacion",
   "mantenimiento",
@@ -57,6 +59,7 @@ export const STRIP_LABELS: Record<string, string> = {
   comMuerte: "Fam",
   comDonacion: "Donac",
   muestras: "Mstr",
+  medidas: "Antro",
   labImagenes: "Lab",
   documentacion: "Doc",
   mantenimiento: "Mant",
@@ -267,6 +270,12 @@ export function computeComDonacionEstado(realizada: boolean): EstadoEtapa {
 // igual que comMuerte/comDonacion (no depende de cuántas categorías del
 // panel tengan archivos cargados).
 export function computeLabImagenesEstado(completo: boolean): EstadoEtapa {
+  return completo ? "green" : "gray";
+}
+
+// Sin criterio automático por ahora -- decisión manual del procurador,
+// mismo patrón que labImagenes/comMuerte/comDonacion.
+export function computeMedidasEstado(completo: boolean): EstadoEtapa {
   return completo ? "green" : "gray";
 }
 

@@ -15,6 +15,7 @@ import {
   computeComMuerteEstado,
   computeComDonacionEstado,
   computeLabImagenesEstado,
+  computeMedidasEstado,
   computeMuestrasEstado,
   stagesForTipo,
   stripStagesForTipo,
@@ -41,6 +42,8 @@ import FamiliarContactoPanel from "./familiar-contacto-panel";
 import ImagenesVideosPanel from "./imagenes-videos-panel";
 import LabImagenesCompleto from "./lab-imagenes-completo";
 import DocumentosPanel from "./documentos-panel";
+import DocumentacionFotosPanel from "./documentacion-fotos-panel";
+import MedidasPanel from "./medidas-panel";
 import NuevoDonante from "./nuevo-donante";
 
 const EMPTY_ME_CAMPOS: MeCampos = Object.fromEntries(ME_CAMPO_KEYS.map((k) => [k, null]));
@@ -67,6 +70,7 @@ export default function Home() {
   const [comMuerteRealizada, setComMuerteRealizada] = useState(false);
   const [comDonacionRealizada, setComDonacionRealizada] = useState(false);
   const [labImagenesCompleto, setLabImagenesCompleto] = useState(false);
+  const [medidasCompleto, setMedidasCompleto] = useState(false);
   const [muestras, setMuestras] = useState<MuestraRow[]>([]);
   const [planillasGeneradas, setPlanillasGeneradas] = useState<Record<string, PlanillaGeneradaRow>>({});
   const [generandoPdfs, setGenerandoPdfs] = useState(false);
@@ -163,12 +167,19 @@ export default function Home() {
         .eq("item_key", "completo")
         .maybeSingle(),
       supabase
+        .from("documentacion_estado")
+        .select("estado")
+        .eq("donante_id", selectedId)
+        .eq("categoria", "medidas")
+        .eq("item_key", "completo")
+        .maybeSingle(),
+      supabase
         .from("planillas_generadas")
         .select("planilla_key, archivo_url, generado_en")
         .eq("donante_id", selectedId)
         .order("generado_en", { ascending: false }),
       supabase.from("muestras").select("paquete_key, nombre, tubos, obtenida, retirada").eq("donante_id", selectedId),
-    ]).then(([donanteRes, familiarRes, etapasRes, judicialRes, meRes, certificadoCierreRes, dopplerRes, certAuxRes, comMuerteRes, comDonacionRes, labImagenesRes, planillasRes, muestrasRes]) => {
+    ]).then(([donanteRes, familiarRes, etapasRes, judicialRes, meRes, certificadoCierreRes, dopplerRes, certAuxRes, comMuerteRes, comDonacionRes, labImagenesRes, medidasRes, planillasRes, muestrasRes]) => {
       const donanteData = (donanteRes.data as Donante) ?? null;
       setDonante(donanteData);
       setFamiliar((familiarRes.data as Familiar) ?? null);
@@ -202,6 +213,7 @@ export default function Home() {
       setComMuerteRealizada((comMuerteRes.data as { estado: string | null } | null)?.estado === "si");
       setComDonacionRealizada((comDonacionRes.data as { estado: string | null } | null)?.estado === "si");
       setLabImagenesCompleto((labImagenesRes.data as { estado: string | null } | null)?.estado === "si");
+      setMedidasCompleto((medidasRes.data as { estado: string | null } | null)?.estado === "si");
       const planillasMap: Record<string, PlanillaGeneradaRow> = {};
       ((planillasRes.data as PlanillaGeneradaRow[]) ?? []).forEach((r) => {
         if (!planillasMap[r.planilla_key]) planillasMap[r.planilla_key] = r;
@@ -289,6 +301,7 @@ export default function Home() {
     if (key === "comMuerte") return computeComMuerteEstado(comMuerteRealizada);
     if (key === "comDonacion") return computeComDonacionEstado(comDonacionRealizada);
     if (key === "labImagenes") return computeLabImagenesEstado(labImagenesCompleto);
+    if (key === "medidas") return computeMedidasEstado(medidasCompleto);
     if (key === "muestras") return computeMuestrasEstado(muestras);
     return etapas[key];
   }
@@ -318,6 +331,7 @@ export default function Home() {
       key === "comMuerte" ||
       key === "comDonacion" ||
       key === "muestras" ||
+      key === "medidas" ||
       key === "labImagenes" ||
       stageData[key] ||
       !donante
@@ -532,6 +546,7 @@ export default function Home() {
                           s.key !== "comMuerte" &&
                           s.key !== "comDonacion" &&
                           s.key !== "muestras" &&
+                          s.key !== "medidas" &&
                           s.key !== "labImagenes" &&
                           data?.loading && <div className="tiny">Cargando…</div>}
 
@@ -554,7 +569,12 @@ export default function Home() {
                           </>
                         )}
 
-                        {s.key === "documentacion" && donante && <DocumentosPanel donante={donante} familiar={familiar} />}
+                        {s.key === "documentacion" && donante && (
+                          <>
+                            <DocumentacionFotosPanel donanteId={donante.id} />
+                            <DocumentosPanel donante={donante} familiar={familiar} />
+                          </>
+                        )}
 
                         {s.key === "muestras" && donante && (
                           <>
@@ -652,6 +672,15 @@ export default function Home() {
                               </div>
                             )}
                           </>
+                        )}
+
+                        {s.key === "medidas" && donante && (
+                          <MedidasPanel
+                            donante={donante}
+                            onDonanteChange={setDonante}
+                            completo={medidasCompleto}
+                            onCompletoChange={setMedidasCompleto}
+                          />
                         )}
 
                         {s.key === "labImagenes" && donante && (
