@@ -18,6 +18,9 @@ const s = StyleSheet.create({
   dosCol: { flexDirection: "row", gap: 18 },
   col: { flex: 1 },
   excepcion: { color: "#8a3b00", marginTop: 1 },
+  reflejoFila: { flexDirection: "row", justifyContent: "space-between", fontSize: 7.5, marginBottom: 1 },
+  reflejoLabel: { color: "#444" },
+  reflejoValor: { fontFamily: "Helvetica-Bold" },
   firmaFila: { flexDirection: "row", justifyContent: "space-between", marginTop: 24 },
   firmaBloque: { width: "44%" },
   firmaLinea: { borderTop: "1pt solid #333", paddingTop: 3 },
@@ -74,6 +77,17 @@ function resumenReflejos(datos: Datos, momento: "1a" | "2a"): { resumen: string;
   return { resumen: `${ausentes}/${total} ausentes`, excepciones };
 }
 
+// Lista completa de los 12 reflejos con su estado -- además del resumen
+// de arriba, que quede visible cada uno individualmente (no solo el
+// conteo agregado).
+function listaReflejos(datos: Datos, momento: "1a" | "2a"): { label: string; texto: string }[] {
+  return REFLEJOS_ME.map((r) => {
+    const v = datos[reflejoKey(r.key, momento)];
+    const texto = v === "ausente" ? "Ausente" : v === "presente" ? "Presente" : "Sin marcar";
+    return { label: r.label, texto };
+  });
+}
+
 function Fila({ etiqueta, valor }: { etiqueta: string; valor: string }) {
   return (
     <View style={s.fila}>
@@ -84,7 +98,8 @@ function Fila({ etiqueta, valor }: { etiqueta: string; valor: string }) {
 }
 
 function BloqueEvaluacion({ datos, momento, titulo }: { datos: Datos; momento: "1a" | "2a"; titulo: string }) {
-  const { resumen, excepciones } = resumenReflejos(datos, momento);
+  const { resumen } = resumenReflejos(datos, momento);
+  const reflejos = listaReflejos(datos, momento);
   const diabetesSi = datos[`diabetes_insipida_${momento}_si`] === "si";
   const diabetesNo = datos[`diabetes_insipida_${momento}_no`] === "si";
   const diabetes = diabetesSi ? "Sí" : diabetesNo ? "No" : "—";
@@ -97,10 +112,11 @@ function BloqueEvaluacion({ datos, momento, titulo }: { datos: Datos; momento: "
       <Fila etiqueta="Diabetes insípida" valor={diabetes} />
       <Fila etiqueta="Pupilas" valor={g(datos, `pupilas_${momento}`)} />
       <Fila etiqueta="Reflejos" valor={resumen} />
-      {excepciones.map((e, i) => (
-        <Text key={i} style={s.excepcion}>
-          • {e}
-        </Text>
+      {reflejos.map((r, i) => (
+        <View key={i} style={s.reflejoFila}>
+          <Text style={s.reflejoLabel}>{r.label}</Text>
+          <Text style={s.reflejoValor}>{r.texto}</Text>
+        </View>
       ))}
     </View>
   );
