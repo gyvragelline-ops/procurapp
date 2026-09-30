@@ -162,16 +162,14 @@ export async function loadPanel(
   }
 
   if (key === "documentacion") {
+    // Foto de DNI / Foto de grupo y factor ya NO se listan acá -- tienen
+    // su propio bloque con carga real (DocumentacionFotosPanel, ver
+    // page.tsx). Mostrarlas también acá como chip de solo lectura
+    // duplicaba el ítem en pantalla.
     const items = await getDocEstado(supabase, donanteId, "documentacion");
-    const fotoDni = items.find((r) => r.item_key === "foto_dni");
-    const fotoGF = items.find((r) => r.item_key === "foto_grupo_factor");
     const otros = items.filter((r) => !["foto_dni", "foto_grupo_factor", "doppler_o_eeg"].includes(r.item_key));
     return {
-      rows: [
-        { label: "Foto de DNI del potencial donante", chip: chipFromEstado(fotoDni?.estado, { text: "Pendiente", tone: "amber" }) },
-        { label: "Foto de grupo y factor", chip: chipFromEstado(fotoGF?.estado, { text: "Pendiente", tone: "amber" }) },
-        ...otros.map((o) => ({ label: humanizeCampo(o.item_key), chip: chipFromEstado(o.estado, { text: "Pendiente", tone: "amber" as const }) })),
-      ],
+      rows: otros.map((o) => ({ label: humanizeCampo(o.item_key), chip: chipFromEstado(o.estado, { text: "Pendiente", tone: "amber" as const }) })),
     };
   }
 

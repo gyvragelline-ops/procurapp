@@ -26,10 +26,10 @@ export const DOCUMENTOS: DocumentoDef[] = [
   {
     key: "neuro",
     nombre: "Historia Clínica Neurológica",
-    archivo: "historia_clinica_neurologica.pdf",
+    archivo: null,
     planillaKeys: ["neuro"],
     fuente: "Certificación — Examen neurológico",
-    motor: "legacy",
+    motor: "nuevo",
   },
   {
     key: "certificado",
@@ -221,6 +221,11 @@ export async function generarDocumentoNuevo(
   familiar: Familiar | null
 ): Promise<Blob> {
   if (doc.motor !== "nuevo") throw new Error("Este documento no usa el motor nuevo.");
+
+  if (doc.key === "neuro") {
+    const { generarHistoriaClinicaNeurologicaPdf } = await import("./documentos-nuevos/HistoriaClinicaNeurologica");
+    return generarHistoriaClinicaNeurologicaPdf(supabase, donante);
+  }
 
   const valores = await resolverValoresPlanilla(supabase, doc.planillaKeys, donante, familiar);
   if (doc.key === "certificado") {
