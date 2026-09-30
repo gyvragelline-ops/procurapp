@@ -45,20 +45,31 @@ function hayValor(datos: Datos, campo: string): boolean {
 }
 
 // "12/12 ausentes", con las excepciones puntuales listadas aparte --
-// nunca las 24 casillas SI/NO literales.
+// nunca las 24 casillas SI/NO literales. Si no hay NINGÚN reflejo
+// marcado, "0/12 ausentes" sería una afirmación falsa (implica que se
+// evaluaron los 12 y ninguno dio ausente, cuando en realidad no se
+// cargó nada) -- en ese caso dice "Sin datos cargados" en vez de un
+// conteo. Con carga parcial, el conteo SÍ es correcto (cuenta los
+// confirmados ausente sobre el total de 12) y las excepciones abajo
+// aclaran el resto (presente, o sin marcar).
 function resumenReflejos(datos: Datos, momento: "1a" | "2a"): { resumen: string; excepciones: string[] } {
   const total = REFLEJOS_ME.length;
   let ausentes = 0;
+  let presentes = 0;
   const excepciones: string[] = [];
   for (const r of REFLEJOS_ME) {
     const v = datos[reflejoKey(r.key, momento)];
     if (v === "ausente") {
       ausentes++;
     } else if (v === "presente") {
+      presentes++;
       excepciones.push(`${r.label}: presente`);
     } else {
       excepciones.push(`${r.label}: sin marcar`);
     }
+  }
+  if (ausentes === 0 && presentes === 0) {
+    return { resumen: "Sin datos cargados", excepciones: [] };
   }
   return { resumen: `${ausentes}/${total} ausentes`, excepciones };
 }

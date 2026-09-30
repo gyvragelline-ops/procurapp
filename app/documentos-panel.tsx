@@ -17,7 +17,13 @@ export default function DocumentosPanel({ donante, familiar }: { donante: Donant
     setError(null);
     setGenerando(key);
     try {
-      const nombreArchivo = `${doc.key}_${donante.nombre_completo ?? donante.id}.pdf`;
+      // Sufijo único por descarga (no solo por generación): en mobile,
+      // reusar el mismo nombre de archivo entre descargas hace que el
+      // gestor de descargas del teléfono (o el caché de Chrome) reabra el
+      // archivo viejo en vez de traer el nuevo, aun cuando el blob que
+      // generamos acá sí es fresco. Timestamp evita cualquier colisión.
+      const sufijo = new Date().toISOString().replace(/[:.]/g, "-");
+      const nombreArchivo = `${doc.key}_${donante.nombre_completo ?? donante.id}_${sufijo}.pdf`;
       if (doc.motor === "nuevo") {
         const blob = await generarDocumentoNuevo(supabase, doc, donante, familiar);
         descargarBlob(blob, nombreArchivo);

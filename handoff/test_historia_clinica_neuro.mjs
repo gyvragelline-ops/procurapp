@@ -1,22 +1,16 @@
-// Prueba puntual (no forma parte del feature) -- siembra datos reales de
-// Certificación (Examen neurológico) para un donante de prueba, corre el
-// generador NUEVO (@react-pdf/renderer) de punta a punta contra la base
-// real, guarda el PDF a disco, y confirma con pdf-lib que:
-//  1) es un PDF real generado desde cero (no un AcroForm)
-//  2) NO tiene campos de formulario (getFields().length === 0)
-//  3) el texto extraído no es la planilla escaneada vieja
+// Prueba puntual (no forma parte del feature) -- crea un donante de
+// prueba PROPIO y descartable (nunca toca donantes reales/compartidos:
+// esto reemplaza la versión anterior, que reusaba el primer donante de
+// la tabla y por eso pudo haber pisado datos reales de Gelline al
+// correr upsert+delete sobre los mismos campo_pdf que un usuario real
+// carga -- ver conversación). Siembra datos reales de Certificación
+// (Examen neurológico), corre el generador NUEVO de punta a punta
+// contra la base real, guarda el PDF a disco, confirma con pdf-lib que
+// es texto renderizado (no AcroForm), y borra el donante de prueba
+// entero al final (cascade se lleva sus planilla_valores con él).
 import { readFileSync, writeFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
 import { PDFDocument } from "pdf-lib";
-import { Font } from "@react-pdf/renderer";
-
-// Solo para correr esto bajo Node puro (fuera del bundler de Next): el
-// resolver ESM de Node rechaza el import dinámico de diccionarios de
-// hyphenation por locale de @react-pdf/hyphenate (su package.json no
-// declara ese subpath en "exports"). No afecta a la app real -- ahí
-// corre empaquetado por Turbopack, que no hace esa resolución en
-// runtime. Desactivar el hyphenation automático evita que se dispare.
-Font.registerHyphenationCallback((word) => [word]);
 
 function cargarEnv(path) {
   const out = {};
@@ -27,7 +21,10 @@ function cargarEnv(path) {
   return out;
 }
 const env = { ...cargarEnv(".env"), ...cargarEnv(".env.local") };
-const supabase = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
+// Service role a propósito acá (no anon): así el insert/delete del
+// donante de prueba no depende de ninguna política de RLS que pueda
+// cambiar, y queda 100% aislado de cualquier sesión real.
+const supabase = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
 
 const REFLEJOS = [
   "reflejo_fotomotor", "reflejo_corneano", "reflejo_oculocefalico", "reflejo_oculovestibular",
@@ -36,9 +33,14 @@ const REFLEJOS = [
 ];
 
 async function main() {
-  const { data: donantes } = await supabase.from("donantes").select("*").limit(1);
-  const donante = donantes[0];
-  console.log("donante_id:", donante.id);
+  const insDonante = await supabase
+    .from("donantes")
+    .insert({ nombre_completo: "ZZZ_TEST_NO_USAR (script automático)", dni: "00000000", institucion: "Hospital de prueba", tipo_procuracion: "multiorganico" })
+    .select()
+    .single();
+  if (insDonante.error) throw new Error("crear donante de prueba: " + insDonante.error.message);
+  const donante = insDonante.data;
+  console.log("donante de prueba creado:", donante.id, "-- se borra entero al final");
 
   const filasNeuro = [
     ["hora_1a", "08:00"], ["hora_2a", "09:15"],
@@ -53,9 +55,11 @@ async function main() {
     ["apneica1_pco2_inicial", "40"], ["apneica1_pco2_final", "68"],
     ["apneica1_duracion", "8 min"], ["apneica1_resultado", "positiva"],
     ["cumple_me_si", "si"],
-    // Reflejos: 11 ausentes, 1 presente a propósito (para probar la excepción)
-    ...REFLEJOS.slice(0, 11).flatMap((r) => [[`${r}_1a`, "ausente"], [`${r}_2a`, "ausente"]]),
-    [`${REFLEJOS[11]}_1a`, "presente"], [`${REFLEJOS[11]}_2a`, "ausente"],
+    // Caso A: 11 ausentes, 1 presente (prueba la excepción puntual)
+    ...REFLEJOS.slice(0, 11).flatMap((r) => [[`${r}_1a`, "ausente"]]),
+    [`${REFLEJOS[11]}_1a`, "presente"],
+    // Caso B (2ª evaluación): NINGÚN reflejo marcado -- prueba que ya no
+    // diga "0/12 ausentes" sino "Sin datos cargados".
     ["eeg1_fecha", "29/09/2026"], ["eeg1_hora", "10:00"], ["eeg1_informe", "Silencio eléctrico cerebral"],
   ];
 
@@ -77,7 +81,7 @@ async function main() {
     { donante_id: donante.id, categoria: "certificacion", item_key: "eeg", estado: "completo" },
     { onConflict: "donante_id,categoria,item_key" }
   );
-  console.log("Datos de prueba sembrados.");
+  console.log("Datos de prueba sembrados (donante propio, no comparte nada con datos reales).");
 
   // Requiere empaquetar primero (Node puro no resuelve algunas
   // sub-rutas privadas de @react-pdf/hyphenate y pdfkit que sí resuelve
@@ -97,16 +101,12 @@ async function main() {
   const form = pdfDoc.getForm();
   const campos = form.getFields();
   console.log("Páginas:", pdfDoc.getPageCount());
-  console.log("Campos de formulario (AcroForm):", campos.length, campos.length === 0 ? "-- correcto, es texto renderizado, no un formulario" : "-- MAL, sigue siendo un AcroForm");
+  console.log("Campos de formulario (AcroForm):", campos.length, campos.length === 0 ? "-- correcto" : "-- MAL, sigue siendo un AcroForm");
 
-  // Limpieza de los datos de prueba sembrados
-  for (const [campo_pdf] of filasNeuro) {
-    await supabase.from("planilla_valores").delete().eq("donante_id", donante.id).eq("planilla_key", "neuro").eq("campo_pdf", campo_pdf);
-  }
-  await supabase.from("planilla_valores").delete().eq("donante_id", donante.id).eq("planilla_key", "certificado").eq("campo_pdf", "medico1_nombre");
-  await supabase.from("planilla_valores").delete().eq("donante_id", donante.id).eq("planilla_key", "certificado").eq("campo_pdf", "medico2_nombre");
-  await supabase.from("documentacion_estado").delete().eq("donante_id", donante.id).eq("categoria", "certificacion").eq("item_key", "eeg");
-  console.log("Limpieza de datos de prueba OK (el PDF de salida queda en disco para inspección).");
+  // Borra el donante de prueba ENTERO (cascade se lleva planilla_valores
+  // y documentacion_estado con él) -- nada real tocado en ningún momento.
+  await supabase.from("donantes").delete().eq("id", donante.id);
+  console.log("Donante de prueba borrado por completo. El PDF de salida queda en disco para inspección.");
 }
 
 main().catch((e) => {
