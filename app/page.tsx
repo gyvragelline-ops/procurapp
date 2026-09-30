@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { guardarConReintento } from "@/lib/procuracion/guardar";
 import {
   STAGES_MULTIORGANICO,
   STRIP_LABELS,
@@ -285,13 +286,28 @@ export default function Home() {
     if (!donante) return;
     const nuevo = !actual;
     setMuestras((prev) => prev.map((m) => (m.paquete_key === paqueteKey ? { ...m, obtenida: nuevo } : m)));
-    await supabase.from("muestras").update({ obtenida: nuevo }).eq("donante_id", donante.id).eq("paquete_key", paqueteKey);
+    const r = await guardarConReintento(() =>
+      supabase.from("muestras").update({ obtenida: nuevo }).eq("donante_id", donante.id).eq("paquete_key", paqueteKey)
+    );
+    if (!r.ok) {
+      setMuestras((prev) => prev.map((m) => (m.paquete_key === paqueteKey ? { ...m, obtenida: actual } : m)));
+      setDescargaError(r.mensaje);
+      return;
+    }
+    setDescargaError(null);
   }
 
   async function marcarTodasObtenidas() {
     if (!donante) return;
+    const anteriores = muestras;
     setMuestras((prev) => prev.map((m) => ({ ...m, obtenida: true })));
-    await supabase.from("muestras").update({ obtenida: true }).eq("donante_id", donante.id);
+    const r = await guardarConReintento(() => supabase.from("muestras").update({ obtenida: true }).eq("donante_id", donante.id));
+    if (!r.ok) {
+      setMuestras(anteriores);
+      setDescargaError(r.mensaje);
+      return;
+    }
+    setDescargaError(null);
   }
 
   function getEtapaEstado(key: string): EstadoEtapa | undefined {

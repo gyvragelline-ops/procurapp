@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { guardarConReintento } from "@/lib/procuracion/guardar";
 import type { Familiar } from "@/lib/procuracion/types";
 
 const supabase = createClient();
@@ -19,6 +20,7 @@ export default function FamiliarContactoPanel({
 }) {
   const [editingField, setEditingField] = useState<Campo | null>(null);
   const [draft, setDraft] = useState("");
+  const [errorGuardado, setErrorGuardado] = useState<string | null>(null);
 
   function startEdit(field: Campo) {
     setDraft(familiar?.[field] ?? "");
@@ -28,22 +30,16 @@ export default function FamiliarContactoPanel({
   async function saveField(field: Campo) {
     const value = draft.trim() || null;
     setEditingField(null);
-    if (familiar) {
-      const { data, error } = await supabase
-        .from("familiares")
-        .update({ [field]: value })
-        .eq("id", familiar.id)
-        .select("*")
-        .single();
-      if (!error && data) onChange(data as Familiar);
-    } else {
-      const { data, error } = await supabase
-        .from("familiares")
-        .insert({ donante_id: donanteId, [field]: value })
-        .select("*")
-        .single();
-      if (!error && data) onChange(data as Familiar);
-    }
+    const r = familiar
+      ? await guardarConReintento(() =>
+          supabase.from("familiares").update({ [field]: value }).eq("id", familiar.id).select("*").single()
+        )
+      : await guardarConReintento(() =>
+          supabase.from("familiares").insert({ donante_id: donanteId, [field]: value }).select("*").single()
+        );
+    if (!r.ok) return setErrorGuardado(r.mensaje);
+    setErrorGuardado(null);
+    if (r.resultado.data) onChange(r.resultado.data as Familiar);
   }
 
   const rows: { key: Campo; label: string }[] = [
@@ -59,6 +55,11 @@ export default function FamiliarContactoPanel({
       <div className="tiny" style={{ marginBottom: 8, textTransform: "uppercase", letterSpacing: ".5px" }}>
         Familiar de contacto
       </div>
+      {errorGuardado && (
+        <div className="tiny" style={{ color: "var(--red)", marginBottom: 8, padding: "6px 8px", background: "rgba(220,38,38,0.08)", borderRadius: 6 }}>
+          {errorGuardado}
+        </div>
+      )}
       {rows.map((r) => (
         <div className="field-row" key={r.key}>
           <span className="field-label">{r.label}</span>

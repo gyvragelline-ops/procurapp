@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { guardarConReintento } from "@/lib/procuracion/guardar";
 import type { Donante } from "@/lib/procuracion/types";
 
 const supabase = createClient();
@@ -52,6 +53,7 @@ export default function PotencialPanel({
   const [editingField, setEditingField] = useState<Campo | null>(null);
   const [draft, setDraft] = useState("");
   const [savingJudicial, setSavingJudicial] = useState(false);
+  const [errorGuardado, setErrorGuardado] = useState<string | null>(null);
 
   function startEdit(field: Campo) {
     if (field === "fecha_ingreso") setDraft(toDatetimeLocalValue(donante.fecha_ingreso));
@@ -68,26 +70,30 @@ export default function PotencialPanel({
     else if (field === "fecha_nacimiento") value = draft || null;
     else value = draft.trim() || null;
     setEditingField(null);
-    const { data, error } = await supabase
-      .from("donantes")
-      .update({ [field]: value })
-      .eq("id", donante.id)
-      .select("*")
-      .single();
-    if (!error && data) {
-      onDonanteChange(data as Donante);
-    }
+    const r = await guardarConReintento(() =>
+      supabase.from("donantes").update({ [field]: value }).eq("id", donante.id).select("*").single()
+    );
+    if (!r.ok) return setErrorGuardado(r.mensaje);
+    setErrorGuardado(null);
+    if (r.resultado.data) onDonanteChange(r.resultado.data as Donante);
   }
 
   async function setJudicial(aplica: boolean) {
     setSavingJudicial(true);
-    await supabase
-      .from("documentacion_estado")
-      .upsert(
-        { donante_id: donante.id, categoria: "judicial", item_key: "aplica", estado: aplica ? "si" : "no" },
-        { onConflict: "donante_id,categoria,item_key" }
-      );
-    onJudicialChange(aplica);
+    const r = await guardarConReintento(() =>
+      supabase
+        .from("documentacion_estado")
+        .upsert(
+          { donante_id: donante.id, categoria: "judicial", item_key: "aplica", estado: aplica ? "si" : "no" },
+          { onConflict: "donante_id,categoria,item_key" }
+        )
+    );
+    if (r.ok) {
+      setErrorGuardado(null);
+      onJudicialChange(aplica);
+    } else {
+      setErrorGuardado(r.mensaje);
+    }
     setSavingJudicial(false);
   }
 
@@ -104,6 +110,11 @@ export default function PotencialPanel({
 
   return (
     <>
+      {errorGuardado && (
+        <div className="tiny" style={{ color: "var(--red)", marginBottom: 8, padding: "6px 8px", background: "rgba(220,38,38,0.08)", borderRadius: 6 }}>
+          {errorGuardado}
+        </div>
+      )}
       {rows.map((r) => (
         <div className="field-row" key={r.key}>
           <span className="field-label">{r.label}</span>

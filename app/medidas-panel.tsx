@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { guardarConReintento } from "@/lib/procuracion/guardar";
 import type { Donante } from "@/lib/procuracion/types";
 import MedidasCompleto from "./medidas-completo";
 
@@ -46,6 +47,7 @@ export default function MedidasPanel({
   const [cargado, setCargado] = useState(false);
   const [editingField, setEditingField] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
+  const [errorGuardado, setErrorGuardado] = useState<string | null>(null);
 
   useEffect(() => {
     let vivo = true;
@@ -77,9 +79,13 @@ export default function MedidasPanel({
   async function guardarPlanilla(key: string) {
     const valor = draft.trim() || null;
     setEditingField(null);
-    await supabase
-      .from("planilla_valores")
-      .upsert({ donante_id: donante.id, planilla_key: PLANILLA_KEY, campo_pdf: key, valor }, { onConflict: "donante_id,planilla_key,campo_pdf" });
+    const r = await guardarConReintento(() =>
+      supabase
+        .from("planilla_valores")
+        .upsert({ donante_id: donante.id, planilla_key: PLANILLA_KEY, campo_pdf: key, valor }, { onConflict: "donante_id,planilla_key,campo_pdf" })
+    );
+    if (!r.ok) return setErrorGuardado(r.mensaje);
+    setErrorGuardado(null);
     setCampos((prev) => ({ ...prev, [key]: valor }));
   }
 
@@ -90,8 +96,12 @@ export default function MedidasPanel({
     const num = texto ? Number(texto) : null;
     const value = num != null && !Number.isNaN(num) ? num : null;
     setEditingField(null);
-    const { data, error } = await supabase.from("donantes").update({ [campo]: value }).eq("id", donante.id).select("*").single();
-    if (!error && data) onDonanteChange(data as Donante);
+    const r = await guardarConReintento(() =>
+      supabase.from("donantes").update({ [campo]: value }).eq("id", donante.id).select("*").single()
+    );
+    if (!r.ok) return setErrorGuardado(r.mensaje);
+    setErrorGuardado(null);
+    if (r.resultado.data) onDonanteChange(r.resultado.data as Donante);
   }
 
   function renderCampoDonante(campo: "peso" | "talla", label: string, unidad: string) {
@@ -138,6 +148,11 @@ export default function MedidasPanel({
         style={{ width: "100%", borderRadius: 10, marginBottom: 14, display: "block" }}
       />
 
+      {errorGuardado && (
+        <div className="tiny" style={{ color: "var(--red)", marginBottom: 8, padding: "6px 8px", background: "rgba(220,38,38,0.08)", borderRadius: 6 }}>
+          {errorGuardado}
+        </div>
+      )}
       {renderCampoDonante("peso", "Peso", "kg")}
       {renderCampoDonante("talla", "Talla", "cm")}
 

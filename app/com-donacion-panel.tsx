@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { guardarConReintento } from "@/lib/procuracion/guardar";
 import {
   ETAPAS_EMOCIONALES,
   HERRAMIENTAS_TRANSVERSALES,
@@ -56,17 +57,25 @@ export default function ComDonacionPanel({ donanteId }: { donanteId: string }) {
       }
       setResultado(data);
 
-      await supabase.from("comunicacion_donacion_analisis").insert({
-        donante_id: donanteId,
-        texto,
-        etapa_detectada: data.etapa,
-        frases_sugeridas: data.frases_sugeridas,
-      });
+      const r = await guardarConReintento(() =>
+        supabase.from("comunicacion_donacion_analisis").insert({
+          donante_id: donanteId,
+          texto,
+          etapa_detectada: data.etapa,
+          frases_sugeridas: data.frases_sugeridas,
+        })
+      );
+      if (!r.ok) {
+        setError(`El análisis se mostró pero no se pudo guardar en el historial: ${r.mensaje}`);
+        return;
+      }
       const etapaNombre = ETAPAS_EMOCIONALES.find((e) => e.id === data.etapa)?.nombre ?? `Etapa ${data.etapa}`;
-      await supabase.from("timeline_eventos").insert({
-        donante_id: donanteId,
-        texto: `Comunicación de donación — etapa detectada: ${etapaNombre}`,
-      });
+      await guardarConReintento(() =>
+        supabase.from("timeline_eventos").insert({
+          donante_id: donanteId,
+          texto: `Comunicación de donación — etapa detectada: ${etapaNombre}`,
+        })
+      );
 
       setTexto("");
       cargarHistorial();

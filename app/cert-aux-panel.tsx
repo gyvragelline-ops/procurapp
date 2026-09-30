@@ -1,7 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { METODOS_CERT_AUX, type CertAuxCampos, type MeCampos } from "@/lib/procuracion/constants";
+import { guardarConReintento } from "@/lib/procuracion/guardar";
 import HoraInput from "./hora-input";
 
 const supabase = createClient();
@@ -33,52 +35,70 @@ export default function CertAuxPanel({
   angiografiaMeta: AngioMeta;
   onAngiografiaMetaChange: (m: AngioMeta) => void;
 }) {
+  const [errorGuardado, setErrorGuardado] = useState<string | null>(null);
+
   async function ciclar(key: string) {
     const actual = campos[key] ?? "pendiente";
     const siguiente = ORDEN[actual];
-    await supabase
-      .from("documentacion_estado")
-      .upsert(
-        { donante_id: donanteId, categoria: "certificacion", item_key: key, estado: siguiente },
-        { onConflict: "donante_id,categoria,item_key" }
-      );
+    const r = await guardarConReintento(() =>
+      supabase
+        .from("documentacion_estado")
+        .upsert(
+          { donante_id: donanteId, categoria: "certificacion", item_key: key, estado: siguiente },
+          { onConflict: "donante_id,categoria,item_key" }
+        )
+    );
+    if (!r.ok) return setErrorGuardado(r.mensaje);
+    setErrorGuardado(null);
     onChange({ ...campos, [key]: siguiente });
   }
 
   async function guardarNeuro(campo_pdf: string, valor: string | null) {
-    await supabase
-      .from("planilla_valores")
-      .upsert(
-        { donante_id: donanteId, planilla_key: "neuro", campo_pdf, valor },
-        { onConflict: "donante_id,planilla_key,campo_pdf" }
-      );
+    const r = await guardarConReintento(() =>
+      supabase
+        .from("planilla_valores")
+        .upsert(
+          { donante_id: donanteId, planilla_key: "neuro", campo_pdf, valor },
+          { onConflict: "donante_id,planilla_key,campo_pdf" }
+        )
+    );
+    if (!r.ok) return setErrorGuardado(r.mensaje);
+    setErrorGuardado(null);
     onNeuroDetalleChange({ ...neuroDetalle, [campo_pdf]: valor });
   }
 
   async function guardarDoppler(campo_pdf: string, valor: string | null) {
-    await supabase
-      .from("planilla_valores")
-      .upsert(
-        { donante_id: donanteId, planilla_key: "doppler", campo_pdf, valor },
-        { onConflict: "donante_id,planilla_key,campo_pdf" }
-      );
+    const r = await guardarConReintento(() =>
+      supabase
+        .from("planilla_valores")
+        .upsert(
+          { donante_id: donanteId, planilla_key: "doppler", campo_pdf, valor },
+          { onConflict: "donante_id,planilla_key,campo_pdf" }
+        )
+    );
+    if (!r.ok) return setErrorGuardado(r.mensaje);
+    setErrorGuardado(null);
     onDopplerDetalleChange({ ...dopplerDetalle, [campo_pdf]: valor });
   }
 
   async function guardarAngioMeta(campo: keyof AngioMeta, valor: string) {
     const nuevo = { ...angiografiaMeta, [campo]: valor };
-    await supabase
-      .from("documentacion_estado")
-      .upsert(
-        {
-          donante_id: donanteId,
-          categoria: "certificacion",
-          item_key: "angiografia_cerebral",
-          estado: campos.angiografia_cerebral ?? "pendiente",
-          meta: nuevo,
-        },
-        { onConflict: "donante_id,categoria,item_key" }
-      );
+    const r = await guardarConReintento(() =>
+      supabase
+        .from("documentacion_estado")
+        .upsert(
+          {
+            donante_id: donanteId,
+            categoria: "certificacion",
+            item_key: "angiografia_cerebral",
+            estado: campos.angiografia_cerebral ?? "pendiente",
+            meta: nuevo,
+          },
+          { onConflict: "donante_id,categoria,item_key" }
+        )
+    );
+    if (!r.ok) return setErrorGuardado(r.mensaje);
+    setErrorGuardado(null);
     onAngiografiaMetaChange(nuevo);
   }
 
@@ -215,6 +235,11 @@ export default function CertAuxPanel({
 
   return (
     <>
+      {errorGuardado && (
+        <div className="tiny" style={{ color: "var(--red)", marginBottom: 8, padding: "6px 8px", background: "rgba(220,38,38,0.08)", borderRadius: 6 }}>
+          {errorGuardado}
+        </div>
+      )}
       <div className="tiny" style={{ marginBottom: 4, textTransform: "uppercase", letterSpacing: ".5px" }}>
         Neurofisiológicos
       </div>

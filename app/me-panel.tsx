@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { REFLEJOS_ME, reflejoKey, type MeCampos } from "@/lib/procuracion/constants";
+import { guardarConReintento } from "@/lib/procuracion/guardar";
 import HoraInput, { parseHoraMinutos } from "./hora-input";
 import FechaHoraInput from "./fecha-hora-input";
 
@@ -41,14 +42,27 @@ export default function MePanel({
   const [savingBulk2a, setSavingBulk2a] = useState(false);
   const [eval1Open, setEval1Open] = useState(false);
   const [eval2Open, setEval2Open] = useState(false);
+  const [errorGuardado, setErrorGuardado] = useState<string | null>(null);
 
-  async function saveCampo(campo_pdf: string, valor: string | null, planillaKey: string = "neuro") {
-    await supabase
-      .from("planilla_valores")
-      .upsert(
-        { donante_id: donanteId, planilla_key: planillaKey, campo_pdf, valor },
-        { onConflict: "donante_id,planilla_key,campo_pdf" }
-      );
+  // Devuelve true/false en vez de asumir éxito -- los que llaman a esto
+  // NO deben actualizar el estado local (lo que se ve en pantalla) si
+  // esto da false, si no el campo queda mostrado como "cargado" cuando en
+  // realidad no llegó a la base (ver incidente con Pepito Pérez).
+  async function saveCampo(campo_pdf: string, valor: string | null, planillaKey: string = "neuro"): Promise<boolean> {
+    const r = await guardarConReintento(() =>
+      supabase
+        .from("planilla_valores")
+        .upsert(
+          { donante_id: donanteId, planilla_key: planillaKey, campo_pdf, valor },
+          { onConflict: "donante_id,planilla_key,campo_pdf" }
+        )
+    );
+    if (!r.ok) {
+      setErrorGuardado(r.mensaje);
+      return false;
+    }
+    setErrorGuardado(null);
+    return true;
   }
 
   function startEdit(field: string) {
@@ -59,18 +73,17 @@ export default function MePanel({
   async function saveField(field: string, planillaKey: string = "neuro") {
     const valor = draft || null;
     setEditingField(null);
-    await saveCampo(field, valor, planillaKey);
+    const ok = await saveCampo(field, valor, planillaKey);
+    if (!ok) return;
     const actualizados: MeCampos = { ...campos, [field]: valor };
 
     const campo2a = COPIA_1A_A_2A[field];
     if (campo2a && valor && !campos[campo2a]) {
-      await saveCampo(campo2a, valor);
-      actualizados[campo2a] = valor;
+      if (await saveCampo(campo2a, valor)) actualizados[campo2a] = valor;
     }
     if (field === "hora_1a" && valor && !campos.hora_2a) {
       const auto = sumarUnaHora(valor);
-      if (auto) {
-        await saveCampo("hora_2a", auto);
+      if (auto && (await saveCampo("hora_2a", auto))) {
         actualizados.hora_2a = auto;
       }
     }
@@ -85,9 +98,10 @@ export default function MePanel({
   async function saveArmFechaHora() {
     const valor = draft || null;
     setEditingField(null);
-    await saveCampo("arm_fecha_hs", valor);
-    await saveCampo("arm_obligada", valor ? "Sí" : null);
-    onChange({ ...campos, arm_fecha_hs: valor, arm_obligada: valor ? "Sí" : null });
+    const ok1 = await saveCampo("arm_fecha_hs", valor);
+    if (!ok1) return;
+    const ok2 = await saveCampo("arm_obligada", valor ? "Sí" : null);
+    onChange({ ...campos, arm_fecha_hs: valor, arm_obligada: ok2 ? (valor ? "Sí" : null) : campos.arm_obligada });
   }
 
   function renderArmFechaHoraRow() {
@@ -209,17 +223,20 @@ export default function MePanel({
   async function setSiNoPar(base: string, valor: "si" | "no") {
     const campoElegido = `${base}_${valor}`;
     const campoOpuesto = `${base}_${valor === "si" ? "no" : "si"}`;
-    await saveCampo(campoElegido, "si");
-    await saveCampo(campoOpuesto, null);
+    const ok1 = await saveCampo(campoElegido, "si");
+    const ok2 = await saveCampo(campoOpuesto, null);
+    if (!ok1 || !ok2) return;
     const actualizados: MeCampos = { ...campos, [campoElegido]: "si", [campoOpuesto]: null };
 
     if (base === "diabetes_insipida_1a" && campos["diabetes_insipida_2a_si"] !== "si" && campos["diabetes_insipida_2a_no"] !== "si") {
       const elegido2a = `diabetes_insipida_2a_${valor}`;
       const opuesto2a = `diabetes_insipida_2a_${valor === "si" ? "no" : "si"}`;
-      await saveCampo(elegido2a, "si");
-      await saveCampo(opuesto2a, null);
-      actualizados[elegido2a] = "si";
-      actualizados[opuesto2a] = null;
+      const ok3 = await saveCampo(elegido2a, "si");
+      const ok4 = await saveCampo(opuesto2a, null);
+      if (ok3 && ok4) {
+        actualizados[elegido2a] = "si";
+        actualizados[opuesto2a] = null;
+      }
     }
 
     onChange(actualizados);
@@ -244,8 +261,9 @@ export default function MePanel({
   }
 
   async function setResultadoApnea(valor: "positiva" | "negativa" | "indeterminada") {
-    await saveCampo("apneica1_resultado", valor);
-    onChange({ ...campos, apneica1_resultado: valor });
+    if (await saveCampo("apneica1_resultado", valor)) {
+      onChange({ ...campos, apneica1_resultado: valor });
+    }
   }
 
   async function marcarTodosAusentes(momento: "1a" | "2a") {
@@ -257,10 +275,18 @@ export default function MePanel({
       campo_pdf: reflejoKey(r.key, momento),
       valor: "ausente",
     }));
-    await supabase.from("planilla_valores").upsert(rows, { onConflict: "donante_id,planilla_key,campo_pdf" });
+    const r = await guardarConReintento(() =>
+      supabase.from("planilla_valores").upsert(rows, { onConflict: "donante_id,planilla_key,campo_pdf" })
+    );
+    if (!r.ok) {
+      setErrorGuardado(r.mensaje);
+      setSaving(false);
+      return;
+    }
+    setErrorGuardado(null);
     const next = { ...campos };
-    REFLEJOS_ME.forEach((r) => {
-      next[reflejoKey(r.key, momento)] = "ausente";
+    REFLEJOS_ME.forEach((r2) => {
+      next[reflejoKey(r2.key, momento)] = "ausente";
     });
     onChange(next);
     setSaving(false);
@@ -268,14 +294,16 @@ export default function MePanel({
 
   async function toggleReflejo(key: string) {
     const nextVal = campos[key] === "ausente" ? "presente" : "ausente";
-    await saveCampo(key, nextVal);
-    onChange({ ...campos, [key]: nextVal });
+    if (await saveCampo(key, nextVal)) {
+      onChange({ ...campos, [key]: nextVal });
+    }
   }
 
   async function setTipoTest(tipo: "apnea" | "atropina") {
     setSavingTipo(true);
-    await saveCampo("tipo_test_confirmacion", tipo);
-    onChange({ ...campos, tipo_test_confirmacion: tipo });
+    if (await saveCampo("tipo_test_confirmacion", tipo)) {
+      onChange({ ...campos, tipo_test_confirmacion: tipo });
+    }
     setSavingTipo(false);
   }
 
@@ -343,6 +371,11 @@ export default function MePanel({
 
   return (
     <>
+      {errorGuardado && (
+        <div className="tiny" style={{ color: "var(--red)", marginBottom: 8, padding: "6px 8px", background: "rgba(220,38,38,0.08)", borderRadius: 6 }}>
+          {errorGuardado}
+        </div>
+      )}
       {renderTextRow("fecha_examen", "Fecha del examen")}
       <div className="tiny" style={{ marginTop: -6, marginBottom: 6 }}>
         Única para las 2 evaluaciones -- ocurren el mismo día.
