@@ -1,3 +1,37 @@
+## ESTADO AL 01/10 -- proyecto pausado
+
+Proyecto pausado temporalmente (01/10/2026). Todo lo que estaba en curso
+ya está commiteado y desplegado en `main` -- no quedó nada a medias.
+
+Último commit: `22fa7e3` ("Historia Clinica Neurologica: listar los 12
+reflejos individualmente en cada evaluación"), desplegado en Render y
+confirmado con `curl` (200) + PDF real generado y revisado campo por
+campo.
+
+Qué se resolvió en la última sesión de trabajo:
+- Bug de datos en blanco en "Historia Clínica Neurológica": la causa
+  real era que 11 paneles (`me-panel.tsx`, `cert-aux-panel.tsx`,
+  `potencial-panel.tsx`, `familiar-contacto-panel.tsx`,
+  `medidas-panel.tsx`, `com-donacion-panel.tsx`, `page.tsx`,
+  `com-muerte-panel.tsx`, `com-donacion-realizada.tsx`,
+  `medidas-completo.tsx`, `lab-imagenes-completo.tsx`) guardaban en
+  Supabase sin revisar si el `upsert`/`update` devolvía error, así que
+  con wifi intermitente la pantalla mostraba el dato como guardado
+  aunque nunca hubiera llegado a la base. Se agregó
+  `lib/procuracion/guardar.ts` (reintento + error visible) y se aplicó
+  en los 11 paneles.
+- Historia Clínica Neurológica ahora usa el motor nuevo
+  (`@react-pdf/renderer`, 1 hoja, no AcroForm), con los 12 reflejos
+  troncoencefálicos listados individualmente en cada evaluación (no
+  solo el resumen "12/12 ausentes").
+
+Próximo paso (sin empezar todavía): no había ninguna tarea pendiente
+explícita al pausar -- el último pedido de la usuaria fue el de los
+reflejos, ya resuelto y confirmado por ella ("se ve bien"). Al retomar,
+preguntar si hay algo nuevo antes de asumir continuidad de lo anterior.
+
+---
+
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
 ## Getting Started
