@@ -38,12 +38,15 @@ export default function MedidasCompleto({
     setError(null);
     if (v) {
       const hora = new Date().toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" });
-      await guardarConReintento(() =>
+      const t = await guardarConReintento(() =>
         supabase.from("timeline_eventos").insert({
           donante_id: donanteId,
           texto: `Medidas antropométricas — marcadas como completas (${hora})`,
         })
       );
+      // El dato principal ya se guardó; si falla solo el registro en la
+      // línea de tiempo, se avisa en vez de perderlo en silencio.
+      if (!t.ok) setError(`Se marcaron como completas, pero no se pudo registrar en la línea de tiempo: ${t.mensaje}`);
     }
     onChange(v);
   }

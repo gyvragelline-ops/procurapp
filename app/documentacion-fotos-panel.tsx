@@ -151,7 +151,15 @@ export default function DocumentacionFotosPanel({ donanteId }: { donanteId: stri
     const restantes = fotos.filter((f) => f.id !== foto.id);
     setFotos(restantes);
     const quedanDeEsteTipo = restantes.some((f) => f.tipo === tipo);
-    await sincronizarEstadoFotoDoc(supabase, donanteId, tipo, quedanDeEsteTipo);
+    try {
+      await sincronizarEstadoFotoDoc(supabase, donanteId, tipo, quedanDeEsteTipo);
+    } catch (e) {
+      setError(
+        `La foto se borró, pero no se pudo actualizar el estado de Documentación: ${
+          e instanceof Error ? e.message : "error inesperado"
+        }`
+      );
+    }
   }
 
   const porTipo = new Map<TipoFotoDoc, DocumentacionFotoRow[]>();

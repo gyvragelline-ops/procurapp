@@ -232,6 +232,13 @@ export default function Home() {
     lastFirmaGenerada.current[donante.id] = firma;
     setGenerandoPdfs(true);
     generarMuestrasPdfs(supabase, donante)
+      // Si alguno no se pudo generar, se muestra (antes se salteaba en
+      // silencio) y se borra la firma para que se reintente la próxima
+      // vez que se abra el donante. Las que sí salieron se cargan igual.
+      .catch((e) => {
+        delete lastFirmaGenerada.current[donante.id];
+        setDescargaError(e instanceof Error ? e.message : "No se pudieron generar los formularios.");
+      })
       .then(() =>
         supabase
           .from("planillas_generadas")

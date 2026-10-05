@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { guardarConReintento } from "./guardar";
 
 export type TipoEstudio = "Laboratorio" | "Rx_torax" | "TAC_torax" | "Ecografia" | "Fotos_cuerpo";
 
@@ -33,19 +34,26 @@ export type EstudioImagenRow = {
   created_at: string;
 };
 
+// Tira con el mensaje de guardarConReintento si no se pudo guardar: los
+// dos lugares que la llaman (subirFoto en ImagenesVideosPanel y la
+// subida de video en segundo plano) ya muestran el error que tira -- el
+// archivo subido sin fila en la base nunca aparece como cargado.
 export async function guardarEstudioImagen(
   supabase: SupabaseClient,
   donanteId: string,
   datos: { tipoEstudio: TipoEstudio; descripcion?: string; archivoUrl: string; archivoTipo: "image" | "video"; mimeType: string }
 ): Promise<void> {
-  await supabase.from("estudios_imagenes").insert({
-    donante_id: donanteId,
-    tipo_estudio: datos.tipoEstudio,
-    descripcion: datos.descripcion ?? null,
-    archivo_url: datos.archivoUrl,
-    archivo_tipo: datos.archivoTipo,
-    mime_type: datos.mimeType,
-  });
+  const r = await guardarConReintento(() =>
+    supabase.from("estudios_imagenes").insert({
+      donante_id: donanteId,
+      tipo_estudio: datos.tipoEstudio,
+      descripcion: datos.descripcion ?? null,
+      archivo_url: datos.archivoUrl,
+      archivo_tipo: datos.archivoTipo,
+      mime_type: datos.mimeType,
+    })
+  );
+  if (!r.ok) throw new Error(r.mensaje);
 }
 
 export async function cargarEstudiosImagenes(supabase: SupabaseClient, donanteId: string): Promise<EstudioImagenRow[]> {
@@ -91,7 +99,12 @@ export async function borrarEstudioImagen(
   const ruta = rutaDesdeUrlPublica(estudio.archivo_url);
   if (ruta) {
     const rutaThumb = rutaDesdeUrlPublica(rutaMiniaturaVideo(estudio.archivo_url));
-    await supabase.storage.from("estudios-imagenes").remove(rutaThumb ? [ruta, rutaThumb] : [ruta]);
+    const { error: errorArchivo } = await supabase.storage
+      .from("estudios-imagenes")
+      .remove(rutaThumb ? [ruta, rutaThumb] : [ruta]);
+    // La fila ya se borró: un archivo que no se pudo borrar es basura en
+    // el bucket, no un dato perdido -- consola, no error en pantalla.
+    if (errorArchivo) console.error("[borrarEstudioImagen] Archivo huérfano en storage:", ruta, errorArchivo.message);
   }
 
   return { ok: true };

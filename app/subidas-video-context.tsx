@@ -84,13 +84,15 @@ export default function SubidasVideoProvider({ children }: { children: React.Rea
       try {
         const fotograma = await capturarFotogramaDeVideo(uploadBody);
         if (fotograma) {
-          await supabase.storage.from("estudios-imagenes").upload(rutaMiniaturaVideo(path), fotograma, {
-            contentType: "image/jpeg",
-            upsert: true,
-          });
+          const { error: errorMiniatura } = await supabase.storage
+            .from("estudios-imagenes")
+            .upload(rutaMiniaturaVideo(path), fotograma, { contentType: "image/jpeg", upsert: true });
+          // El video ya subió: sin miniatura, el carrusel muestra el ícono
+          // genérico. Se registra en consola, no se muestra como error.
+          if (errorMiniatura) console.error("[SubidasVideoProvider] No se pudo subir la miniatura:", errorMiniatura.message);
         }
-      } catch {
-        // silencioso a propósito, ver comentario arriba.
+      } catch (e) {
+        console.error("[SubidasVideoProvider] No se pudo generar la miniatura:", e);
       }
 
       await guardarEstudioImagen(supabase, entrada.donanteId, {

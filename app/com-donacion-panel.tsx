@@ -70,12 +70,15 @@ export default function ComDonacionPanel({ donanteId }: { donanteId: string }) {
         return;
       }
       const etapaNombre = ETAPAS_EMOCIONALES.find((e) => e.id === data.etapa)?.nombre ?? `Etapa ${data.etapa}`;
-      await guardarConReintento(() =>
+      const t = await guardarConReintento(() =>
         supabase.from("timeline_eventos").insert({
           donante_id: donanteId,
           texto: `Comunicación de donación — etapa detectada: ${etapaNombre}`,
         })
       );
+      // El análisis ya quedó guardado; si falla solo el registro en la
+      // línea de tiempo, se avisa en vez de perderlo en silencio.
+      if (!t.ok) setError(`El análisis se guardó, pero no se pudo registrar en la línea de tiempo: ${t.mensaje}`);
 
       setTexto("");
       cargarHistorial();

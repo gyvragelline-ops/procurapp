@@ -1,6 +1,7 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Donante } from "./types";
+import { guardarConReintento } from "./guardar";
 
 export type MuestraPaqueteDef = {
   key: string;
@@ -229,21 +230,40 @@ export async function fillMuestraPdf(archivoUrl: string, planillaKey: string, do
 // Genera (o regenera) los PDFs prellenables de los 7, los sube a
 // Storage (bucket "planillas", sobrescribiendo el mismo archivo por
 // caso+planilla) y deja un registro de auditoría en planillas_generadas.
+// Sigue con las demás si una falla (así las que sí salen quedan
+// disponibles), pero al final TIRA con la lista de las que fallaron --
+// antes una subida fallida se salteaba en silencio (`continue`) y la
+// planilla simplemente no aparecía.
 export async function generarMuestrasPdfs(supabase: SupabaseClient, donante: Donante): Promise<void> {
   const prellenables = MUESTRAS_PAQUETES.filter((p) => p.prellenable);
+  const fallidas: string[] = [];
+  let ultimoMensaje = "";
   for (const p of prellenables) {
-    const bytes = await fillMuestraPdf(`/forms/${p.archivo}`, p.key, donante);
-    const path = `${donante.id}/${p.key}.pdf`;
-    const { error: uploadError } = await supabase.storage
-      .from("planillas")
-      .upload(path, bytes, { contentType: "application/pdf", upsert: true, cacheControl: "0" });
-    if (uploadError) continue;
-    const { data: pub } = supabase.storage.from("planillas").getPublicUrl(path);
-    await supabase.from("planillas_generadas").insert({
-      donante_id: donante.id,
-      planilla_key: p.key,
-      archivo_url: pub.publicUrl,
-    });
+    try {
+      const bytes = await fillMuestraPdf(`/forms/${p.archivo}`, p.key, donante);
+      const path = `${donante.id}/${p.key}.pdf`;
+      const { error: uploadError } = await supabase.storage
+        .from("planillas")
+        .upload(path, bytes, { contentType: "application/pdf", upsert: true, cacheControl: "0" });
+      if (uploadError) throw new Error(uploadError.message);
+      const { data: pub } = supabase.storage.from("planillas").getPublicUrl(path);
+      const r = await guardarConReintento(() =>
+        supabase.from("planillas_generadas").insert({
+          donante_id: donante.id,
+          planilla_key: p.key,
+          archivo_url: pub.publicUrl,
+        })
+      );
+      if (!r.ok) throw new Error(r.mensaje);
+    } catch (e) {
+      fallidas.push(p.nombre);
+      ultimoMensaje = e instanceof Error ? e.message : String(e);
+    }
+  }
+  if (fallidas.length > 0) {
+    throw new Error(
+      `No se pudieron generar estos formularios: ${fallidas.join(", ")}. Revisá tu conexión y volvé a abrir el donante. (${ultimoMensaje})`
+    );
   }
 }
 

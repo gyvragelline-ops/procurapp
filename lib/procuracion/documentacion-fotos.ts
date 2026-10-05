@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { guardarConReintento } from "./guardar";
 
 export type TipoFotoDoc = "dni" | "grupo_factor";
 
@@ -10,6 +11,9 @@ export type DocumentacionFotoRow = {
   created_at: string;
 };
 
+// Tira con el mensaje de guardarConReintento si no se pudo guardar: el
+// panel lo muestra (mismo try/catch que el error de subida al storage),
+// nunca queda como "cargada" una foto que no llegó a la base.
 export async function guardarDocumentacionFoto(
   supabase: SupabaseClient,
   donanteId: string,
@@ -17,12 +21,15 @@ export async function guardarDocumentacionFoto(
   archivoUrl: string,
   mimeType: string
 ): Promise<void> {
-  await supabase.from("documentacion_fotos").insert({
-    donante_id: donanteId,
-    tipo,
-    archivo_url: archivoUrl,
-    mime_type: mimeType,
-  });
+  const r = await guardarConReintento(() =>
+    supabase.from("documentacion_fotos").insert({
+      donante_id: donanteId,
+      tipo,
+      archivo_url: archivoUrl,
+      mime_type: mimeType,
+    })
+  );
+  if (!r.ok) throw new Error(r.mensaje);
 }
 
 export async function cargarDocumentacionFotos(supabase: SupabaseClient, donanteId: string): Promise<DocumentacionFotoRow[]> {
@@ -47,8 +54,14 @@ export async function borrarDocumentacionFoto(
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const { error } = await supabase.from("documentacion_fotos").delete().eq("id", foto.id);
   if (error) return { ok: false, error: error.message };
+  // La fila ya se borró (lo que el procurador ve): si falla borrar el
+  // archivo, queda basura en el bucket pero nada visible cambia -- se
+  // registra en consola en vez de mostrar un error que no tiene arreglo.
   const ruta = rutaDesdeUrlPublica(foto.archivo_url);
-  if (ruta) await supabase.storage.from("estudios-imagenes").remove([ruta]);
+  if (ruta) {
+    const { error: errorArchivo } = await supabase.storage.from("estudios-imagenes").remove([ruta]);
+    if (errorArchivo) console.error("[borrarDocumentacionFoto] Archivo huérfano en storage:", ruta, errorArchivo.message);
+  }
   return { ok: true };
 }
 
@@ -67,14 +80,24 @@ export async function sincronizarEstadoFotoDoc(
   hayFotos: boolean
 ): Promise<void> {
   const itemKey = tipo === "dni" ? "foto_dni" : "foto_grupo_factor";
-  if (hayFotos) {
-    await supabase
-      .from("documentacion_estado")
-      .upsert(
-        { donante_id: donanteId, categoria: "documentacion", item_key: itemKey, estado: "si" },
-        { onConflict: "donante_id,categoria,item_key" }
+  const r = hayFotos
+    ? await guardarConReintento(() =>
+        supabase
+          .from("documentacion_estado")
+          .upsert(
+            { donante_id: donanteId, categoria: "documentacion", item_key: itemKey, estado: "si" },
+            { onConflict: "donante_id,categoria,item_key" }
+          )
+      )
+    : await guardarConReintento(() =>
+        supabase
+          .from("documentacion_estado")
+          .delete()
+          .eq("donante_id", donanteId)
+          .eq("categoria", "documentacion")
+          .eq("item_key", itemKey)
       );
-  } else {
-    await supabase.from("documentacion_estado").delete().eq("donante_id", donanteId).eq("categoria", "documentacion").eq("item_key", itemKey);
-  }
+  // Tira: el chip "Completo"/"Pendiente" quedaría desincronizado de las
+  // fotos reales -- el panel lo muestra como error.
+  if (!r.ok) throw new Error(r.mensaje);
 }

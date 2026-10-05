@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { guardarConReintento } from "./guardar";
 
 // Los 25 parámetros reales de la grilla de Laboratorio del OP2 (ver
 // handoff/build_op2_p3.py, LAB_ROWS) -- cada uno tiene 5 columnas de
@@ -199,19 +200,22 @@ export async function guardarValorLaboratorio(
   if (!match) {
     const extendido = matchParametroExtendido(extraido.parametro);
     const grupo = extendido?.perfil ?? extraido.grupoSugerido ?? null;
-    const { data } = await supabase
-      .from("laboratorio_biblioteca")
-      .insert({
-        donante_id: donanteId,
-        parametro: extraido.parametro,
-        valor: extraido.valor,
-        unidad: extraido.unidad,
-        imagen_url: imagenUrl,
-        grupo_sugerido: grupo,
-      })
-      .select("id")
-      .single();
-    return { tipo: "biblioteca", id: (data as { id: string }).id };
+    const r = await guardarConReintento(() =>
+      supabase
+        .from("laboratorio_biblioteca")
+        .insert({
+          donante_id: donanteId,
+          parametro: extraido.parametro,
+          valor: extraido.valor,
+          unidad: extraido.unidad,
+          imagen_url: imagenUrl,
+          grupo_sugerido: grupo,
+        })
+        .select("id")
+        .single()
+    );
+    if (!r.ok) throw new Error(r.mensaje);
+    return { tipo: "biblioteca", id: (r.resultado.data as { id: string }).id };
   }
 
   const campos = EXTRACCION_COLS.map((col) => `lab_${match}_${col}`);
@@ -233,15 +237,18 @@ export async function guardarValorLaboratorio(
     return { tipo: "bloqueado", parametroCanonico: match };
   }
 
-  await supabase.from("planilla_valores").upsert(
-    {
-      donante_id: donanteId,
-      planilla_key: "op2_p3",
-      campo_pdf: `lab_${match}_${columnaLibre}`,
-      valor: formatValor(extraido.valor, extraido.unidad),
-    },
-    { onConflict: "donante_id,planilla_key,campo_pdf" }
+  const rValor = await guardarConReintento(() =>
+    supabase.from("planilla_valores").upsert(
+      {
+        donante_id: donanteId,
+        planilla_key: "op2_p3",
+        campo_pdf: `lab_${match}_${columnaLibre}`,
+        valor: formatValor(extraido.valor, extraido.unidad),
+      },
+      { onConflict: "donante_id,planilla_key,campo_pdf" }
+    )
   );
+  if (!rValor.ok) throw new Error(rValor.mensaje);
 
   // La fecha/hora de una columna de extracción es compartida por los 25
   // parámetros de esa extracción -- se estampa una sola vez, con el
@@ -267,7 +274,10 @@ export async function guardarValorLaboratorio(
       campo_pdf: `lab_${columnaLibre}_fecha_${f.sub}`,
       valor: f.valor,
     }));
-    await supabase.from("planilla_valores").upsert(filas, { onConflict: "donante_id,planilla_key,campo_pdf" });
+    const rFecha = await guardarConReintento(() =>
+      supabase.from("planilla_valores").upsert(filas, { onConflict: "donante_id,planilla_key,campo_pdf" })
+    );
+    if (!rFecha.ok) throw new Error(rFecha.mensaje);
   }
 
   return { tipo: "op2", parametroCanonico: match, columna: columnaLibre };
@@ -391,18 +401,21 @@ export async function registrarCargaLaboratorio(
     `${fechaHora.anio}-${fechaHora.mes}-${fechaHora.dia}T${fechaHora.hora}:00`
   ).toISOString();
   const etiqueta = `Laboratorio ${fechaHora.hora}`;
-  const { data } = await supabase
-    .from("laboratorio_cargas")
-    .insert({
-      donante_id: donanteId,
-      imagen_url: imagenUrl,
-      fecha_hora_estudio: fechaHoraISO,
-      etiqueta,
-      items,
-    })
-    .select()
-    .single();
-  return (data as CargaLab) ?? null;
+  const r = await guardarConReintento(() =>
+    supabase
+      .from("laboratorio_cargas")
+      .insert({
+        donante_id: donanteId,
+        imagen_url: imagenUrl,
+        fecha_hora_estudio: fechaHoraISO,
+        etiqueta,
+        items,
+      })
+      .select()
+      .single()
+  );
+  if (!r.ok) throw new Error(r.mensaje);
+  return (r.resultado.data as CargaLab) ?? null;
 }
 
 export async function cargarCargasLaboratorio(supabase: SupabaseClient, donanteId: string): Promise<CargaLab[]> {
@@ -470,17 +483,29 @@ export async function borrarCargaLaboratorio(
   supabase: SupabaseClient,
   carga: CargaLab
 ): Promise<{ ok: true } | { ok: false; error: string }> {
+  // Si algún valor no se pudo borrar, NO se borra la carga: quedaría un
+  // valor huérfano en el PDF sin la carga que lo respalda. Se sigue con
+  // el resto (borrar es idempotente) y se avisa para reintentar.
+  const fallidos: string[] = [];
   for (const item of carga.items) {
-    if (item.destino.tipo === "op2") {
-      await supabase
-        .from("planilla_valores")
-        .delete()
-        .eq("donante_id", carga.donante_id)
-        .eq("planilla_key", "op2_p3")
-        .eq("campo_pdf", `lab_${item.destino.parametroCanonico}_${item.destino.columna}`);
-    } else if (item.destino.tipo === "biblioteca") {
-      await supabase.from("laboratorio_biblioteca").delete().eq("id", item.destino.bibliotecaId);
+    const destino = item.destino;
+    let r: Awaited<ReturnType<typeof guardarConReintento>> | null = null;
+    if (destino.tipo === "op2") {
+      r = await guardarConReintento(() =>
+        supabase
+          .from("planilla_valores")
+          .delete()
+          .eq("donante_id", carga.donante_id)
+          .eq("planilla_key", "op2_p3")
+          .eq("campo_pdf", `lab_${destino.parametroCanonico}_${destino.columna}`)
+      );
+    } else if (destino.tipo === "biblioteca") {
+      r = await guardarConReintento(() => supabase.from("laboratorio_biblioteca").delete().eq("id", destino.bibliotecaId));
     }
+    if (r && !r.ok) fallidos.push(item.parametro);
+  }
+  if (fallidos.length > 0) {
+    return { ok: false, error: `No se pudieron borrar estos valores: ${fallidos.join(", ")}. Probá de nuevo.` };
   }
 
   const { error } = await supabase.from("laboratorio_cargas").delete().eq("id", carga.id);
@@ -490,7 +515,11 @@ export async function borrarCargaLaboratorio(
     const marca = "/laboratorio-fotos/";
     const i = carga.imagen_url.indexOf(marca);
     if (i !== -1) {
-      await supabase.storage.from("laboratorio-fotos").remove([carga.imagen_url.slice(i + marca.length)]);
+      const { error: errorArchivo } = await supabase.storage
+        .from("laboratorio-fotos")
+        .remove([carga.imagen_url.slice(i + marca.length)]);
+      // La carga ya se borró: el archivo que quede es basura, no un dato.
+      if (errorArchivo) console.error("[borrarCargaLaboratorio] Archivo huérfano en storage:", errorArchivo.message);
     }
   }
 
