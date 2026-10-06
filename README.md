@@ -1,3 +1,8 @@
+> **⚠️ REQUISITO ANTES DE DONANTES REALES: autenticación + RLS por rol.**
+> Hoy todas las tablas tienen RLS desactivado y permisos para el rol
+> `anon` (ver `handoff/grants*.sql`): cualquiera con la clave pública
+> puede leer y escribir. Válido solo para pruebas.
+
 ## ESTADO AL 01/10 -- proyecto pausado
 
 Proyecto pausado temporalmente (01/10/2026). Todo lo que estaba en curso
