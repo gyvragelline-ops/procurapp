@@ -35,12 +35,35 @@ export type RegistroMantenimiento = {
   indice_vena_cava: number | null;
   resultado_pasivo_miembros: number | null;
   disfuncion_miocardica: boolean;
+  // Planilla de enfermería (handoff/mantenimiento_enfermeria.sql)
+  ing_sol_medio_ml: number | null;
+  ing_sol_09_ml: number | null;
+  ing_ringer_ml: number | null;
+  ing_dextrosa_ml: number | null;
+  egr_sng_drenajes_ml: number | null;
+  perdidas_insensibles_ml: number | null;
+  perdidas_insensibles_editadas: boolean;
+  egresos_incluye_diuresis: boolean;
+  cargado_por: string | null;
+  aviso_medico: string | null;
   anulado: boolean;
 };
 
 export type CampoNumericoRegistro = Exclude<
   keyof RegistroMantenimiento,
-  "id" | "registrado_en" | "diuresis_es_ultima_hora" | "disfuncion_miocardica" | "anulado"
+  | "id"
+  | "registrado_en"
+  | "diuresis_es_ultima_hora"
+  | "disfuncion_miocardica"
+  | "anulado"
+  | "perdidas_insensibles_editadas"
+  | "egresos_incluye_diuresis"
+  | "cargado_por"
+  | "aviso_medico"
+  // Totales calculados: el formulario nunca los pide.
+  | "ingresos_ml"
+  | "egresos_ml"
+  | "perdidas_insensibles_ml"
 >;
 
 // Campos del formulario de registro, en orden. `avanzado`: solo con el
@@ -54,8 +77,11 @@ export const CAMPOS_REGISTRO: { campo: CampoNumericoRegistro; etiqueta: string; 
   { campo: "peep", etiqueta: "PEEP", unidad: "cmH2O" },
   { campo: "volumen_corriente", etiqueta: "Volumen corriente", unidad: "mL" },
   { campo: "diuresis_ml", etiqueta: "Diuresis", unidad: "mL" },
-  { campo: "ingresos_ml", etiqueta: "Ingresos", unidad: "mL" },
-  { campo: "egresos_ml", etiqueta: "Otros egresos (sin diuresis)", unidad: "mL" },
+  { campo: "ing_sol_medio_ml", etiqueta: "Solución al medio (0,45 %)", unidad: "mL" },
+  { campo: "ing_sol_09_ml", etiqueta: "Solución 0,9 %", unidad: "mL" },
+  { campo: "ing_ringer_ml", etiqueta: "Ringer", unidad: "mL" },
+  { campo: "ing_dextrosa_ml", etiqueta: "Dextrosa", unidad: "mL" },
+  { campo: "egr_sng_drenajes_ml", etiqueta: "SNG / drenajes", unidad: "mL" },
   { campo: "osm_urinaria", etiqueta: "Osmolaridad urinaria", unidad: "mOsm/kg" },
   { campo: "osm_serica", etiqueta: "Osmolaridad sérica", unidad: "mOsm/kg" },
   { campo: "densidad_urinaria", etiqueta: "Densidad urinaria", unidad: "" },
@@ -80,7 +106,7 @@ export type ConfigMantenimiento = {
 export type DatosRegistro = Partial<Omit<RegistroMantenimiento, "id" | "anulado">> & { registrado_en: string };
 
 const COLS_REGISTRO =
-  "id, registrado_en, fc, pam, temperatura, sat_o2, fio2, peep, volumen_corriente, diuresis_ml, diuresis_es_ultima_hora, ingresos_ml, egresos_ml, osm_urinaria, osm_serica, densidad_urinaria, pvc, gc, ic_medido, sat_venosa, delta_pp, delta_vs, delta_co2_espirado, indice_vena_cava, resultado_pasivo_miembros, disfuncion_miocardica, anulado";
+  "id, registrado_en, fc, pam, temperatura, sat_o2, fio2, peep, volumen_corriente, diuresis_ml, diuresis_es_ultima_hora, ingresos_ml, egresos_ml, osm_urinaria, osm_serica, densidad_urinaria, pvc, gc, ic_medido, sat_venosa, delta_pp, delta_vs, delta_co2_espirado, indice_vena_cava, resultado_pasivo_miembros, disfuncion_miocardica, ing_sol_medio_ml, ing_sol_09_ml, ing_ringer_ml, ing_dextrosa_ml, egr_sng_drenajes_ml, perdidas_insensibles_ml, perdidas_insensibles_editadas, egresos_incluye_diuresis, cargado_por, aviso_medico, anulado";
 const COLS_INFUSION =
   "id, registrado_en, droga, tipo, ampollas, contenido_por_ampolla, unidad_contenido, volumen_final_ml, velocidad_ml_h, dosis_calculada, unidad_dosis, anulado";
 const COLS_CONFIG = "donante_id, nutricion_previa, monitoreo_avanzado_activo, corazon_candidato";

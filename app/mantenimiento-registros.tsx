@@ -10,7 +10,15 @@ import {
   type DatosRegistro,
   type RegistroMantenimiento,
 } from "@/lib/procuracion/mantenimiento";
-import { camposFueraDeRango, ordenarPorHora, validarHoraRegistro } from "@/lib/procuracion/mantenimiento-calculos";
+import {
+  camposFueraDeRango,
+  inicioDeHora,
+  ordenarPorHora,
+  registroDeLaHora,
+  totalesParaGuardar,
+  validarHoraRegistro,
+  type InfusionFila,
+} from "@/lib/procuracion/mantenimiento-calculos";
 import { Confirmacion, ErrorVisible, aInputLocal, aNumero, fechaHora, hora, momentoActual, num } from "./mantenimiento-ui";
 
 const supabase = createClient();
@@ -24,11 +32,13 @@ type Pendiente = { tipo: "orden" | "plausibilidad"; texto: string };
 export default function MantenimientoRegistros({
   donanteId,
   registros,
+  infusiones,
   monitoreoAvanzado,
   onRegistrosChange,
 }: {
   donanteId: string;
   registros: RegistroMantenimiento[];
+  infusiones: InfusionFila[]; // para el volumen de bombas en el balance
   monitoreoAvanzado: boolean;
   onRegistrosChange: (r: RegistroMantenimiento[]) => void;
 }) {
@@ -79,6 +89,9 @@ export default function MantenimientoRegistros({
   }
   const horaIso = horaTexto ? new Date(horaTexto).toISOString() : new Date().toISOString();
   const anterior = anteriorA(horaIso);
+  // Una sola fila por hora de reloj: si ya hay un registro en esa hora
+  // (del médico o de enfermería), un registro nuevo completa ese mismo.
+  const existenteEnLaHora = editId ? null : registroDeLaHora(registros, inicioDeHora(new Date(horaIso).getTime()));
 
   async function guardar(conf = confirmados) {
     setError(null);
@@ -109,16 +122,48 @@ export default function MantenimientoRegistros({
       });
     }
 
+    // Completar el registro existente de esa hora: solo se pisan los
+    // valores cargados ahora (los vacíos no borran lo que ya había).
+    const existente = editId
+      ? registros.find((r) => r.id === editId) ?? null
+      : registroDeLaHora(registros, inicioDeHora(new Date(iso).getTime()));
+    const idDestino = editId ?? existente?.id ?? null;
+    const aplicar: Partial<Record<CampoNumericoRegistro, number | null>> = editId
+      ? valores
+      : Object.fromEntries(Object.entries(valores).filter(([, x]) => x !== null));
+    const combinado = { ...(existente ?? {}), ...aplicar } as Partial<RegistroMantenimiento>;
+    const registradoEn = existente && !editId ? existente.registrado_en : iso;
+    const totales = totalesParaGuardar(
+      {
+        ing_sol_medio_ml: combinado.ing_sol_medio_ml ?? null,
+        ing_sol_09_ml: combinado.ing_sol_09_ml ?? null,
+        ing_ringer_ml: combinado.ing_ringer_ml ?? null,
+        ing_dextrosa_ml: combinado.ing_dextrosa_ml ?? null,
+        temperatura: combinado.temperatura ?? null,
+        diuresis_ml: combinado.diuresis_ml ?? null,
+        egr_sng_drenajes_ml: combinado.egr_sng_drenajes_ml ?? null,
+        perdidas_insensibles_ml: existente?.perdidas_insensibles_ml ?? null,
+        perdidas_insensibles_editadas: existente?.perdidas_insensibles_editadas ?? false,
+      },
+      inicioDeHora(new Date(registradoEn).getTime()),
+      registros.filter((r) => r.id !== idDestino),
+      infusiones
+    );
+
     const datos: DatosRegistro = {
-      registrado_en: iso,
-      ...valores,
+      registrado_en: registradoEn,
+      ...aplicar,
       disfuncion_miocardica: disfuncion,
-      diuresis_es_ultima_hora: anteriorA(iso) === null,
+      diuresis_es_ultima_hora: anteriorA(registradoEn) === null,
+      perdidas_insensibles_ml: totales.perdidas_insensibles_ml,
+      ingresos_ml: totales.ingresos_ml,
+      egresos_ml: totales.egresos_ml,
+      egresos_incluye_diuresis: true,
     };
     setGuardando(true);
     try {
-      const guardado = await guardarRegistro(supabase, donanteId, datos, editId);
-      onRegistrosChange(editId ? registros.map((r) => (r.id === editId ? guardado : r)) : [...registros, guardado]);
+      const guardado = await guardarRegistro(supabase, donanteId, datos, idDestino);
+      onRegistrosChange(idDestino ? registros.map((r) => (r.id === idDestino ? guardado : r)) : [...registros, guardado]);
       setAbierto(false);
       setPendiente(null);
     } catch (e) {
@@ -170,6 +215,11 @@ export default function MantenimientoRegistros({
             <span className="field-label">{editId ? "Editar registro · hora" : "Hora del registro"}</span>
             <input type="datetime-local" className="mini-input" value={horaTexto} onChange={(e) => setHoraTexto(e.target.value)} />
           </div>
+          {existenteEnLaHora && (
+            <div className="tiny" style={{ color: "var(--amber)", marginBottom: 6 }}>
+              Ya hay un registro a las {hora(existenteEnLaHora.registrado_en)}: se completa ese mismo (los campos que dejes vacíos no se borran).
+            </div>
+          )}
           {campos.map((c) => (
             <div className="field-row" key={c.campo}>
               <span className="field-label">

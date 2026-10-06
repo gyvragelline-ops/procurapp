@@ -292,9 +292,15 @@ export type Droga =
   | "esmolol"
   | "amiodarona"
   | "vasopresina"
-  | "desmopresina";
+  | "desmopresina"
+  | "furosemida"
+  | "insulina"
+  | "potasio"
+  | "bicarbonato";
 
-export type UnidadDosis = "mcg/kg/min" | "mcg/min" | "mg/min" | "U/min";
+// Por minuto (gammas y similares) o por hora (furosemida, insulina,
+// potasio, bicarbonato: dosis = mL/h × concentración, sin /60).
+export type UnidadDosis = "mcg/kg/min" | "mcg/min" | "mg/min" | "U/min" | "mg/h" | "U/h" | "mEq/h";
 
 export const DROGAS_INFUSION: Record<Exclude<Droga, "desmopresina">, { etiqueta: string; unidadDosis: UnidadDosis }> = {
   noradrenalina: { etiqueta: "Noradrenalina", unidadDosis: "mcg/kg/min" },
@@ -306,6 +312,11 @@ export const DROGAS_INFUSION: Record<Exclude<Droga, "desmopresina">, { etiqueta:
   amiodarona: { etiqueta: "Amiodarona", unidadDosis: "mg/min" },
   // Vasopresina NO va en gammas: U/min (y se muestra también U/h).
   vasopresina: { etiqueta: "Vasopresina", unidadDosis: "U/min" },
+  // Bombas de la planilla de enfermería (OP2): dosis por hora.
+  furosemida: { etiqueta: "Furosemida", unidadDosis: "mg/h" },
+  insulina: { etiqueta: "Insulina", unidadDosis: "U/h" },
+  potasio: { etiqueta: "Potasio", unidadDosis: "mEq/h" },
+  bicarbonato: { etiqueta: "Bicarbonato", unidadDosis: "mEq/h" },
 };
 
 // Drogas que cuentan para el ítem informativo "al menos un vasopresor"
@@ -359,4 +370,51 @@ export const RANGOS_PLAUSIBLES: Record<string, { min: number; max: number }> = {
   gc: { min: 0.5, max: 20 },
   ic_medido: { min: 0.3, max: 10 },
   sat_venosa: { min: 10, max: 100 },
+  // Planilla de enfermería -- PROPUESTO, A VALIDAR
+  ing_sol_medio_ml: { min: 0, max: 3000 },
+  ing_sol_09_ml: { min: 0, max: 3000 },
+  ing_ringer_ml: { min: 0, max: 3000 },
+  ing_dextrosa_ml: { min: 0, max: 3000 },
+  egr_sng_drenajes_ml: { min: 0, max: 3000 },
+  perdidas_insensibles_ml: { min: 0, max: 300 },
 };
+
+// ---------------------------------------------------------------------
+// Planilla de enfermería (OP2, grilla horaria) -- vista de Enfermería
+// ---------------------------------------------------------------------
+// Pérdidas insensibles por fiebre: 255 × (T − 36) mL por 24 h, divididas
+// por 24 para cada hora; con T ≤ 36 es 0 (cuenta solo el exceso por
+// fiebre, no la pérdida de base). Se muestra calculado y es editable.
+export const PERDIDAS_INSENSIBLES = { mlPorGradoPorDia: 255, temperaturaBase: 36, horasPorDia: 24 } as const;
+
+// Líquidos de la grilla (Haemaccel y dextran quedan afuera a propósito).
+export const LIQUIDOS_ENFERMERIA = [
+  { campo: "ing_sol_medio_ml", etiqueta: "Solución al medio (0,45 %)" },
+  { campo: "ing_sol_09_ml", etiqueta: "Solución 0,9 %" },
+  { campo: "ing_ringer_ml", etiqueta: "Ringer" },
+  { campo: "ing_dextrosa_ml", etiqueta: "Dextrosa" },
+] as const;
+
+// Botones rápidos de volumen (mL).
+export const BOTONES_RAPIDOS_ML = [100, 250, 500] as const;
+
+// Bombas de la grilla, en el orden de la planilla (+ vasopresina). La
+// desmopresina NO va acá: es solo bolo en mcg en la fila de la hora.
+export const BOMBAS_ENFERMERIA: Exclude<Droga, "desmopresina">[] = [
+  "dopamina",
+  "dobutamina",
+  "noradrenalina",
+  "adrenalina",
+  "vasopresina",
+  "furosemida",
+  "insulina",
+  "potasio",
+  "bicarbonato",
+];
+
+// Paso de los botones +/− de las bombas (mL/h) -- PROPUESTO, A VALIDAR.
+export const PASO_BOMBA_ML_H = 1;
+
+// Alarma "hora sin cargar": una hora sin fila pasados estos minutos de su
+// inicio (la hora en curso cuenta desde hh:15).
+export const MINUTOS_HORA_SIN_CARGAR = 15;

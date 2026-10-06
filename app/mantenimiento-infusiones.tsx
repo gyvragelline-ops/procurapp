@@ -8,24 +8,40 @@ import {
   dosisDesdeVelocidad,
   estadoInfusiones,
   ordenarPorHora,
-  textoConfirmacionDilucion,
   ultimaDilucion,
   velocidadDesdeDosis,
-  type Dilucion,
   type InfusionFila,
 } from "@/lib/procuracion/mantenimiento-calculos";
-import { DROGAS_INFUSION, PRESET_NORADRENALINA, type Droga } from "@/lib/procuracion/mantenimiento-metas";
+import { DROGAS_INFUSION } from "@/lib/procuracion/mantenimiento-metas";
+import DilucionBomba, { type DrogaInfusion, type EstadoDilucion } from "./mantenimiento-dilucion";
 import { Confirmacion, ErrorVisible, PedirPeso, aInputLocal, aNumero, esFutura, fechaHora, hora, num } from "./mantenimiento-ui";
 
 const supabase = createClient();
-
-type DrogaInfusion = Exclude<Droga, "desmopresina">;
 const DROGAS = Object.keys(DROGAS_INFUSION) as DrogaInfusion[];
 
-// Infusiones y cálculo de dosis. Regla central: NUNCA se calcula sin que
-// el procurador confirme con un toque la dilución ("8 mg en 100 mL = 80
-// mcg/mL. ¿Correcto?") cada vez que inicia o cambia una droga; la cuenta
-// se muestra siempre. Desmopresina: solo bolos en mcg, sin bomba.
+// Texto corto de una fila de infusión ("10 mL/h · 0,19 mcg/kg/min").
+export function textoInfusion(f: InfusionFila): string {
+  if (f.tipo === "bolo") return `bolo ${num(f.dosis_calculada)} mcg`;
+  if ((f.velocidad_ml_h ?? 0) === 0) return "suspendida";
+  const decimales = f.unidad_dosis === "U/min" ? 4 : f.unidad_dosis === "mcg/kg/min" ? 3 : 2;
+  const uh = f.unidad_dosis === "U/min" && f.dosis_calculada !== null ? ` (${num(f.dosis_calculada * 60)} U/h)` : "";
+  return `${num(f.velocidad_ml_h)} mL/h · ${num(f.dosis_calculada, decimales)} ${f.unidad_dosis ?? ""}${uh}`;
+}
+
+// Dilución vigente de una droga en curso (ya confirmada cuando se inició):
+// cambiar solo la velocidad no la repregunta.
+export function dilucionVigente(infusiones: InfusionFila[], droga: DrogaInfusion): EstadoDilucion {
+  if (!estadoInfusiones(infusiones).porDroga[droga]?.activa) return null;
+  const d = ultimaDilucion(infusiones, droga);
+  if (!d) return null;
+  const c = concentracion(droga, d);
+  return c.ok ? { dilucion: d, concentracion: c.valor, unidad: c.unidad } : null;
+}
+
+// Infusiones (vista del médico). La dilución se confirma con un toque al
+// iniciar una droga o al cambiar su dilución (DilucionBomba); cambiar solo
+// la velocidad de una droga en curso no la repregunta. La cuenta se
+// muestra siempre. Desmopresina: solo bolos en mcg, sin bomba.
 export default function MantenimientoInfusiones({
   pesoKg,
   donanteId,
@@ -40,13 +56,7 @@ export default function MantenimientoInfusiones({
   onGuardarPeso: (pesoKg: number) => Promise<void>;
 }) {
   const [droga, setDroga] = useState<DrogaInfusion | null>(null);
-  const [dil, setDil] = useState<{ ampollas: string; contenido: string; unidad: "mg" | "mcg" | "U"; volumen: string }>({
-    ampollas: "",
-    contenido: "",
-    unidad: "mg",
-    volumen: "",
-  });
-  const [dilucionConfirmada, setDilucionConfirmada] = useState(false);
+  const [dil, setDil] = useState<EstadoDilucion>(null);
   const [velocidadTexto, setVelocidadTexto] = useState("");
   const [dosisObjetivoTexto, setDosisObjetivoTexto] = useState("");
   const [horaTexto, setHoraTexto] = useState("");
@@ -61,47 +71,24 @@ export default function MantenimientoInfusiones({
   const enCurso = DROGAS.filter((d) => estado.porDroga[d]?.activa);
 
   function abrir(d: DrogaInfusion) {
-    const previa = ultimaDilucion(infusiones, d);
-    const base: Dilucion | null = previa ?? (d === "noradrenalina" ? PRESET_NORADRENALINA : null);
+    const enCursoD = estado.porDroga[d]?.activa ?? false;
     setDroga(d);
-    setDil({
-      ampollas: base ? String(base.ampollas) : "",
-      contenido: base ? String(base.contenidoPorAmpolla).replace(".", ",") : "",
-      unidad: d === "vasopresina" ? "U" : (base?.unidadContenido ?? "mg"),
-      volumen: base ? String(base.volumenFinalMl) : "",
-    });
-    // Cada vez que se inicia o cambia una droga se vuelve a confirmar.
-    setDilucionConfirmada(false);
-    setVelocidadTexto("");
+    setDil(dilucionVigente(infusiones, d));
+    setVelocidadTexto(enCursoD ? String(estado.porDroga[d]?.velocidad_ml_h ?? "").replace(".", ",") : "");
     setDosisObjetivoTexto("");
     setHoraTexto(aInputLocal(new Date().toISOString()));
     setError(null);
   }
 
-  function cambiarDil(cambios: Partial<typeof dil>) {
-    setDil((d) => ({ ...d, ...cambios }));
-    setDilucionConfirmada(false); // cambió la dilución: hay que confirmar de nuevo
-  }
-
-  const dilucion: Dilucion | null = (() => {
-    const a = aNumero(dil.ampollas);
-    const c = aNumero(dil.contenido);
-    const v = aNumero(dil.volumen);
-    if (a === null || c === null || v === null || [a, c, v].some(Number.isNaN)) return null;
-    return { ampollas: a, contenidoPorAmpolla: c, unidadContenido: dil.unidad, volumenFinalMl: v };
-  })();
-  const conc = droga && dilucion ? concentracion(droga, dilucion) : null;
-  const textoConf = droga && dilucion ? textoConfirmacionDilucion(droga, dilucion) : null;
-  const usaPeso = droga ? DROGAS_INFUSION[droga].unidadDosis === "mcg/kg/min" : false;
+  const unidadDosis = droga ? DROGAS_INFUSION[droga].unidadDosis : null;
+  const usaPeso = unidadDosis === "mcg/kg/min";
   const velocidad = aNumero(velocidadTexto);
   const resultado =
-    droga && conc?.ok && dilucionConfirmada && velocidad !== null && !Number.isNaN(velocidad)
-      ? dosisDesdeVelocidad(droga, velocidad, conc.valor, pesoKg)
-      : null;
+    droga && dil && velocidad !== null && !Number.isNaN(velocidad) ? dosisDesdeVelocidad(droga, velocidad, dil.concentracion, pesoKg) : null;
   const dosisObjetivo = aNumero(dosisObjetivoTexto);
   const inversa =
-    droga && conc?.ok && dilucionConfirmada && dosisObjetivo !== null && !Number.isNaN(dosisObjetivo)
-      ? velocidadDesdeDosis(droga, dosisObjetivo, conc.valor, pesoKg)
+    droga && dil && dosisObjetivo !== null && !Number.isNaN(dosisObjetivo)
+      ? velocidadDesdeDosis(droga, dosisObjetivo, dil.concentracion, pesoKg)
       : null;
 
   async function insertar(fila: NuevaInfusion, despues: () => void) {
@@ -119,8 +106,7 @@ export default function MantenimientoInfusiones({
   }
 
   function guardar() {
-    if (!droga || !dilucion || !conc?.ok) return setError("Completá la dilución.");
-    if (!dilucionConfirmada) return setError("Confirmá la dilución antes de guardar.");
+    if (!droga || !dil) return setError("Confirmá la dilución antes de guardar.");
     if (!resultado?.ok) return setError(resultado?.error ?? "Cargá la velocidad en mL/h.");
     if (!horaTexto) return setError("Falta la hora.");
     const iso = new Date(horaTexto).toISOString();
@@ -130,12 +116,12 @@ export default function MantenimientoInfusiones({
         registrado_en: iso,
         droga,
         tipo: "infusion",
-        ampollas: dilucion.ampollas,
-        contenido_por_ampolla: dilucion.contenidoPorAmpolla,
-        unidad_contenido: dilucion.unidadContenido,
-        volumen_final_ml: dilucion.volumenFinalMl,
-        concentracion_calculada: conc.valor,
-        unidad_concentracion: conc.unidad,
+        ampollas: dil.dilucion.ampollas,
+        contenido_por_ampolla: dil.dilucion.contenidoPorAmpolla,
+        unidad_contenido: dil.dilucion.unidadContenido,
+        volumen_final_ml: dil.dilucion.volumenFinalMl,
+        concentracion_calculada: dil.concentracion,
+        unidad_concentracion: dil.unidad,
         velocidad_ml_h: velocidad,
         dosis_calculada: resultado.dosis,
         unidad_dosis: resultado.unidad,
@@ -209,18 +195,8 @@ export default function MantenimientoInfusiones({
     }
   }
 
-  const textoDosis = (f: InfusionFila) =>
-    f.tipo === "bolo"
-      ? `bolo ${num(f.dosis_calculada)} mcg`
-      : (f.velocidad_ml_h ?? 0) === 0
-        ? "suspendida"
-        : `${num(f.velocidad_ml_h)} mL/h · ${num(f.dosis_calculada, f.unidad_dosis === "U/min" ? 4 : 3)} ${f.unidad_dosis ?? ""}${
-            f.unidad_dosis === "U/min" && f.dosis_calculada !== null ? ` (${num(f.dosis_calculada * 60)} U/h)` : ""
-          }`;
-
   return (
-    <div style={{ marginTop: 14 }}>
-      <div className="section-label">Infusiones</div>
+    <div>
       <ErrorVisible mensaje={error} />
 
       {enCurso.length === 0 && <div className="tiny muted">Sin infusiones en curso.</div>}
@@ -230,7 +206,7 @@ export default function MantenimientoInfusiones({
           <div key={d}>
             <div className="field-row">
               <span className="field-label">
-                {DROGAS_INFUSION[d].etiqueta} · {textoDosis(f)} <span className="muted">desde {hora(f.registrado_en)}</span>
+                {DROGAS_INFUSION[d].etiqueta} · {textoInfusion(f)} <span className="muted">desde {hora(f.registrado_en)}</span>
               </span>
               <span style={{ display: "flex", gap: 4 }}>
                 <button className="btn btn-sm" onClick={() => abrir(d)}>
@@ -285,43 +261,19 @@ export default function MantenimientoInfusiones({
       {droga && (
         <div style={{ border: "1px solid var(--border)", borderRadius: 8, padding: 10, marginTop: 8 }}>
           <div className="tiny" style={{ marginBottom: 6, fontWeight: 600 }}>
-            {DROGAS_INFUSION[droga].etiqueta} — dosis en {DROGAS_INFUSION[droga].unidadDosis}
+            {DROGAS_INFUSION[droga].etiqueta} — dosis en {unidadDosis}
             {droga === "vasopresina" ? " (y U/h)" : ""}
           </div>
-          <div className="field-row">
-            <span className="field-label">Ampollas</span>
-            <input className="mini-input" inputMode="decimal" style={{ width: 80 }} value={dil.ampollas} onChange={(e) => cambiarDil({ ampollas: e.target.value })} />
-          </div>
-          <div className="field-row">
-            <span className="field-label">Contenido por ampolla</span>
-            <span style={{ display: "flex", gap: 4 }}>
-              <input className="mini-input" inputMode="decimal" style={{ width: 80 }} value={dil.contenido} onChange={(e) => cambiarDil({ contenido: e.target.value })} />
-              {droga === "vasopresina" ? (
-                <span className="tiny">U</span>
-              ) : (
-                <select className="mini-input" value={dil.unidad} onChange={(e) => cambiarDil({ unidad: e.target.value as "mg" | "mcg" })}>
-                  <option value="mg">mg</option>
-                  <option value="mcg">mcg</option>
-                </select>
-              )}
-            </span>
-          </div>
-          {droga === "noradrenalina" && <div className="tiny muted">{PRESET_NORADRENALINA.aviso}</div>}
-          <div className="field-row">
-            <span className="field-label">Volumen final (mL)</span>
-            <input className="mini-input" inputMode="decimal" style={{ width: 80 }} value={dil.volumen} onChange={(e) => cambiarDil({ volumen: e.target.value })} />
-          </div>
+          <DilucionBomba
+            key={droga}
+            droga={droga}
+            inicial={ultimaDilucion(infusiones, droga)}
+            vigente={estado.porDroga[droga]?.activa ?? false}
+            onConfirmada={setDil}
+          />
 
-          {conc && !conc.ok && <ErrorVisible mensaje={conc.error} />}
-          {textoConf && !dilucionConfirmada && (
-            <Confirmacion texto={textoConf} textoSi="Sí, correcto" onSi={() => setDilucionConfirmada(true)} onNo={() => setDroga(null)} />
-          )}
-
-          {dilucionConfirmada && conc?.ok && (
+          {dil && (
             <>
-              <div className="tiny" style={{ margin: "6px 0", color: "var(--green)" }}>
-                Dilución confirmada: {num(conc.valor, 3)} {conc.unidad}
-              </div>
               {usaPeso && !pesoKg && <PedirPeso onGuardar={onGuardarPeso} />}
               <div className="field-row">
                 <span className="field-label">Velocidad (mL/h)</span>
@@ -333,7 +285,7 @@ export default function MantenimientoInfusiones({
                 </div>
               )}
               <div className="field-row">
-                <span className="field-label">¿Qué velocidad para una dosis? ({DROGAS_INFUSION[droga].unidadDosis})</span>
+                <span className="field-label">¿Qué velocidad para una dosis? ({unidadDosis})</span>
                 <span style={{ display: "flex", gap: 4 }}>
                   <input
                     className="mini-input"
@@ -362,7 +314,7 @@ export default function MantenimientoInfusiones({
           )}
 
           <div className="btn-row" style={{ marginTop: 8 }}>
-            <button className="btn btn-sm btn-accent" disabled={guardando || !dilucionConfirmada || !resultado?.ok} onClick={guardar}>
+            <button className="btn btn-sm btn-accent" disabled={guardando || !dil || !resultado?.ok} onClick={guardar}>
               {guardando ? "Guardando…" : "Guardar"}
             </button>
             <button className="btn btn-sm" disabled={guardando} onClick={() => setDroga(null)}>
@@ -387,7 +339,7 @@ export default function MantenimientoInfusiones({
             <div key={f.id}>
               <div className="field-row" style={{ opacity: f.anulado ? 0.5 : 1 }}>
                 <span className="field-label" style={{ textDecoration: f.anulado ? "line-through" : undefined }}>
-                  {fechaHora(f.registrado_en)} · {f.droga === "desmopresina" ? "Desmopresina" : DROGAS_INFUSION[f.droga].etiqueta} · {textoDosis(f)}
+                  {fechaHora(f.registrado_en)} · {f.droga === "desmopresina" ? "Desmopresina" : DROGAS_INFUSION[f.droga].etiqueta} · {textoInfusion(f)}
                   {f.anulado ? " (anulada)" : ""}
                 </span>
                 {!f.anulado && (

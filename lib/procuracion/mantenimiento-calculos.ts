@@ -16,6 +16,8 @@ import {
   HORAS_LAB_DESACTUALIZADO,
   METAS,
   MINUTOS_ALARMA_SIN_REGISTRO,
+  MINUTOS_HORA_SIN_CARGAR,
+  PERDIDAS_INSENSIBLES,
   MINUTOS_INTERVALO_CORTO,
   MINUTOS_INTERVALO_LARGO,
   MINUTOS_PRIMER_REGISTRO,
@@ -58,21 +60,32 @@ export function colorDe(clave: ClaveMeta, valor: number | null | undefined): Col
 export type Dilucion = {
   ampollas: number;
   contenidoPorAmpolla: number;
-  unidadContenido: "mg" | "mcg" | "U";
+  unidadContenido: "mg" | "mcg" | "U" | "mEq";
   volumenFinalMl: number;
 };
 
-export type UnidadConcentracion = "mcg/mL" | "mg/mL" | "U/mL";
+export type UnidadConcentracion = "mcg/mL" | "mg/mL" | "U/mL" | "mEq/mL";
 
 // Unidad de concentración que necesita cada unidad de dosis.
-function unidadConcentracionPara(unidadDosis: UnidadDosis): UnidadConcentracion {
-  if (unidadDosis === "U/min") return "U/mL";
-  if (unidadDosis === "mg/min") return "mg/mL";
+export function unidadConcentracionPara(unidadDosis: UnidadDosis): UnidadConcentracion {
+  if (unidadDosis === "U/min" || unidadDosis === "U/h") return "U/mL";
+  if (unidadDosis === "mEq/h") return "mEq/mL";
+  if (unidadDosis === "mg/min" || unidadDosis === "mg/h") return "mg/mL";
   return "mcg/mL"; // mcg/kg/min y mcg/min
 }
 
+// Unidad del contenido de la ampolla que acepta cada droga.
+export function unidadesContenidoPara(droga: Exclude<Droga, "desmopresina">): ("mg" | "mcg" | "U" | "mEq")[] {
+  const uc = unidadConcentracionPara(DROGAS_INFUSION[droga].unidadDosis);
+  if (uc === "U/mL") return ["U"];
+  if (uc === "mEq/mL") return ["mEq"];
+  return ["mg", "mcg"];
+}
+
+const esPorHora = (u: UnidadDosis) => u === "mg/h" || u === "U/h" || u === "mEq/h";
+
 export type ResultadoConcentracion =
-  | { ok: true; valor: number; unidad: UnidadConcentracion; totalDroga: number; unidadTotal: "mg" | "mcg" | "U" }
+  | { ok: true; valor: number; unidad: UnidadConcentracion; totalDroga: number; unidadTotal: "mg" | "mcg" | "U" | "mEq" }
   | { ok: false; error: string };
 
 export function concentracion(droga: Exclude<Droga, "desmopresina">, d: Dilucion): ResultadoConcentracion {
@@ -81,11 +94,13 @@ export function concentracion(droga: Exclude<Droga, "desmopresina">, d: Dilucion
   }
   const unidad = unidadConcentracionPara(DROGAS_INFUSION[droga].unidadDosis);
   const total = d.ampollas * d.contenidoPorAmpolla;
-  if (unidad === "U/mL") {
-    if (d.unidadContenido !== "U") return { ok: false, error: "Para vasopresina el contenido va en U por ampolla." };
-    return { ok: true, valor: total / d.volumenFinalMl, unidad, totalDroga: total, unidadTotal: "U" };
+  const permitidas = unidadesContenidoPara(droga);
+  if (!permitidas.includes(d.unidadContenido)) {
+    return { ok: false, error: `Para ${DROGAS_INFUSION[droga].etiqueta} el contenido por ampolla va en ${permitidas.join(" o ")}.` };
   }
-  if (d.unidadContenido === "U") return { ok: false, error: "Esta droga no se dosifica en U: cargá mg o mcg por ampolla." };
+  if (unidad === "U/mL" || unidad === "mEq/mL") {
+    return { ok: true, valor: total / d.volumenFinalMl, unidad, totalDroga: total, unidadTotal: d.unidadContenido };
+  }
   // Pasar el total a la unidad que pide la concentración.
   const totalEnMcg = d.unidadContenido === "mg" ? total * 1000 : total;
   const valor = unidad === "mg/mL" ? totalEnMcg / 1000 / d.volumenFinalMl : totalEnMcg / d.volumenFinalMl;
@@ -116,6 +131,7 @@ const usaPeso = (u: UnidadDosis) => u === "mcg/kg/min";
 //   mcg/min    = (mL/h × mcg/mL) / 60
 //   mg/min     = (mL/h × mg/mL) / 60
 //   U/min      = (mL/h × U/mL) / 60   (y U/h = mL/h × U/mL)
+//   mg/h, U/h, mEq/h = mL/h × concentración (por hora, sin /60)
 export function dosisDesdeVelocidad(
   droga: Exclude<Droga, "desmopresina">,
   velocidadMlH: number,
@@ -125,6 +141,10 @@ export function dosisDesdeVelocidad(
   const unidad = DROGAS_INFUSION[droga].unidadDosis;
   const uc = unidadConcentracionPara(unidad);
   if (!(velocidadMlH >= 0) || !(concentracionPorMl > 0)) return { ok: false, motivo: "datos", error: "Faltan velocidad o concentración." };
+  if (esPorHora(unidad)) {
+    const dosis = velocidadMlH * concentracionPorMl;
+    return { ok: true, dosis, unidad, cuenta: `${fmt(velocidadMlH)} mL/h × ${fmt(concentracionPorMl, 3)} ${uc} = ${fmt(dosis, 2)} ${unidad}` };
+  }
   if (usaPeso(unidad)) {
     if (!pesoKg || !(pesoKg > 0)) return { ok: false, motivo: "sin_peso", error: "Sin peso cargado no se calcula: cargalo en Medidas antropométricas." };
     const dosis = (velocidadMlH * concentracionPorMl) / (pesoKg * 60);
@@ -161,6 +181,7 @@ export type ResultadoVelocidad =
 // Dosis -> mL/h (inversa).
 //   mL/h = (dosis × peso × 60) / (mcg/mL)        para mcg/kg/min
 //   mL/h = (dosis × 60) / (concentración)        para mcg/min, mg/min, U/min
+//   mL/h = dosis / concentración                 para mg/h, U/h, mEq/h
 export function velocidadDesdeDosis(
   droga: Exclude<Droga, "desmopresina">,
   dosis: number,
@@ -170,6 +191,10 @@ export function velocidadDesdeDosis(
   const unidad = DROGAS_INFUSION[droga].unidadDosis;
   const uc = unidadConcentracionPara(unidad);
   if (!(dosis >= 0) || !(concentracionPorMl > 0)) return { ok: false, motivo: "datos", error: "Faltan dosis o concentración." };
+  if (esPorHora(unidad)) {
+    const v = dosis / concentracionPorMl;
+    return { ok: true, velocidadMlH: v, cuenta: `${fmt(dosis, 2)} ${unidad} / ${fmt(concentracionPorMl, 3)} ${uc} = ${fmt(v)} mL/h` };
+  }
   if (usaPeso(unidad)) {
     if (!pesoKg || !(pesoKg > 0)) return { ok: false, motivo: "sin_peso", error: "Sin peso cargado no se calcula: cargalo en Medidas antropométricas." };
     const v = (dosis * pesoKg * 60) / concentracionPorMl;
@@ -224,6 +249,10 @@ export type RegistroBase = {
   diuresis_es_ultima_hora: boolean;
   ingresos_ml: number | null;
   egresos_ml: number | null;
+  // true: egresos_ml ya es el TOTAL (diuresis incluida) -- filas cargadas
+  // desde la planilla de enfermería en adelante. false: filas viejas,
+  // donde egresos_ml eran "otros egresos" sin la diuresis.
+  egresos_incluye_diuresis?: boolean;
   pam?: number | null;
 };
 
@@ -286,14 +315,16 @@ export function calcularDiuresis(registros: RegistroBase[], pesoKg: number | nul
 
 export type BalanceFila = { id: string; registrado_en: string; parcial: number; acumulado: number };
 
-// Balance = ingresos − (egresos + diuresis), parcial por registro y
-// acumulado. Sin dato = 0. Lo anulado no cuenta.
+// Balance parcial por registro y acumulado. Sin dato = 0. Lo anulado no
+// cuenta. Filas nuevas: ingresos − egresos (egresos ya incluye la
+// diuresis). Filas viejas: ingresos − (egresos + diuresis).
 export function calcularBalance(registros: RegistroBase[]): BalanceFila[] {
   let acumulado = 0;
   return ordenarPorHora(registros)
     .filter((r) => !r.anulado)
     .map((r) => {
-      const parcial = (r.ingresos_ml ?? 0) - ((r.egresos_ml ?? 0) + (r.diuresis_ml ?? 0));
+      const egresos = r.egresos_incluye_diuresis ? (r.egresos_ml ?? 0) : (r.egresos_ml ?? 0) + (r.diuresis_ml ?? 0);
+      const parcial = (r.ingresos_ml ?? 0) - egresos;
       acumulado += parcial;
       return { id: r.id, registrado_en: r.registrado_en, parcial, acumulado };
     });
@@ -464,7 +495,7 @@ export type InfusionFila = {
   tipo: "infusion" | "bolo";
   ampollas: number | null;
   contenido_por_ampolla: number | null;
-  unidad_contenido: "mg" | "mcg" | "U" | null;
+  unidad_contenido: "mg" | "mcg" | "U" | "mEq" | null;
   volumen_final_ml: number | null;
   velocidad_ml_h: number | null;
   dosis_calculada: number | null;
@@ -598,4 +629,153 @@ export function camposFueraDeRango(valores: Record<string, number | null | undef
     if (r && valor !== null && valor !== undefined) out.push({ campo, valor, ...r });
   }
   return out;
+}
+
+
+// =====================================================================
+// Planilla de enfermería (vista de Enfermería, una fila por hora)
+// =====================================================================
+
+// Pérdidas insensibles de UNA hora: 255 × (T − 36) mL por 24 h, / 24.
+// T ≤ 36 -> 0. Sin temperatura -> null (no se inventa).
+export function perdidasInsensiblesHora(temperatura: number | null | undefined): number | null {
+  if (temperatura === null || temperatura === undefined || Number.isNaN(temperatura)) return null;
+  const { mlPorGradoPorDia, temperaturaBase, horasPorDia } = PERDIDAS_INSENSIBLES;
+  if (temperatura <= temperaturaBase) return 0;
+  return (mlPorGradoPorDia * (temperatura - temperaturaBase)) / horasPorDia;
+}
+
+// "Hora" = hora de reloj local (09:00-09:59 es la hora 09).
+export function inicioDeHora(ms: number): number {
+  const d = new Date(ms);
+  d.setMinutes(0, 0, 0);
+  return d.getTime();
+}
+
+export function mismaHora(isoA: string, isoB: string): boolean {
+  return inicioDeHora(new Date(isoA).getTime()) === inicioDeHora(new Date(isoB).getTime());
+}
+
+// Registro vigente (no anulado) de esa hora, si existe: se completa ese
+// mismo, lo haya cargado el médico o el enfermero (una sola fuente).
+export function registroDeLaHora<T extends { registrado_en: string; anulado: boolean }>(registros: T[], inicioHoraMs: number): T | null {
+  return ordenarPorHora(registros).find((r) => !r.anulado && inicioDeHora(new Date(r.registrado_en).getTime()) === inicioHoraMs) ?? null;
+}
+
+// Temperatura para las pérdidas insensibles de una hora: la de esa fila
+// o, si falta, la última cargada antes (con su hora, para mostrar la edad).
+export function temperaturaParaPerdidas(
+  registros: { registrado_en: string; anulado: boolean; temperatura?: number | null }[],
+  inicioHoraMs: number,
+  temperaturaDeLaFila: number | null
+): { valor: number; registrado_en: string | null; propia: boolean } | null {
+  if (temperaturaDeLaFila !== null && temperaturaDeLaFila !== undefined) return { valor: temperaturaDeLaFila, registrado_en: null, propia: true };
+  const finHora = inicioHoraMs + 3_600_000;
+  const previas = ordenarPorHora(registros).filter(
+    (r) => !r.anulado && r.temperatura !== null && r.temperatura !== undefined && new Date(r.registrado_en).getTime() < finHora
+  );
+  const u = previas[previas.length - 1];
+  return u ? { valor: u.temperatura as number, registrado_en: u.registrado_en, propia: false } : null;
+}
+
+export type HoraGrilla = { inicio: number; registroId: string | null; estado: "cargada" | "faltante" | "en_curso" };
+
+// Horas del caso: desde la primera hora con registro (o la actual si no
+// hay ninguno) hasta la hora actual. "faltante" = sin fila pasados
+// MINUTOS_HORA_SIN_CARGAR desde su inicio; antes de eso, "en_curso".
+export function horasDelCaso(registros: { id: string; registrado_en: string; anulado: boolean }[], ahora: number): HoraGrilla[] {
+  const vigentes = registros.filter((r) => !r.anulado);
+  const actual = inicioDeHora(ahora);
+  const primera = vigentes.length ? Math.min(...vigentes.map((r) => inicioDeHora(new Date(r.registrado_en).getTime()))) : actual;
+  const horas: HoraGrilla[] = [];
+  for (let h = Math.min(primera, actual); h <= actual; h += 3_600_000) {
+    const reg = registroDeLaHora(vigentes, h);
+    const estado = reg ? "cargada" : ahora - h >= MINUTOS_HORA_SIN_CARGAR * 60_000 ? "faltante" : "en_curso";
+    horas.push({ inicio: h, registroId: reg?.id ?? null, estado });
+  }
+  return horas;
+}
+
+// Alarmas del enfermero: solo horas sin cargar (el balance acumulado se
+// muestra como dato, sin color).
+export function alarmasEnfermeria(horas: HoraGrilla[]): { inicio: number; texto: string }[] {
+  return horas
+    .filter((h) => h.estado === "faltante")
+    .map((h) => {
+      const d = new Date(h.inicio);
+      return { inicio: h.inicio, texto: `Hora ${String(d.getHours()).padStart(2, "0")} sin cargar` };
+    });
+}
+
+// Volumen de las bombas en una hora (ESTIMADO: la velocidad vigente al
+// final de la hora × 1 h; si cambió dentro de la hora no es exacto).
+export function volumenBombasEnHora(
+  infusiones: InfusionFila[],
+  finHoraMs: number
+): { totalMl: number; detalle: { droga: Droga; velocidadMlH: number }[] } {
+  const previas = infusiones.filter((f) => !f.anulado && f.tipo === "infusion" && new Date(f.registrado_en).getTime() <= finHoraMs);
+  const porDroga = new Map<Droga, number>();
+  for (const f of ordenarPorHora(previas)) porDroga.set(f.droga, f.velocidad_ml_h ?? 0);
+  const detalle = [...porDroga.entries()].filter(([, v]) => v > 0).map(([droga, velocidadMlH]) => ({ droga, velocidadMlH }));
+  return { totalMl: detalle.reduce((s, d) => s + d.velocidadMlH, 0), detalle };
+}
+
+export type LiquidosFila = {
+  ing_sol_medio_ml: number | null;
+  ing_sol_09_ml: number | null;
+  ing_ringer_ml: number | null;
+  ing_dextrosa_ml: number | null;
+};
+
+// Totales de la fila (el enfermero nunca suma). Ingresos = líquidos +
+// bombas (estimado). Egresos = diuresis + SNG/drenajes + pérdidas
+// insensibles.
+export function totalesFila(f: LiquidosFila & {
+  bombasMl: number;
+  diuresis_ml: number | null;
+  egr_sng_drenajes_ml: number | null;
+  perdidas_insensibles_ml: number | null;
+}): { ingresos: number; egresos: number; parcial: number } {
+  const ingresos =
+    (f.ing_sol_medio_ml ?? 0) + (f.ing_sol_09_ml ?? 0) + (f.ing_ringer_ml ?? 0) + (f.ing_dextrosa_ml ?? 0) + f.bombasMl;
+  const egresos = (f.diuresis_ml ?? 0) + (f.egr_sng_drenajes_ml ?? 0) + (f.perdidas_insensibles_ml ?? 0);
+  return { ingresos, egresos, parcial: ingresos - egresos };
+}
+
+// Fila nueva: arranca con los líquidos de la hora anterior (los sueros
+// suelen seguir corriendo). Diuresis, SNG y signos NO se copian: son
+// mediciones de cada hora. Las bombas siguen solas (su estado vive en
+// las infusiones).
+export function liquidosPrecargados(anterior: (LiquidosFila & { anulado: boolean }) | null): LiquidosFila {
+  if (!anterior || anterior.anulado) return { ing_sol_medio_ml: null, ing_sol_09_ml: null, ing_ringer_ml: null, ing_dextrosa_ml: null };
+  return {
+    ing_sol_medio_ml: anterior.ing_sol_medio_ml,
+    ing_sol_09_ml: anterior.ing_sol_09_ml,
+    ing_ringer_ml: anterior.ing_ringer_ml,
+    ing_dextrosa_ml: anterior.ing_dextrosa_ml,
+  };
+}
+
+// Totales que se GUARDAN con cada fila (ingresos_ml y egresos_ml quedan
+// como totales calculados; egresos_incluye_diuresis = true). Pérdidas
+// insensibles: calculadas con la temperatura de la fila (o la última),
+// salvo que el enfermero las haya editado a mano.
+export function totalesParaGuardar(
+  fila: LiquidosFila & {
+    temperatura: number | null;
+    diuresis_ml: number | null;
+    egr_sng_drenajes_ml: number | null;
+    perdidas_insensibles_ml: number | null;
+    perdidas_insensibles_editadas: boolean;
+  },
+  inicioHoraMs: number,
+  registros: { registrado_en: string; anulado: boolean; temperatura?: number | null }[],
+  infusiones: InfusionFila[]
+): { perdidas_insensibles_ml: number | null; ingresos_ml: number; egresos_ml: number; egresos_incluye_diuresis: true; bombasMl: number } {
+  const perdidas = fila.perdidas_insensibles_editadas
+    ? fila.perdidas_insensibles_ml
+    : perdidasInsensiblesHora(temperaturaParaPerdidas(registros, inicioHoraMs, fila.temperatura)?.valor ?? null);
+  const bombasMl = volumenBombasEnHora(infusiones, inicioHoraMs + 3_600_000 - 1).totalMl;
+  const t = totalesFila({ ...fila, bombasMl, perdidas_insensibles_ml: perdidas });
+  return { perdidas_insensibles_ml: perdidas, ingresos_ml: t.ingresos, egresos_ml: t.egresos, egresos_incluye_diuresis: true, bombasMl };
 }
