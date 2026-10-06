@@ -2,6 +2,8 @@
 > Hoy todas las tablas tienen RLS desactivado y permisos para el rol
 > `anon` (ver `handoff/grants*.sql`): cualquiera con la clave pública
 > puede leer y escribir. Válido solo para pruebas.
+>
+> Auditoría de ediciones de registros: pendiente (requiere autenticación).
 
 ## ESTADO AL 01/10 -- proyecto pausado
 

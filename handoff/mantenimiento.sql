@@ -12,7 +12,12 @@
 --
 -- Sin borrado físico: todo se anula (anulado = true). Lo anulado se ve
 -- tachado y NO cuenta en alarmas, score, tendencias ni balance.
+--
+-- Todo en una transacción: si algo falla (por ejemplo, una tabla que ya
+-- existe), no se aplica nada.
 -- =============================================================
+
+begin;
 
 create table laboratorio_valores (
   id          uuid primary key default gen_random_uuid(),
@@ -97,11 +102,48 @@ alter table mantenimiento_registros  disable row level security;
 alter table mantenimiento_infusiones disable row level security;
 alter table mantenimiento_config     disable row level security;
 
--- Registros: se editan (hora, valores) y se anulan.
+-- Supabase da por defecto TODOS los permisos (incluido DELETE y UPDATE
+-- de cualquier columna) a anon/authenticated sobre cada tabla nueva de
+-- public. Los grant solo suman: primero se saca todo y después se da
+-- solo lo necesario. (Revocar en la tabla revoca también los permisos
+-- por columna.) Sin secuencias que revocar: los id son uuid con
+-- gen_random_uuid().
+revoke all on laboratorio_valores, mantenimiento_registros,
+              mantenimiento_infusiones, mantenimiento_config
+  from anon, authenticated;
+
+-- Ningún DELETE en ninguna tabla (sin borrado físico).
+-- Registros: hora y valores editables, y se anulan.
 grant select, insert, update on mantenimiento_registros to anon, authenticated;
--- Laboratorio e infusiones: solo se agrega; lo único editable es "anulado".
-grant select, insert on laboratorio_valores      to anon, authenticated;
-grant update (anulado) on laboratorio_valores      to anon, authenticated;
-grant select, insert on mantenimiento_infusiones to anon, authenticated;
-grant update (anulado) on mantenimiento_infusiones to anon, authenticated;
-grant select, insert, update on mantenimiento_config to anon, authenticated;
+-- Config por donante: se crea y se edita.
+grant select, insert, update on mantenimiento_config    to anon, authenticated;
+-- Infusiones y laboratorio: solo se agregan; lo único editable es "anulado".
+grant select, insert         on mantenimiento_infusiones to anon, authenticated;
+grant update (anulado)       on mantenimiento_infusiones to anon, authenticated;
+grant select, insert         on laboratorio_valores      to anon, authenticated;
+grant update (anulado)       on laboratorio_valores      to anon, authenticated;
+
+commit;
+
+-- =============================================================
+-- VERIFICACIÓN (correr DESPUÉS, aparte; solo lectura)
+-- =============================================================
+-- Permisos de la tabla para anon (esperado: registros y config ->
+-- SELECT, INSERT, UPDATE; infusiones y laboratorio -> SELECT, INSERT;
+-- ninguna con DELETE):
+--
+--   select table_name, privilege_type
+--   from information_schema.role_table_grants
+--   where table_schema = 'public' and grantee = 'anon'
+--     and table_name in ('laboratorio_valores','mantenimiento_registros',
+--                        'mantenimiento_infusiones','mantenimiento_config')
+--   order by table_name, privilege_type;
+--
+-- UPDATE por columna para anon en infusiones y laboratorio (esperado:
+-- una sola fila por tabla, column_name = 'anulado'):
+--
+--   select table_name, column_name, privilege_type
+--   from information_schema.column_privileges
+--   where table_schema = 'public' and grantee = 'anon' and privilege_type = 'UPDATE'
+--     and table_name in ('laboratorio_valores','mantenimiento_infusiones')
+--   order by table_name, column_name;
