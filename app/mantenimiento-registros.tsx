@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useImperativeHandle, useState, type Ref } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
   CAMPOS_REGISTRO,
@@ -25,6 +25,9 @@ const supabase = createClient();
 
 type Pendiente = { tipo: "orden" | "plausibilidad"; texto: string };
 
+// Lo que el panel puede pedirle desde afuera (botón fijo "+ Nuevo registro").
+export type ControlRegistros = { abrirNuevo: () => void };
+
 // Registro horario de Mantenimiento: carga, edición (hora y valores) y
 // anulación. Validaciones antes de guardar: hora futura no se acepta; si
 // la edición cambia el orden de los registros, pide confirmación; valores
@@ -35,12 +38,14 @@ export default function MantenimientoRegistros({
   infusiones,
   monitoreoAvanzado,
   onRegistrosChange,
+  ref,
 }: {
   donanteId: string;
   registros: RegistroMantenimiento[];
   infusiones: InfusionFila[]; // para el volumen de bombas en el balance
   monitoreoAvanzado: boolean;
   onRegistrosChange: (r: RegistroMantenimiento[]) => void;
+  ref?: Ref<ControlRegistros>;
 }) {
   const [abierto, setAbierto] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
@@ -67,6 +72,8 @@ export default function MantenimientoRegistros({
     setError(null);
     setAbierto(true);
   }
+
+  useImperativeHandle(ref, () => ({ abrirNuevo }));
 
   function abrirEdicion(r: RegistroMantenimiento) {
     setEditId(r.id);
@@ -199,8 +206,7 @@ export default function MantenimientoRegistros({
   const recientes = ordenarPorHora(registros).reverse().slice(0, 12);
 
   return (
-    <div style={{ marginTop: 14 }}>
-      <div className="section-label">Registros</div>
+    <div>
       <ErrorVisible mensaje={error} />
 
       {!abierto && (

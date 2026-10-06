@@ -12,6 +12,7 @@ import {
   DOSIS,
   HIPERNATREMIA_SODIO_MAYOR_A,
   HIPOTENSION_PAM_MENOR_A,
+  HORAS_LAB_DESACTUALIZADO,
   HTA_PAM_MAYOR_A,
   IC_NO_BETABLOQUEAR_MENOR_A,
   LEYENDA_VERIFICACION,
@@ -36,6 +37,9 @@ export type Sugerencia = {
   nivel: "rojo" | "amarillo" | "info";
   lineas: string[];
   leyenda: string;
+  // Dato en que se apoya la sugerencia, con su edad ("Na 152, de hace
+  // 7 h"); `destacada` si es más viejo que HORAS_LAB_DESACTUALIZADO.
+  notas?: { texto: string; destacada: boolean }[];
 };
 
 export type EstadoParaSugerencias = {
@@ -50,9 +54,19 @@ export type EstadoParaSugerencias = {
   volemia: { cargadas: number; positivas: number };
   estadoDI: EstadoDI;
   nutricionPrevia: "si" | "no" | null;
+  // Horas desde que se midió el sodio usado (null = sin dato de hora).
+  sodioHaceHoras: number | null;
 };
 
 const s = (sug: Omit<Sugerencia, "leyenda">): Sugerencia => ({ ...sug, leyenda: LEYENDA_VERIFICACION });
+
+// "Na 152, de hace 7 h" -- siempre que una sugerencia se apoya en el sodio.
+function notaSodio(sodio: number | null, horas: number | null): { texto: string; destacada: boolean }[] {
+  if (sodio === null) return [];
+  const edad =
+    horas === null ? "sin hora" : horas < 1 ? "de hace menos de 1 h" : `de hace ${Math.floor(horas)} h`;
+  return [{ texto: `Na ${String(sodio).replace(".", ",")}, ${edad}`, destacada: horas !== null && horas > HORAS_LAB_DESACTUALIZADO }];
+}
 // Números en los textos con coma decimal ("0,3", no "0.3").
 const n = (x: number) => String(x).replace(".", ",");
 
@@ -152,6 +166,7 @@ export function generarSugerencias(e: EstadoParaSugerencias): Sugerencia[] {
           "Opciones: desmopresina o vasopresina.",
           "Meta: sodio <155. Si el hígado es candidato, apuntar a mantenerlo bajo.",
         ],
+        notas: notaSodio(e.sodio, e.sodioHaceHoras),
       })
     );
   }
@@ -170,6 +185,7 @@ export function generarSugerencias(e: EstadoParaSugerencias): Sugerencia[] {
         titulo: e.estadoDI === "probable" ? "Diabetes insípida probable" : "Sospecha de diabetes insípida",
         nivel: e.estadoDI === "probable" ? "rojo" : "amarillo",
         lineas,
+        notas: notaSodio(e.sodio, e.sodioHaceHoras),
       })
     );
     // Potasio: vigilancia mientras haya diabetes insípida.

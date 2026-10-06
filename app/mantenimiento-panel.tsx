@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { Donante } from "@/lib/procuracion/types";
 import {
@@ -35,13 +35,44 @@ import {
 } from "@/lib/procuracion/mantenimiento-calculos";
 import { generarSugerencias } from "@/lib/procuracion/mantenimiento-sugerencias";
 import { LEYENDA_VERIFICACION, METAS, MINUTOS_ALARMA_SIN_REGISTRO, REGISTROS_TENDENCIA, type ClaveMeta } from "@/lib/procuracion/mantenimiento-metas";
-import MantenimientoRegistros from "./mantenimiento-registros";
+import MantenimientoRegistros, { type ControlRegistros } from "./mantenimiento-registros";
 import MantenimientoLaboratorio from "./mantenimiento-laboratorio";
 import MantenimientoInfusiones from "./mantenimiento-infusiones";
 import MantenimientoEnfermeria from "./mantenimiento-enfermeria";
 import { CHIP_COLOR, COLOR_CSS, ErrorVisible, MiniTendencia, PedirPeso, hora, num } from "./mantenimiento-ui";
 
 const supabase = createClient();
+
+type ClaveSeccion = "registro" | "infusiones" | "laboratorio";
+
+// Sección colapsable. El contenido queda montado aunque esté cerrada
+// (no se pierde lo que se estaba cargando).
+function Seccion({
+  titulo,
+  abierta,
+  onToggle,
+  children,
+}: {
+  titulo: string;
+  abierta: boolean;
+  onToggle: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <div style={{ marginTop: 14 }}>
+      <button
+        type="button"
+        className="section-label"
+        onClick={onToggle}
+        aria-expanded={abierta}
+        style={{ background: "none", border: "none", padding: 0, cursor: "pointer", width: "100%", textAlign: "left" }}
+      >
+        {abierta ? "▾" : "▸"} {titulo}
+      </button>
+      <div hidden={!abierta}>{children}</div>
+    </div>
+  );
+}
 
 // Panel de Mantenimiento (etapa 09): apoyo a la decisión para sostener
 // perfusión y oxigenación. Tablero por sistemas verde/amarillo/rojo,
@@ -67,6 +98,17 @@ export default function MantenimientoPanel({
   const [error, setError] = useState<string | null>(null);
   const [ahora, setAhora] = useState(() => Date.now());
   const [vista, setVista] = useState<"medico" | "enfermeria">("medico");
+  const [secciones, setSecciones] = useState<Record<ClaveSeccion, boolean>>({ registro: true, infusiones: false, laboratorio: false });
+  const controlRegistros = useRef<ControlRegistros>(null);
+  const anclaRegistro = useRef<HTMLDivElement>(null);
+  const alternar = (s: ClaveSeccion) => setSecciones((x) => ({ ...x, [s]: !x[s] }));
+
+  function nuevoRegistro() {
+    setSecciones((x) => ({ ...x, registro: true }));
+    controlRegistros.current?.abrirNuevo();
+    // Esperar a que la sección se muestre antes de desplazar.
+    requestAnimationFrame(() => anclaRegistro.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  }
 
   useEffect(() => {
     let vivo = true;
@@ -231,6 +273,7 @@ export default function MantenimientoPanel({
     ic: ic?.valor ?? null,
     corazonCandidato: config?.corazon_candidato ?? "sin_definir",
     sodio: na?.valor ?? null,
+    sodioHaceHoras: na ? (ahora - new Date(na.medido_en).getTime()) / 3_600_000 : null,
     volemia: { cargadas: volemia.cargadas, positivas: volemia.positivas },
     estadoDI: di.estado,
     nutricionPrevia: config?.nutricion_previa ?? null,
@@ -270,6 +313,25 @@ export default function MantenimientoPanel({
         />
       ) : (
         <>
+
+        {/* ------------------------------------------------ botón fijo */}
+        <div style={{ position: "sticky", top: 0, zIndex: 5, background: "var(--bg)", padding: "6px 0", marginBottom: 8 }}>
+          <button className="btn btn-accent" style={{ width: "100%", fontSize: 16, padding: "10px 12px" }} onClick={nuevoRegistro}>
+            + Nuevo registro
+          </button>
+        </div>
+
+        {/* ------------------------------------------------ alarmas (siempre arriba) */}
+        {alarmas.length > 0 && (
+          <div style={{ marginBottom: 10 }}>
+            <div className="section-label">Alarmas</div>
+            {alarmas.map((a, i) => (
+              <div key={i} className="tiny" style={{ color: COLOR_CSS[a.nivel], padding: "2px 0" }}>
+                ● {a.texto}
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* ------------------------------------------------ cabecera */}
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
@@ -318,19 +380,19 @@ export default function MantenimientoPanel({
           )}
         </div>
 
-        {/* ------------------------------------------------ alarmas */}
-        {alarmas.length > 0 && (
-          <div style={{ marginBottom: 10 }}>
-            <div className="section-label">Alarmas</div>
-            {alarmas.map((a, i) => (
-              <div key={i} className="tiny" style={{ color: COLOR_CSS[a.nivel], padding: "2px 0" }}>
-                ● {a.texto}
-              </div>
-            ))}
-          </div>
-        )}
-
         {/* ------------------------------------------------ tablero por sistemas */}
+        <div className="tiny muted" style={{ marginBottom: 6 }}>Se completa con lo que cargues abajo.</div>
+        {vigentes.length === 0 ? (
+          <div style={{ padding: "10px 12px", border: "1px dashed var(--border)", borderRadius: 8, marginBottom: 8 }}>
+            <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4 }}>Todavía no hay registros. Para empezar:</div>
+            <ol className="tiny" style={{ margin: 0, paddingLeft: 18 }}>
+              <li>Tocá «+ Nuevo registro» y cargá signos vitales y diuresis.</li>
+              <li>En Infusiones, cargá las bombas que están corriendo (con su dilución).</li>
+              <li>En Laboratorio, cargá el último resultado (Na, K, glucemia, gases).</li>
+            </ol>
+          </div>
+        ) : (
+        <>
         {sistemas.map((s) => {
           const visibles = s.filas.filter((f) => !f.avanzado || (avanzado && f.valor !== null));
           if (visibles.length === 0) return null;
@@ -367,6 +429,8 @@ export default function MantenimientoPanel({
             </span>
           </div>
         )}
+        </>
+        )}
 
         {/* ------------------------------------------------ sugerencias */}
         {sugerencias.length > 0 && (
@@ -385,6 +449,16 @@ export default function MantenimientoPanel({
                 {s.lineas.map((l, i) => (
                   <div key={i} className="tiny">
                     {l}
+                  </div>
+                ))}
+                {s.notas?.map((n, i) => (
+                  <div
+                    key={`n${i}`}
+                    className="tiny"
+                    style={n.destacada ? { color: "var(--amber)", fontWeight: 700 } : { color: "var(--text-faint)" }}
+                  >
+                    {n.texto}
+                    {n.destacada ? " (más de 6 h)" : ""}
                   </div>
                 ))}
                 <div className="tiny muted" style={{ fontStyle: "italic" }}>
@@ -474,22 +548,30 @@ export default function MantenimientoPanel({
         </div>
 
         {/* ------------------------------------------------ carga */}
-        <MantenimientoRegistros
-          donanteId={donante.id}
-          registros={registros}
-          infusiones={infusiones}
-          monitoreoAvanzado={avanzado}
-          onRegistrosChange={setRegistros}
-        />
-        <div className="section-label" style={{ marginTop: 14 }}>Infusiones</div>
-        <MantenimientoInfusiones
-          pesoKg={peso}
-          donanteId={donante.id}
-          infusiones={infusiones}
-          onInfusionesChange={setInfusiones}
-          onGuardarPeso={guardarPeso}
-        />
-        <MantenimientoLaboratorio donanteId={donante.id} valores={lab} fio2Ultima={ultimo?.fio2 ?? null} onValoresChange={setLab} />
+        <div ref={anclaRegistro} style={{ scrollMarginTop: 64 }}>
+          <Seccion titulo="Registro" abierta={secciones.registro} onToggle={() => alternar("registro")}>
+            <MantenimientoRegistros
+              ref={controlRegistros}
+              donanteId={donante.id}
+              registros={registros}
+              infusiones={infusiones}
+              monitoreoAvanzado={avanzado}
+              onRegistrosChange={setRegistros}
+            />
+          </Seccion>
+        </div>
+        <Seccion titulo="Infusiones" abierta={secciones.infusiones} onToggle={() => alternar("infusiones")}>
+          <MantenimientoInfusiones
+            pesoKg={peso}
+            donanteId={donante.id}
+            infusiones={infusiones}
+            onInfusionesChange={setInfusiones}
+            onGuardarPeso={guardarPeso}
+          />
+        </Seccion>
+        <Seccion titulo="Laboratorio" abierta={secciones.laboratorio} onToggle={() => alternar("laboratorio")}>
+          <MantenimientoLaboratorio donanteId={donante.id} valores={lab} fio2Ultima={ultimo?.fio2 ?? null} onValoresChange={setLab} />
+        </Seccion>
 
         {/* ------------------------------------------------ configuración */}
         <div style={{ marginTop: 14 }}>

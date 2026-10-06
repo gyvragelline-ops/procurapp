@@ -104,8 +104,7 @@ export default function MantenimientoLaboratorio({
   const etiqueta = (p: string) => PARAMETROS_LAB_MANTENIMIENTO.find((x) => x.parametro === p)?.etiqueta ?? p;
 
   return (
-    <div style={{ marginTop: 14 }}>
-      <div className="section-label">Laboratorio</div>
+    <div>
       <ErrorVisible mensaje={error} />
       {!abierto && (
         <button className="btn btn-sm btn-accent" onClick={abrir}>

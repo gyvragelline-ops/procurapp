@@ -15,6 +15,7 @@ const base: EstadoParaSugerencias = {
   volemia: { cargadas: 0, positivas: 0 },
   estadoDI: "sin_criterios",
   nutricionPrevia: null,
+  sodioHaceHoras: null,
 };
 const texto = (e: Partial<EstadoParaSugerencias>) =>
   generarSugerencias({ ...base, ...e })
@@ -135,4 +136,18 @@ test("orden: rojas primero", () => {
   const niveles = generarSugerencias({ ...base, pam: 50, fc: 40, nutricionPrevia: "si", sodio: 152 }).map((s) => s.nivel);
   assert.deepEqual(niveles, [...niveles].sort((a, b) => ({ rojo: 0, amarillo: 1, info: 2 })[a] - ({ rojo: 0, amarillo: 1, info: 2 })[b]));
   assert.equal(niveles[0], "rojo");
+});
+
+test("diabetes insípida e hipernatremia muestran la edad del sodio, destacada si pasa de 6 h", () => {
+  const con = (sodioHaceHoras: number | null, sodio = 152) =>
+    generarSugerencias({ ...base, sodio, sodioHaceHoras, estadoDI: "sospecha" }).filter((x) => x.id === "diabetes_insipida" || x.id === "hipernatremia");
+  const viejo = con(7.4);
+  assert.equal(viejo.length, 2);
+  for (const x of viejo) assert.deepEqual(x.notas, [{ texto: "Na 152, de hace 7 h", destacada: true }]);
+  assert.deepEqual(con(2)[0].notas, [{ texto: "Na 152, de hace 2 h", destacada: false }]);
+  assert.deepEqual(con(6)[0].notas, [{ texto: "Na 152, de hace 6 h", destacada: false }]); // borde: >6 h
+  assert.deepEqual(con(0.5)[0].notas, [{ texto: "Na 152, de hace menos de 1 h", destacada: false }]);
+  // sin sodio: DI igual se sugiere, sin nota
+  const sinNa = generarSugerencias({ ...base, sodio: null, estadoDI: "sospecha" }).find((x) => x.id === "diabetes_insipida")!;
+  assert.deepEqual(sinNa.notas, []);
 });
