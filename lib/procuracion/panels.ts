@@ -43,14 +43,6 @@ function chipFromEstado(estado: string | null | undefined, fallback: { text: str
   return { text: humanizeCampo(estado), tone: "gray" as const };
 }
 
-export function gammaOf(concMg: number | null, concMl: number | null, rateMlHr: number | null, pesoKg: number | null) {
-  if (!concMg || !concMl || !rateMlHr || !pesoKg) return null;
-  return ((concMg / concMl) * 1000 * rateMlHr) / (pesoKg * 60);
-}
-export function fmtGamma(g: number | null) {
-  return g == null ? null : g.toFixed(2).replace(".", ",");
-}
-
 function fmtFecha(v: string | null) {
   if (!v) return null;
   const d = new Date(v);
@@ -138,28 +130,6 @@ export async function loadPanel(
     };
   }
 
-  if (key === "mantenimiento") {
-    const { data: logs } = await supabase
-      .from("mantenimiento_log")
-      .select("hora, diuresis, drogas, created_at")
-      .eq("donante_id", donanteId)
-      .order("created_at", { ascending: false })
-      .limit(1);
-    const last = (logs as { hora: string; diuresis: string; drogas: { nombre: string; tipo: string; ml: number; concMg: number | null; concMl: number | null }[] }[])?.[0];
-    if (!last) {
-      return { rows: [], note: "Sin registros de mantenimiento cargados todavía." };
-    }
-    const drogaRows: PanelRow[] = (last.drogas ?? []).map((g) => {
-      const gamma = gammaOf(g.concMg, g.concMl, g.ml, donante.peso);
-      return {
-        label: `${g.nombre} (${g.tipo})`,
-        value: `${g.ml} ml/h${gamma != null ? ` · ${fmtGamma(gamma)} γ` : " · definir dilución para γ"}`,
-      };
-    });
-    return {
-      rows: [{ label: "Última actualización", value: last.hora }, ...drogaRows, { label: "Diuresis", value: `${last.diuresis} ml/h` }],
-    };
-  }
 
   if (key === "documentacion") {
     // Foto de DNI / Foto de grupo y factor ya NO se listan acá -- tienen

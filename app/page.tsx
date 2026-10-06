@@ -17,6 +17,7 @@ import {
   computeComDonacionEstado,
   computeLabImagenesEstado,
   computeMedidasEstado,
+  computeMantenimientoEstado,
   computeMuestrasEstado,
   stagesForTipo,
   stripStagesForTipo,
@@ -45,6 +46,7 @@ import LabImagenesCompleto from "./lab-imagenes-completo";
 import DocumentosPanel from "./documentos-panel";
 import DocumentacionFotosPanel from "./documentacion-fotos-panel";
 import MedidasPanel from "./medidas-panel";
+import MantenimientoPanel from "./mantenimiento-panel";
 import NuevoDonante from "./nuevo-donante";
 
 const EMPTY_ME_CAMPOS: MeCampos = Object.fromEntries(ME_CAMPO_KEYS.map((k) => [k, null]));
@@ -72,6 +74,7 @@ export default function Home() {
   const [comDonacionRealizada, setComDonacionRealizada] = useState(false);
   const [labImagenesCompleto, setLabImagenesCompleto] = useState(false);
   const [medidasCompleto, setMedidasCompleto] = useState(false);
+  const [mantenimientoCompleto, setMantenimientoCompleto] = useState(false);
   const [muestras, setMuestras] = useState<MuestraRow[]>([]);
   const [planillasGeneradas, setPlanillasGeneradas] = useState<Record<string, PlanillaGeneradaRow>>({});
   const [generandoPdfs, setGenerandoPdfs] = useState(false);
@@ -175,12 +178,19 @@ export default function Home() {
         .eq("item_key", "completo")
         .maybeSingle(),
       supabase
+        .from("documentacion_estado")
+        .select("estado")
+        .eq("donante_id", selectedId)
+        .eq("categoria", "mantenimiento")
+        .eq("item_key", "completo")
+        .maybeSingle(),
+      supabase
         .from("planillas_generadas")
         .select("planilla_key, archivo_url, generado_en")
         .eq("donante_id", selectedId)
         .order("generado_en", { ascending: false }),
       supabase.from("muestras").select("paquete_key, nombre, tubos, obtenida, retirada").eq("donante_id", selectedId),
-    ]).then(([donanteRes, familiarRes, etapasRes, judicialRes, meRes, certificadoCierreRes, dopplerRes, certAuxRes, comMuerteRes, comDonacionRes, labImagenesRes, medidasRes, planillasRes, muestrasRes]) => {
+    ]).then(([donanteRes, familiarRes, etapasRes, judicialRes, meRes, certificadoCierreRes, dopplerRes, certAuxRes, comMuerteRes, comDonacionRes, labImagenesRes, medidasRes, mantenimientoRes, planillasRes, muestrasRes]) => {
       const donanteData = (donanteRes.data as Donante) ?? null;
       setDonante(donanteData);
       setFamiliar((familiarRes.data as Familiar) ?? null);
@@ -215,6 +225,7 @@ export default function Home() {
       setComDonacionRealizada((comDonacionRes.data as { estado: string | null } | null)?.estado === "si");
       setLabImagenesCompleto((labImagenesRes.data as { estado: string | null } | null)?.estado === "si");
       setMedidasCompleto((medidasRes.data as { estado: string | null } | null)?.estado === "si");
+      setMantenimientoCompleto((mantenimientoRes.data as { estado: string | null } | null)?.estado === "si");
       const planillasMap: Record<string, PlanillaGeneradaRow> = {};
       ((planillasRes.data as PlanillaGeneradaRow[]) ?? []).forEach((r) => {
         if (!planillasMap[r.planilla_key]) planillasMap[r.planilla_key] = r;
@@ -325,6 +336,7 @@ export default function Home() {
     if (key === "comDonacion") return computeComDonacionEstado(comDonacionRealizada);
     if (key === "labImagenes") return computeLabImagenesEstado(labImagenesCompleto);
     if (key === "medidas") return computeMedidasEstado(medidasCompleto);
+    if (key === "mantenimiento") return computeMantenimientoEstado(mantenimientoCompleto);
     if (key === "muestras") return computeMuestrasEstado(muestras);
     return etapas[key];
   }
@@ -356,6 +368,7 @@ export default function Home() {
       key === "muestras" ||
       key === "medidas" ||
       key === "labImagenes" ||
+      key === "mantenimiento" ||
       stageData[key] ||
       !donante
     )
@@ -703,6 +716,15 @@ export default function Home() {
                             onDonanteChange={setDonante}
                             completo={medidasCompleto}
                             onCompletoChange={setMedidasCompleto}
+                          />
+                        )}
+
+                        {s.key === "mantenimiento" && donante && (
+                          <MantenimientoPanel
+                            donante={donante}
+                            onDonanteChange={setDonante}
+                            completo={mantenimientoCompleto}
+                            onCompletoChange={setMantenimientoCompleto}
                           />
                         )}
 

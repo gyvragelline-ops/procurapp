@@ -558,7 +558,8 @@ export function armarAlarmas(datos: {
     out.push({ nivel: "rojo", texto: `Último registro hace ${Math.floor(datos.minutosSinRegistro)} min (más de 1 h).` });
   for (const p of datos.parametros) {
     if (p.avanzado && !datos.monitoreoAvanzadoActivo) continue;
-    if (p.color === "rojo" || p.color === "amarillo") out.push({ nivel: p.color, texto: `${p.etiqueta} fuera de meta: ${p.valor}` });
+    if (p.color === "rojo" || p.color === "amarillo")
+      out.push({ nivel: p.color, texto: `${p.etiqueta} fuera de meta: ${p.valor === null ? "—" : fmt(p.valor)}` });
   }
   if (datos.estadoDI === "probable") out.push({ nivel: "rojo", texto: "Diabetes insípida probable." });
   if (datos.estadoDI === "sospecha") out.push({ nivel: "amarillo", texto: "Sospecha de diabetes insípida." });

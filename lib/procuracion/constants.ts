@@ -279,6 +279,12 @@ export function computeMedidasEstado(completo: boolean): EstadoEtapa {
   return completo ? "green" : "gray";
 }
 
+// Mantenimiento: verde con "Marcar como completo", gris si no (mismo
+// criterio que Medidas y Laboratorio e imágenes).
+export function computeMantenimientoEstado(completo: boolean): EstadoEtapa {
+  return completo ? "green" : "gray";
+}
+
 export function computeMuestrasEstado(muestras: { obtenida: boolean }[]): EstadoEtapa {
   if (muestras.length === 0) return "gray";
   const obtenidas = muestras.filter((m) => m.obtenida).length;
