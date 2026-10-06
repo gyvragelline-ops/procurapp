@@ -1,5 +1,5 @@
 import fs from "fs";
-import { LAB_PARAMS_OP2, EXTRACCION_COLS } from "../../lib/procuracion/laboratorio";
+import { LAB_PARAMS_OP2, EXTRACCION_COLS } from "../../lib/procuracion/op2-laboratorio";
 
 const rows: string[] = [];
 for (const p of LAB_PARAMS_OP2) {
