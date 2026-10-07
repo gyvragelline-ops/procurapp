@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { anularInfusion, guardarInfusion, type NuevaInfusion } from "@/lib/procuracion/mantenimiento";
-import { concentracion, dosisDesdeVelocidad, horaMinutos, ordenarPorHora, type EstadoBomba, type EstadoBombas, type InfusionFila } from "@/lib/procuracion/mantenimiento-calculos";
+import { concentracion, dosisDesdeVelocidad, horaMinutos, ordenarPorHora, unidadCorta, type EstadoBomba, type EstadoBombas, type InfusionFila } from "@/lib/procuracion/mantenimiento-calculos";
 import { BOLOS, BOMBAS_ENFERMERIA, DROGAS_INFUSION, MINUTOS_DOSIS_DESACTUALIZADA, type DrogaBolo, type DrogaInfusion } from "@/lib/procuracion/mantenimiento-metas";
 import { Confirmacion, ErrorVisible, aInputLocal, aNumero, esFutura, fechaHora, momentoActual, num } from "./mantenimiento-ui";
 
@@ -30,7 +30,7 @@ export function textoDosisBomba(b: EstadoBomba): string {
   if (b.estado === "falta_peso") return "falta peso";
   const dec = b.dosis!.unidad === "U/min" ? 4 : b.dosis!.unidad === "mcg/kg/min" ? 3 : 2;
   const uh = b.dosis!.uPorHora !== undefined ? ` (${num(b.dosis!.uPorHora)} U/h)` : "";
-  return `${num(b.dosis!.dosis, dec)} ${b.dosis!.unidad}${uh}`;
+  return `${num(b.dosis!.dosis, dec)} ${unidadCorta(b.dosis!.unidad)}${uh}`;
 }
 
 // ---------------------------------------------------------------------

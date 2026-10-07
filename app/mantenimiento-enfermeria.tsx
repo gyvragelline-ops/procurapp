@@ -29,7 +29,7 @@ import {
   type InfusionFila,
 } from "@/lib/procuracion/mantenimiento-calculos";
 import { BOTONES_RAPIDOS_ML, LIQUIDOS_ENFERMERIA } from "@/lib/procuracion/mantenimiento-metas";
-import { BombasDeLaHora, bombasFormDesde, bombasParaGuardar, type BombasForm } from "./mantenimiento-dilucion";
+import { BombasDeLaHora, avisosDosisDeFila, bombasFormDesde, bombasParaGuardar, type BombasForm } from "./mantenimiento-dilucion";
 import { Bolos, BombasEnCurso } from "./mantenimiento-infusiones";
 import { Confirmacion, ErrorVisible, PedirPeso, aInputLocal, aNumero, esFutura, fechaHora, hora, momentoActual, num } from "./mantenimiento-ui";
 
@@ -218,15 +218,15 @@ export default function MantenimientoEnfermeria({
       ...(perdidasEditadas !== null ? { perdidas_insensibles_ml: perdidasEditadas } : {}),
       ...(glu !== null ? { glucemia: glu } : {}),
     });
-    if (fuera.length > 0 && !confirmadoPlausible) {
+    const avisosBombas = avisosDosisDeFila(bombasForm, infusiones, pesoKg);
+    if ((fuera.length > 0 || avisosBombas.length > 0) && !confirmadoPlausible) {
       const etiqueta = (campo: string) =>
         LIQUIDOS_ENFERMERIA.find((l) => l.campo === campo)?.etiqueta ??
         SIGNOS.find((s) => s.campo === campo)?.etiqueta ??
         ({ diuresis_ml: "Diuresis", egr_sng_drenajes_ml: "SNG / drenajes", perdidas_insensibles_ml: "Pérdidas insensibles", glucemia: "Glucemia" } as Record<string, string>)[campo] ??
         campo;
-      return setPendiente(
-        `¿Seguro? Fuera del rango esperable: ${fuera.map((f) => `${etiqueta(f.campo)} ${num(f.valor)} (${num(f.min)}-${num(f.max)})`).join("; ")}.`
-      );
+      const textos = [...fuera.map((f) => `${etiqueta(f.campo)} ${num(f.valor)} (${num(f.min)}-${num(f.max)})`), ...avisosBombas];
+      return setPendiente(`¿Seguro? Fuera del rango esperable: ${textos.join("; ")}.`);
     }
 
     setGuardando(true);

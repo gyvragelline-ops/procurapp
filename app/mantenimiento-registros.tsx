@@ -23,7 +23,7 @@ import {
   type BombaHora,
   type InfusionFila,
 } from "@/lib/procuracion/mantenimiento-calculos";
-import { BombasDeLaHora, bombasFormDesde, bombasParaGuardar, type BombasForm } from "./mantenimiento-dilucion";
+import { BombasDeLaHora, avisosDosisDeFila, bombasFormDesde, bombasParaGuardar, type BombasForm } from "./mantenimiento-dilucion";
 import { Confirmacion, ErrorVisible, aInputLocal, aNumero, fechaHora, hora, momentoActual, num } from "./mantenimiento-ui";
 
 const supabase = createClient();
@@ -172,12 +172,11 @@ export default function MantenimientoRegistros({
       return setPendiente({ tipo: "orden", texto: "Con esta hora cambia el orden de los registros (y los intervalos de diuresis). ¿Confirmás?" });
     }
     const fuera = camposFueraDeRango(valores);
-    if (fuera.length > 0 && !conf.plausibilidad) {
+    const avisosBombas = avisosDosisDeFila(bombasForm, infusiones, pesoKg);
+    if ((fuera.length > 0 || avisosBombas.length > 0) && !conf.plausibilidad) {
       const etiqueta = (campo: string) => CAMPOS_REGISTRO.find((c) => c.campo === campo)?.etiqueta ?? campo;
-      return setPendiente({
-        tipo: "plausibilidad",
-        texto: `¿Seguro? Fuera del rango esperable: ${fuera.map((f) => `${etiqueta(f.campo)} ${num(f.valor)} (${num(f.min)}-${num(f.max)})`).join("; ")}.`,
-      });
+      const textos = [...fuera.map((f) => `${etiqueta(f.campo)} ${num(f.valor)} (${num(f.min)}-${num(f.max)})`), ...avisosBombas];
+      return setPendiente({ tipo: "plausibilidad", texto: `¿Seguro? Fuera del rango esperable: ${textos.join("; ")}.` });
     }
 
     // Completar el registro existente de esa hora: solo se pisan los

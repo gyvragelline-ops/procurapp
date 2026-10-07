@@ -22,6 +22,9 @@ import {
   MINUTOS_DOSIS_DESACTUALIZADA,
   MINUTOS_HORA_SIN_CARGAR,
   PERDIDAS_INSENSIBLES,
+  RANGO_CANTIDAD_AMPOLLAS,
+  RANGO_VOLUMEN_DILUCION_ML,
+  RANGOS_SETEO_BOMBA,
   MINUTOS_INTERVALO_CORTO,
   MINUTOS_INTERVALO_LARGO,
   MINUTOS_PRIMER_REGISTRO,
@@ -124,6 +127,35 @@ export function textoConfirmacionDilucion(droga: Exclude<Droga, "desmopresina">,
   const c = concentracion(droga, d);
   if (!c.ok) return null;
   return `${fmt(c.totalDroga)} ${c.unidadTotal} en ${fmt(d.volumenFinalMl)} mL = ${fmt(c.valor, 3)} ${c.unidad}. ¿Correcto?`;
+}
+
+// Unidad corta para mostrar: "γ" en lugar de mcg/kg/min.
+export function unidadCorta(u: UnidadDosis): string {
+  return u === "mcg/kg/min" ? "γ" : u;
+}
+
+// "¿Seguro?" del seteo de una bomba (no bloquea): ampolla, cantidad o
+// volumen fuera del rango plausible de la droga. Vacío = nada que avisar.
+export function avisosSeteoBomba(droga: DrogaInfusion, d: Dilucion): string[] {
+  const r = RANGOS_SETEO_BOMBA[droga];
+  const out: string[] = [];
+  const fuera = (v: number, x: { min: number; max: number }) => v < x.min || v > x.max;
+  if (fuera(d.contenidoPorAmpolla, r.ampolla))
+    out.push(`Ampolla de ${fmt(d.contenidoPorAmpolla)} ${d.unidadContenido} (esperable ${fmt(r.ampolla.min)}-${fmt(r.ampolla.max)} ${d.unidadContenido})`);
+  if (fuera(d.ampollas, RANGO_CANTIDAD_AMPOLLAS))
+    out.push(`Cantidad ${fmt(d.ampollas)} (esperable ${fmt(RANGO_CANTIDAD_AMPOLLAS.min)}-${fmt(RANGO_CANTIDAD_AMPOLLAS.max)})`);
+  if (fuera(d.volumenFinalMl, RANGO_VOLUMEN_DILUCION_ML))
+    out.push(`Volumen de ${fmt(d.volumenFinalMl)} mL (esperable ${fmt(RANGO_VOLUMEN_DILUCION_ML.min)}-${fmt(RANGO_VOLUMEN_DILUCION_ML.max)} mL)`);
+  return out;
+}
+
+// "¿Seguro?" de la dosis resultante (no bloquea); null = dentro de rango.
+export function avisoDosisBomba(droga: DrogaInfusion, dosis: number): string | null {
+  const r = RANGOS_SETEO_BOMBA[droga].dosis;
+  if (dosis >= r.min && dosis <= r.max) return null;
+  const u = unidadCorta(DROGAS_INFUSION[droga].unidadDosis);
+  const dec = u === "U/min" ? 3 : 2;
+  return `${DROGAS_INFUSION[droga].etiqueta} ${fmt(dosis, dec)} ${u} (esperable ${fmt(r.min, dec)}-${fmt(r.max, dec)} ${u})`;
 }
 
 export type ResultadoDosis =

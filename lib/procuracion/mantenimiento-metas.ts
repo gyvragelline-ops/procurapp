@@ -461,6 +461,40 @@ export const BOMBAS_ENFERMERIA: DrogaInfusion[] = [
 // Paso de los botones +/− de las bombas (mL/h) -- PROPUESTO, A VALIDAR.
 export const PASO_BOMBA_ML_H = 1;
 
+// Solución de la dilución (botones del seteo de cada bomba).
+export const SOLUCIONES_DILUCION = [
+  { valor: "dextrosa_5", etiqueta: "Dextrosa 5 %" },
+  { valor: "sf_09", etiqueta: "Suero 0,9 %" },
+  { valor: "otra", etiqueta: "Otra" },
+] as const;
+export type SolucionDilucion = (typeof SOLUCIONES_DILUCION)[number]["valor"];
+
+// Rangos plausibles del seteo de cada bomba y de la dosis resultante --
+// A VALIDAR. NO bloquean: fuera de rango se pide "¿seguro?". Con valores
+// dentro de rango no se muestra nada extra.
+//   ampolla: contenido por ampolla, en la unidad del seteo (mg; U para
+//            vasopresina e insulina; mEq para potasio y bicarbonato)
+//   dosis:   en la unidad de dosis de la droga (γ = mcg/kg/min)
+// Cantidad de ampollas y volumen de dilución: iguales para todas.
+export const RANGO_CANTIDAD_AMPOLLAS = { min: 0.5, max: 20 };
+export const RANGO_VOLUMEN_DILUCION_ML = { min: 10, max: 1000 };
+export const RANGOS_SETEO_BOMBA: Record<DrogaInfusion, { ampolla: { min: number; max: number }; dosis: { min: number; max: number } }> = {
+  noradrenalina: { ampolla: { min: 1, max: 8 }, dosis: { min: 0.01, max: 1 } },
+  adrenalina: { ampolla: { min: 0.5, max: 5 }, dosis: { min: 0.01, max: 1 } },
+  dopamina: { ampolla: { min: 50, max: 400 }, dosis: { min: 1, max: 20 } },
+  dobutamina: { ampolla: { min: 100, max: 500 }, dosis: { min: 1, max: 20 } },
+  isoproterenol: { ampolla: { min: 0.1, max: 1 }, dosis: { min: 0.5, max: 20 } },
+  esmolol: { ampolla: { min: 10, max: 2500 }, dosis: { min: 10, max: 300 } },
+  amiodarona: { ampolla: { min: 50, max: 300 }, dosis: { min: 0.1, max: 2 } },
+  vasopresina: { ampolla: { min: 10, max: 40 }, dosis: { min: 0.005, max: 0.1 } },
+  furosemida: { ampolla: { min: 10, max: 250 }, dosis: { min: 1, max: 40 } },
+  insulina: { ampolla: { min: 10, max: 1000 }, dosis: { min: 0.5, max: 20 } },
+  potasio: { ampolla: { min: 5, max: 40 }, dosis: { min: 1, max: 20 } },
+  bicarbonato: { ampolla: { min: 10, max: 100 }, dosis: { min: 1, max: 50 } },
+  hidrocortisona: { ampolla: { min: 50, max: 500 }, dosis: { min: 1, max: 20 } },
+  dexametasona: { ampolla: { min: 2, max: 20 }, dosis: { min: 0.1, max: 5 } },
+};
+
 // Alarma "hora sin cargar": una hora sin fila pasados estos minutos de su
 // inicio (la hora en curso cuenta desde hh:15).
 export const MINUTOS_HORA_SIN_CARGAR = 15;

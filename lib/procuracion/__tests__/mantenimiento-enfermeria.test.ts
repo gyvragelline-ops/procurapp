@@ -373,3 +373,31 @@ test("último bolo de desmopresina (informativo)", () => {
   const e = estadoBombas({ registros: [], bombas: [], infusiones: [bolo("x", 8, "desmopresina", 2, "mcg"), bolo("y", 9, "desmopresina", 2, "mcg")], pesoKg: 70, ahora: h(9, 30) });
   assert.equal(e.ultimoBoloDesmopresina, iso(9));
 });
+
+// ---------------------------------------------------------------- seteo de bombas: "¿seguro?" sin ruido
+import { avisoDosisBomba, avisosSeteoBomba, unidadCorta } from "../mantenimiento-calculos.ts";
+
+test("seteo normal (noradrenalina 4 mg × 2 en 100 mL): nada que avisar", () => {
+  assert.deepEqual(avisosSeteoBomba("noradrenalina", { ampollas: 2, contenidoPorAmpolla: 4, unidadContenido: "mg", volumenFinalMl: 100 }), []);
+  assert.deepEqual(avisosSeteoBomba("vasopresina", { ampollas: 1, contenidoPorAmpolla: 20, unidadContenido: "U", volumenFinalMl: 100 }), []);
+  assert.deepEqual(avisosSeteoBomba("potasio", { ampollas: 2, contenidoPorAmpolla: 30, unidadContenido: "mEq", volumenFinalMl: 500 }), []);
+});
+
+test("seteo fuera de rango: ampolla, cantidad y volumen piden '¿seguro?'", () => {
+  const a = avisosSeteoBomba("noradrenalina", { ampollas: 40, contenidoPorAmpolla: 40, unidadContenido: "mg", volumenFinalMl: 5 });
+  assert.equal(a.length, 3);
+  assert.match(a[0], /^Ampolla de 40 mg \(esperable 1-8 mg\)$/);
+  assert.match(a[1], /^Cantidad 40/);
+  assert.match(a[2], /^Volumen de 5 mL/);
+});
+
+test("dosis resultante: dentro de rango no avisa; fuera de rango sí (γ y U/min)", () => {
+  assert.equal(avisoDosisBomba("noradrenalina", 0.19), null);
+  assert.equal(avisoDosisBomba("noradrenalina", 1), null); // borde incluido
+  assert.match(avisoDosisBomba("noradrenalina", 2.5)!, /Noradrenalina 2,5 γ \(esperable 0,01-1 γ\)/);
+  assert.equal(avisoDosisBomba("vasopresina", 0.03), null);
+  assert.match(avisoDosisBomba("vasopresina", 0.5)!, /0,5 U\/min/);
+  assert.match(avisoDosisBomba("insulina", 50)!, /50 U\/h/);
+  assert.equal(unidadCorta("mcg/kg/min"), "γ");
+  assert.equal(unidadCorta("U/min"), "U/min");
+});
