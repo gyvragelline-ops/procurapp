@@ -8,12 +8,14 @@ import {
   concentracion,
   dilucionPorId,
   dosisDesdeVelocidad,
+  solucionPorId,
   ultimaDilucion,
   unidadCorta,
   unidadesContenidoPara,
   type BombaFormulario,
   type Dilucion,
   type InfusionFila,
+  type Solucion,
 } from "@/lib/procuracion/mantenimiento-calculos";
 import type { BombaParaGuardar } from "@/lib/procuracion/mantenimiento";
 import {
@@ -23,16 +25,11 @@ import {
   PRESET_NORADRENALINA,
   SOLUCIONES_DILUCION,
   type DrogaInfusion,
-  type SolucionDilucion,
 } from "@/lib/procuracion/mantenimiento-metas";
 import { Confirmacion, ErrorVisible, PedirPeso, aNumero, num } from "./mantenimiento-ui";
 
-export type { DrogaInfusion };
+export type { DrogaInfusion, Solucion };
 export type EstadoDilucion = { dilucion: Dilucion; concentracion: number; unidad: string } | null;
-// Solución de la dilución. Por ahora SOLO estado local del formulario:
-// la columna en mantenimiento_infusiones todavía no existe (se guarda
-// cuando se aplique la migración).
-export type Solucion = { tipo: SolucionDilucion; otra: string } | null;
 
 const aTexto = (n: number | null | undefined) => (n === null || n === undefined ? "" : String(n).replace(".", ","));
 
@@ -168,7 +165,7 @@ export type FilaBombaForm = {
   velocidadTexto: string;
   dilucionId: string | null; // dilución ya guardada que usa esta bomba
   dilucionNueva: EstadoDilucion; // seteo confirmado en este formulario (se guarda con la fila)
-  solucion?: Solucion; // estado local (ver Solucion)
+  solucion?: Solucion; // la elegida en este formulario; si no, la guardada con la dilución
   copiado: boolean;
 };
 export type BombasForm = Partial<Record<DrogaInfusion, FilaBombaForm>>;
@@ -196,7 +193,7 @@ export function bombasParaGuardar(
       droga: d,
       velocidad_ml_h: v,
       dilucion_id: f.dilucionId,
-      dilucionNueva: f.dilucionNueva ? { ...f.dilucionNueva, motivo: arranca ? "inicio" : "cambio_dilucion" } : null,
+      dilucionNueva: f.dilucionNueva ? { ...f.dilucionNueva, motivo: arranca ? "inicio" : "cambio_dilucion", solucion: f.solucion ?? null } : null,
     });
   }
   return { ok: true, filas };
@@ -258,11 +255,13 @@ export function BombasDeLaHora({
   const filas = presentes.map((d) => {
     const f = form[d]!;
     const { velocidad, dil, dosis } = dosisDeFila(d, f, infusiones, pesoKg);
+    // Solución: la elegida ahora o, si no, la guardada con esa dilución.
+    const solucion = f.solucion !== undefined ? f.solucion : solucionPorId(infusiones, f.dilucionId);
     // Arranca o se reinicia (no venía corriendo en la hora anterior) y no
     // tiene seteo: se abre el seteo solo.
     const arranca = velocidad !== 0 && !precarga.some((p) => p.droga === d && p.velocidad_ml_h > 0);
     const pideSeteo = arranca && !f.dilucionNueva && !f.dilucionId;
-    return { d, f, velocidad, dil, dosis, pideSeteo };
+    return { d, f, velocidad, dil, dosis, solucion, pideSeteo };
   });
   const faltaPeso = filas.some((x) => x.dosis && !x.dosis.ok && x.dosis.motivo === "sin_peso");
 
@@ -279,7 +278,7 @@ export function BombasDeLaHora({
   return (
     <div>
       {presentes.length === 0 && <div className="tiny muted">Sin bombas en esta hora.</div>}
-      {filas.map(({ d, f, velocidad, dil, dosis, pideSeteo }) => (
+      {filas.map(({ d, f, velocidad, dil, dosis, solucion, pideSeteo }) => (
         <div key={d} style={{ borderBottom: "1px solid var(--border-soft)", padding: "6px 0" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
             <span style={{ fontWeight: 600, fontSize: 13 }}>
@@ -330,7 +329,7 @@ export function BombasDeLaHora({
                 key={`${d}-${pideSeteo ? "arranque" : "cambio"}`}
                 droga={d}
                 inicial={dil ?? ultimaDilucion(infusiones, d)}
-                solucionInicial={f.solucion ?? null}
+                solucionInicial={solucion}
                 onListo={(estado, solucion) => {
                   cambiar(d, { dilucionNueva: estado, solucion });
                   setSeteando(null);
@@ -340,7 +339,7 @@ export function BombasDeLaHora({
             </div>
           ) : dil ? (
             <div className="tiny muted" style={{ marginTop: 2 }}>
-              {lineaSeteo(d, dil, f.solucion ?? null)}{" "}
+              {lineaSeteo(d, dil, solucion)}{" "}
               <button className="btn btn-sm" style={{ fontSize: 11, padding: "0 6px" }} onClick={() => setSeteando(d)}>
                 cambiar
               </button>

@@ -3,7 +3,18 @@
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { anularInfusion, guardarInfusion, type NuevaInfusion } from "@/lib/procuracion/mantenimiento";
-import { concentracion, dosisDesdeVelocidad, horaMinutos, ordenarPorHora, unidadCorta, type EstadoBomba, type EstadoBombas, type InfusionFila } from "@/lib/procuracion/mantenimiento-calculos";
+import {
+  concentracion,
+  dosisDesdeVelocidad,
+  horaMinutos,
+  ordenarPorHora,
+  solucionDeFila,
+  unidadCorta,
+  type EstadoBomba,
+  type EstadoBombas,
+  type InfusionFila,
+} from "@/lib/procuracion/mantenimiento-calculos";
+import { textoSolucion } from "./mantenimiento-dilucion";
 import { BOLOS, BOMBAS_ENFERMERIA, DROGAS_INFUSION, MINUTOS_DOSIS_DESACTUALIZADA, type DrogaBolo, type DrogaInfusion } from "@/lib/procuracion/mantenimiento-metas";
 import { Confirmacion, ErrorVisible, aInputLocal, aNumero, esFutura, fechaHora, momentoActual, num } from "./mantenimiento-ui";
 
@@ -17,7 +28,8 @@ export function textoInfusion(f: InfusionFila): string {
   if (f.tipo === "bolo") return `bolo ${num(f.dosis_calculada)} ${f.unidad_dosis ?? ""}`;
   if (f.motivo === "cambio_velocidad") return `cambié la velocidad: ${num(f.velocidad_ml_h)} mL/h`;
   if (f.motivo === "inicio" || f.motivo === "cambio_dilucion") {
-    return `${f.motivo === "inicio" ? "dilución (inicio)" : "cambio de dilución"}: ${num(f.ampollas)} × ${num(f.contenido_por_ampolla)} ${f.unidad_contenido ?? ""} en ${num(f.volumen_final_ml)} mL`;
+    const sol = textoSolucion(solucionDeFila(f));
+    return `${f.motivo === "inicio" ? "seteo (inicio)" : "cambio de seteo"}: ${num(f.contenido_por_ampolla)} ${f.unidad_contenido ?? ""} × ${num(f.ampollas)} en ${num(f.volumen_final_ml)} mL${sol ? ` · ${sol}` : ""}`;
   }
   // Filas viejas (Fase 1): velocidad como evento.
   if ((f.velocidad_ml_h ?? 0) === 0) return "suspendida";

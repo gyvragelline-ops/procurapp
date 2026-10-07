@@ -401,3 +401,31 @@ test("dosis resultante: dentro de rango no avisa; fuera de rango sí (γ y U/min
   assert.equal(unidadCorta("mcg/kg/min"), "γ");
   assert.equal(unidadCorta("U/min"), "U/min");
 });
+
+// ---------------------------------------------------------------- solución de la dilución: guardar y leer
+import { columnasSolucion, solucionDeFila, solucionPorId } from "../mantenimiento-calculos.ts";
+
+test("solución de la dilución: se guarda en sus columnas y se vuelve a leer igual (incluida 'otra' con su texto)", () => {
+  for (const s of [
+    { tipo: "dextrosa_5" as const, otra: "" },
+    { tipo: "sf_09" as const, otra: "" },
+    { tipo: "otra" as const, otra: "Ringer lactato" },
+  ]) {
+    const cols = columnasSolucion(s);
+    // lo que se guarda en la fila de dilución, y lo que se lee de ella al reabrir
+    const fila = dil("d1", 8, 0, "noradrenalina", cols);
+    assert.deepEqual(solucionPorId([fila], "d1"), s, s.tipo);
+  }
+  assert.deepEqual(columnasSolucion({ tipo: "otra", otra: "  Ringer lactato  " }), { solucion_dilucion: "otra", solucion_dilucion_otra: "Ringer lactato" });
+});
+
+test("solución: el texto solo va con 'otra', recortado a 40 caracteres; vacío -> null", () => {
+  assert.deepEqual(columnasSolucion({ tipo: "dextrosa_5", otra: "texto de antes" }), { solucion_dilucion: "dextrosa_5", solucion_dilucion_otra: null });
+  assert.deepEqual(columnasSolucion({ tipo: "otra", otra: "   " }), { solucion_dilucion: "otra", solucion_dilucion_otra: null });
+  assert.equal(columnasSolucion({ tipo: "otra", otra: "x".repeat(60) }).solucion_dilucion_otra!.length, 40);
+  assert.deepEqual(columnasSolucion(null), { solucion_dilucion: null, solucion_dilucion_otra: null });
+  // filas viejas, sin solución; dilución anulada o inexistente
+  assert.equal(solucionDeFila(dil("v", 8, 0, "noradrenalina")), null);
+  assert.equal(solucionPorId([dil("a", 8, 0, "noradrenalina", { solucion_dilucion: "sf_09", anulado: true })], "a"), null);
+  assert.equal(solucionPorId([], null), null);
+});

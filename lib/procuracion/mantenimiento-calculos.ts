@@ -41,6 +41,7 @@ import {
   type Droga,
   type DrogaInfusion,
   type Intervalo,
+  type SolucionDilucion,
   type UnidadDosis,
 } from "./mantenimiento-metas.ts";
 
@@ -524,8 +525,39 @@ export type InfusionFila = {
   // filas viejas (Fase 1) y bolos.
   motivo?: "inicio" | "cambio_dilucion" | "cambio_velocidad" | null;
   cargado_por?: string | null;
+  // Solución de la dilución (filas de dilución): dextrosa_5 / sf_09 /
+  // otra (+ texto corto). null en filas viejas y en los demás motivos.
+  solucion_dilucion?: SolucionDilucion | null;
+  solucion_dilucion_otra?: string | null;
   anulado: boolean;
 };
+
+// ---------------------------------------------------------------------
+// Solución de la dilución: formulario <-> columnas de la base
+// ---------------------------------------------------------------------
+export type Solucion = { tipo: SolucionDilucion; otra: string } | null;
+export const MAX_SOLUCION_OTRA = 40;
+
+// Lo que se guarda. El texto solo va con "otra" (recortado, hasta 40
+// caracteres; vacío -> null), como exige la restricción de la base.
+export function columnasSolucion(s: Solucion): { solucion_dilucion: SolucionDilucion | null; solucion_dilucion_otra: string | null } {
+  if (!s) return { solucion_dilucion: null, solucion_dilucion_otra: null };
+  if (s.tipo !== "otra") return { solucion_dilucion: s.tipo, solucion_dilucion_otra: null };
+  const texto = s.otra.trim().slice(0, MAX_SOLUCION_OTRA);
+  return { solucion_dilucion: "otra", solucion_dilucion_otra: texto || null };
+}
+
+// Lo que se lee de una fila de dilución.
+export function solucionDeFila(f: Pick<InfusionFila, "solucion_dilucion" | "solucion_dilucion_otra"> | null | undefined): Solucion {
+  if (!f?.solucion_dilucion) return null;
+  return { tipo: f.solucion_dilucion, otra: f.solucion_dilucion === "otra" ? (f.solucion_dilucion_otra ?? "") : "" };
+}
+
+// Solución de la dilución guardada con ese id (para la línea plegada).
+export function solucionPorId(filas: InfusionFila[], id: string | null): Solucion {
+  if (!id) return null;
+  return solucionDeFila(filas.find((f) => f.id === id && !f.anulado));
+}
 
 // Última dilución usada para una droga en el caso (no anulada): se
 // propone de nuevo al cambiar la velocidad, pero se vuelve a confirmar.

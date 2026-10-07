@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { guardarConReintento } from "./guardar";
 import type { Donante } from "./types";
-import { planGuardadoBombas, type BombaFormulario, type BombaHora, type InfusionFila } from "./mantenimiento-calculos";
+import { columnasSolucion, planGuardadoBombas, type BombaFormulario, type BombaHora, type InfusionFila, type Solucion } from "./mantenimiento-calculos";
 
 // Acceso a datos del panel de Mantenimiento (tablas de
 // handoff/mantenimiento.sql). Escrituras con guardarConReintento: si
@@ -111,7 +111,7 @@ export type DatosRegistro = Partial<Omit<RegistroMantenimiento, "id" | "anulado"
 const COLS_REGISTRO =
   "id, registrado_en, fc, pam, temperatura, sat_o2, fio2, peep, volumen_corriente, diuresis_ml, diuresis_es_ultima_hora, ingresos_ml, egresos_ml, osm_urinaria, osm_serica, densidad_urinaria, pvc, gc, ic_medido, sat_venosa, delta_pp, delta_vs, delta_co2_espirado, indice_vena_cava, resultado_pasivo_miembros, disfuncion_miocardica, ing_sol_medio_ml, ing_sol_09_ml, ing_ringer_ml, ing_dextrosa_ml, ing_hemoderivados_ml, egr_sng_drenajes_ml, perdidas_insensibles_ml, perdidas_insensibles_editadas, egresos_incluye_diuresis, cargado_por, aviso_medico, anulado";
 const COLS_INFUSION =
-  "id, registrado_en, droga, tipo, ampollas, contenido_por_ampolla, unidad_contenido, volumen_final_ml, velocidad_ml_h, dosis_calculada, unidad_dosis, motivo, cargado_por, anulado";
+  "id, registrado_en, droga, tipo, ampollas, contenido_por_ampolla, unidad_contenido, volumen_final_ml, velocidad_ml_h, dosis_calculada, unidad_dosis, motivo, cargado_por, solucion_dilucion, solucion_dilucion_otra, anulado";
 const COLS_BOMBA = "id, registro_id, droga, velocidad_ml_h, dilucion_id, anulado";
 const COLS_CONFIG = "donante_id, nutricion_previa, monitoreo_avanzado_activo, corazon_candidato";
 
@@ -234,6 +234,7 @@ export type BombaParaGuardar = {
     concentracion: number;
     unidad: string;
     motivo: "inicio" | "cambio_dilucion";
+    solucion: Solucion;
   } | null;
 };
 
@@ -267,6 +268,7 @@ export async function guardarBombasDeFila(
         dosis_calculada: null,
         unidad_dosis: null,
         peso_usado_kg: null,
+        ...columnasSolucion(d.solucion),
       });
       nuevasInfusiones.push(nueva);
       dilucionId = nueva.id;
