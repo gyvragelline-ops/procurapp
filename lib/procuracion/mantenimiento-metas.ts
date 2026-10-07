@@ -49,6 +49,7 @@ export type ClaveMeta =
   | "sodio"
   | "potasio"
   | "temperatura"
+  | "sat_o2"
   | "pvc"
   | "ic"
   | "rvs";
@@ -105,12 +106,15 @@ export const METAS: Record<ClaveMeta, Meta> = {
       { desde: 7.5, hasta: 7.55, desdeExcluido: true },
     ],
   },
-  // Glucemia: <180 / 180-200 / >200
+  // Glucemia: 110-180 / 70-109 o 181-200 / <70 o >200
   glucemia: {
     etiqueta: "Glucemia",
     unidad: "mg/dL",
-    verde: [{ hasta: 180, hastaExcluido: true }],
-    amarillo: [{ desde: 180, hasta: 200 }],
+    verde: [{ desde: 110, hasta: 180 }],
+    amarillo: [
+      { desde: 70, hasta: 110, hastaExcluido: true },
+      { desde: 180, hasta: 200, desdeExcluido: true },
+    ],
   },
   // Sodio: 135-150 / 151-155 / >155 o <135
   sodio: {
@@ -138,6 +142,13 @@ export const METAS: Record<ClaveMeta, Meta> = {
       { desde: 35, hasta: 36, hastaExcluido: true },
       { desde: 37.5, hasta: 38, desdeExcluido: true },
     ],
+  },
+  // Saturación: >94 / 90-94 / <90 -- A VALIDAR
+  sat_o2: {
+    etiqueta: "Saturación",
+    unidad: "%",
+    verde: [{ desde: 94, desdeExcluido: true }],
+    amarillo: [{ desde: 90, hasta: 94 }],
   },
   // Opcionales (monitoreo avanzado, solo si hay dato)
   // PVC 5-8 / 3-4 o 9-12 / fuera
@@ -176,10 +187,14 @@ export const METAS_AVANZADAS: ClaveMeta[] = ["pvc", "ic", "rvs"];
 // ---------------------------------------------------------------------
 // Score de calidad del órgano (X/4)
 // ---------------------------------------------------------------------
-// glucemia <180, Na <155, pH 7,35-7,50, PaFi >330. "Al menos un
-// vasopresor" se muestra APARTE, solo informativo, fuera del cálculo y
-// del color (no debe empujar a iniciar un vasopresor innecesario).
-export const SCORE_GLUCEMIA_MENOR_A = 180;
+// glucemia 110-180, Na <155, pH 7,35-7,50, PaFi >330 (todo desde
+// laboratorio). "Al menos un vasopresor" se muestra APARTE, solo
+// informativo, fuera del cálculo y del color (no debe empujar a iniciar
+// un vasopresor innecesario); sale de la fila horaria de bombas.
+export const SCORE_GLUCEMIA_DESDE = 110;
+export const SCORE_GLUCEMIA_HASTA = 180;
+// Alarma de hipoglucemia (roja).
+export const HIPOGLUCEMIA_MENOR_A = 70;
 export const SCORE_SODIO_MENOR_A = 155;
 export const SCORE_PH_DESDE = 7.35;
 export const SCORE_PH_HASTA = 7.5;
@@ -199,6 +214,10 @@ export const MINUTOS_INTERVALO_CORTO = 30;
 export const MINUTOS_INTERVALO_LARGO = 120;
 // Primer registro: el procurador carga "mL de la última hora".
 export const MINUTOS_PRIMER_REGISTRO = 60;
+// Dosis de las bombas: salen de la última fila horaria (o del último
+// "cambié la velocidad"); pasados estos minutos sin dato nuevo, las
+// alarmas de dosis se marcan "dato desactualizado".
+export const MINUTOS_DOSIS_DESACTUALIZADA = 70;
 // Mini tendencia: últimos N registros por parámetro.
 export const REGISTROS_TENDENCIA = 6;
 
@@ -296,7 +315,9 @@ export type Droga =
   | "furosemida"
   | "insulina"
   | "potasio"
-  | "bicarbonato";
+  | "bicarbonato"
+  | "hidrocortisona"
+  | "dexametasona";
 
 // Por minuto (gammas y similares) o por hora (furosemida, insulina,
 // potasio, bicarbonato: dosis = mL/h × concentración, sin /60).
@@ -317,7 +338,12 @@ export const DROGAS_INFUSION: Record<Exclude<Droga, "desmopresina">, { etiqueta:
   insulina: { etiqueta: "Insulina", unidadDosis: "U/h" },
   potasio: { etiqueta: "Potasio", unidadDosis: "mEq/h" },
   bicarbonato: { etiqueta: "Bicarbonato", unidadDosis: "mEq/h" },
+  // Corticoides en bomba: mg/h -- A VALIDAR.
+  hidrocortisona: { etiqueta: "Hidrocortisona", unidadDosis: "mg/h" },
+  dexametasona: { etiqueta: "Dexametasona", unidadDosis: "mg/h" },
 };
+
+export type DrogaInfusion = Exclude<Droga, "desmopresina">;
 
 // Drogas que cuentan para el ítem informativo "al menos un vasopresor"
 // (FUERA del score y del color). Ni dopamina ni dobutamina: la dopamina
@@ -325,8 +351,20 @@ export const DROGAS_INFUSION: Record<Exclude<Droga, "desmopresina">, { etiqueta:
 // marcaría "tiene vasopresor" sin tenerlo.
 export const VASOPRESORES: Droga[] = ["noradrenalina", "adrenalina", "vasopresina"];
 
-// Desmopresina: bolo en mcg, sin bomba ni cálculo de infusión.
-export const DESMOPRESINA = { etiqueta: "Desmopresina", unidadBolo: "mcg" } as const;
+// Bolos: solapa aparte, con hora y dosis, FUERA del balance.
+// Unidades -- A VALIDAR.
+export const BOLOS = {
+  furosemida: { etiqueta: "Furosemida", unidad: "mg" },
+  desmopresina: { etiqueta: "Desmopresina", unidad: "mcg" },
+  esmolol: { etiqueta: "Esmolol", unidad: "mg" },
+  vasopresina: { etiqueta: "Vasopresina", unidad: "U" },
+} as const;
+export type DrogaBolo = keyof typeof BOLOS;
+
+// Modo por defecto de cada droga al agregarla: estas van como bolo; el
+// resto, como bomba. Cada administración se puede marcar en el otro modo
+// si la droga lo admite (bolo: solo las de BOLOS).
+export const MODO_POR_DEFECTO_BOLO: Droga[] = ["furosemida", "desmopresina", "esmolol"];
 
 // Preset rápido de noradrenalina: "2 ampollas en 100 mL". El mg por
 // ampolla viene precargado pero se PIDE y se confirma siempre (depende
@@ -375,6 +413,7 @@ export const RANGOS_PLAUSIBLES: Record<string, { min: number; max: number }> = {
   ing_sol_09_ml: { min: 0, max: 3000 },
   ing_ringer_ml: { min: 0, max: 3000 },
   ing_dextrosa_ml: { min: 0, max: 3000 },
+  ing_hemoderivados_ml: { min: 0, max: 3000 },
   egr_sng_drenajes_ml: { min: 0, max: 3000 },
   perdidas_insensibles_ml: { min: 0, max: 300 },
 };
@@ -382,34 +421,41 @@ export const RANGOS_PLAUSIBLES: Record<string, { min: number; max: number }> = {
 // ---------------------------------------------------------------------
 // Planilla de enfermería (OP2, grilla horaria) -- vista de Enfermería
 // ---------------------------------------------------------------------
-// Pérdidas insensibles por fiebre: 255 × (T − 36) mL por 24 h, divididas
-// por 24 para cada hora; con T ≤ 36 es 0 (cuenta solo el exceso por
-// fiebre, no la pérdida de base). Se muestra calculado y es editable.
-export const PERDIDAS_INSENSIBLES = { mlPorGradoPorDia: 255, temperaturaBase: 36, horasPorDia: 24 } as const;
+// Pérdidas insensibles por hora, por peso:
+//   peso_kg × 10 / 24 × (1 + 0,10 × max(0, T − 37))   (mL/h)
+// Sin descuento por hipotermia. Sin peso no se calcula.
+// REFERENCIA GENERAL, A VALIDAR.
+export const PERDIDAS_INSENSIBLES = { mlPorKgPorDia: 10, aumentoPorGrado: 0.1, temperaturaBase: 37 } as const;
 
-// Líquidos de la grilla (Haemaccel y dextran quedan afuera a propósito).
+// Líquidos de la fila horaria: se carga la cantidad en mL. Hemoderivados
+// NO se precargan de la hora anterior (una transfusión no se repite).
 export const LIQUIDOS_ENFERMERIA = [
-  { campo: "ing_sol_medio_ml", etiqueta: "Solución al medio (0,45 %)" },
-  { campo: "ing_sol_09_ml", etiqueta: "Solución 0,9 %" },
-  { campo: "ing_ringer_ml", etiqueta: "Ringer" },
-  { campo: "ing_dextrosa_ml", etiqueta: "Dextrosa" },
+  { campo: "ing_sol_09_ml", etiqueta: "Solución 0,9 %", precarga: true },
+  { campo: "ing_ringer_ml", etiqueta: "Ringer lactato", precarga: true },
+  { campo: "ing_sol_medio_ml", etiqueta: "Solución al medio (0,45 %)", precarga: true },
+  { campo: "ing_dextrosa_ml", etiqueta: "Dextrosa", precarga: true },
+  { campo: "ing_hemoderivados_ml", etiqueta: "Hemoderivados", precarga: false },
 ] as const;
 
 // Botones rápidos de volumen (mL).
 export const BOTONES_RAPIDOS_ML = [100, 250, 500] as const;
 
-// Bombas de la grilla, en el orden de la planilla (+ vasopresina). La
-// desmopresina NO va acá: es solo bolo en mcg en la fila de la hora.
-export const BOMBAS_ENFERMERIA: Exclude<Droga, "desmopresina">[] = [
-  "dopamina",
-  "dobutamina",
+// Bombas de la fila horaria (médico y enfermería ven y cargan las
+// mismas). Bicarbonato queda afuera de la interfaz (la base lo conserva).
+export const BOMBAS_ENFERMERIA: DrogaInfusion[] = [
   "noradrenalina",
-  "adrenalina",
   "vasopresina",
-  "furosemida",
-  "insulina",
+  "dobutamina",
+  "dopamina",
   "potasio",
-  "bicarbonato",
+  "insulina",
+  "hidrocortisona",
+  "dexametasona",
+  "adrenalina",
+  "isoproterenol",
+  "amiodarona",
+  "esmolol",
+  "furosemida",
 ];
 
 // Paso de los botones +/− de las bombas (mL/h) -- PROPUESTO, A VALIDAR.

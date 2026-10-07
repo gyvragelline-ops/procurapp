@@ -45,8 +45,11 @@ export type Sugerencia = {
 export type EstadoParaSugerencias = {
   pam: number | null;
   fc: number | null;
-  noradrenalinaGamma: number | null; // null = sin noradrenalina corriendo
-  vasopresinaActiva: boolean; // infusión no anulada y con velocidad > 0
+  noradrenalinaGamma: number | null; // null = sin noradrenalina corriendo o dosis no utilizable
+  // Noradrenalina corriendo pero con la dosis no utilizable: motivo
+  // ("dato desactualizado", "sin dilución confirmada", "falta peso").
+  noradrenalinaSinDosis: string | null;
+  vasopresinaActiva: boolean; // bomba > 0 mL/h en la última fila (los bolos no cuentan)
   disfuncionMiocardica: boolean;
   ic: number | null; // medido o calculado
   corazonCandidato: "si" | "no" | "sin_definir";
@@ -96,7 +99,9 @@ export function generarSugerencias(e: EstadoParaSugerencias): Sugerencia[] {
   // Hipotensión
   if (hipotension) {
     const lineas = ["Primero descartar hipovolemia."];
-    if (e.noradrenalinaGamma !== null && e.noradrenalinaGamma > NORADRENALINA_ASOCIAR_VASOPRESINA_MAYOR_A) {
+    if (e.noradrenalinaSinDosis) {
+      lineas.push(`Dosis de noradrenalina no disponible (${e.noradrenalinaSinDosis}): no se sugiere ajuste por dosis.`);
+    } else if (e.noradrenalinaGamma !== null && e.noradrenalinaGamma > NORADRENALINA_ASOCIAR_VASOPRESINA_MAYOR_A) {
       lineas.push(`Noradrenalina >${n(NORADRENALINA_ASOCIAR_VASOPRESINA_MAYOR_A)} γ: asociar ${DOSIS.vasopresinaHemodinamia}.`);
     } else {
       lineas.push(`${DOSIS.noradrenalina}.`);

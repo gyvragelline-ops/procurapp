@@ -13,16 +13,21 @@ import {
   DROGAS_INFUSION,
   FACTOR_RVS,
   HIPOTENSION_PAM_MENOR_A,
+  BOMBAS_ENFERMERIA,
+  HIPOGLUCEMIA_MENOR_A,
   HORAS_LAB_DESACTUALIZADO,
+  LIQUIDOS_ENFERMERIA,
   METAS,
   MINUTOS_ALARMA_SIN_REGISTRO,
+  MINUTOS_DOSIS_DESACTUALIZADA,
   MINUTOS_HORA_SIN_CARGAR,
   PERDIDAS_INSENSIBLES,
   MINUTOS_INTERVALO_CORTO,
   MINUTOS_INTERVALO_LARGO,
   MINUTOS_PRIMER_REGISTRO,
   RANGOS_PLAUSIBLES,
-  SCORE_GLUCEMIA_MENOR_A,
+  SCORE_GLUCEMIA_DESDE,
+  SCORE_GLUCEMIA_HASTA,
   SCORE_PAFI_MAYOR_A,
   SCORE_PH_DESDE,
   SCORE_PH_HASTA,
@@ -31,6 +36,7 @@ import {
   VASOPRESORES,
   type ClaveMeta,
   type Droga,
+  type DrogaInfusion,
   type Intervalo,
   type UnidadDosis,
 } from "./mantenimiento-metas.ts";
@@ -247,12 +253,6 @@ export type RegistroBase = {
   anulado: boolean;
   diuresis_ml: number | null;
   diuresis_es_ultima_hora: boolean;
-  ingresos_ml: number | null;
-  egresos_ml: number | null;
-  // true: egresos_ml ya es el TOTAL (diuresis incluida) -- filas cargadas
-  // desde la planilla de enfermería en adelante. false: filas viejas,
-  // donde egresos_ml eran "otros egresos" sin la diuresis.
-  egresos_incluye_diuresis?: boolean;
   pam?: number | null;
 };
 
@@ -313,23 +313,6 @@ export function calcularDiuresis(registros: RegistroBase[], pesoKg: number | nul
   return salida;
 }
 
-export type BalanceFila = { id: string; registrado_en: string; parcial: number; acumulado: number };
-
-// Balance parcial por registro y acumulado. Sin dato = 0. Lo anulado no
-// cuenta. Filas nuevas: ingresos − egresos (egresos ya incluye la
-// diuresis). Filas viejas: ingresos − (egresos + diuresis).
-export function calcularBalance(registros: RegistroBase[]): BalanceFila[] {
-  let acumulado = 0;
-  return ordenarPorHora(registros)
-    .filter((r) => !r.anulado)
-    .map((r) => {
-      const egresos = r.egresos_incluye_diuresis ? (r.egresos_ml ?? 0) : (r.egresos_ml ?? 0) + (r.diuresis_ml ?? 0);
-      const parcial = (r.ingresos_ml ?? 0) - egresos;
-      acumulado += parcial;
-      return { id: r.id, registrado_en: r.registrado_en, parcial, acumulado };
-    });
-}
-
 // Últimos N valores no anulados de un campo, para la mini tendencia.
 export function tendencia<T extends { registrado_en: string; anulado: boolean }>(
   registros: T[],
@@ -382,7 +365,11 @@ export function scoreCalidad(datos: {
   pafi: number | null;
 }): { cumplidos: number; total: 4; items: ItemScore[] } {
   const items: ItemScore[] = [
-    { clave: "glucemia", etiqueta: `Glucemia <${SCORE_GLUCEMIA_MENOR_A}`, cumple: datos.glucemia === null ? null : datos.glucemia < SCORE_GLUCEMIA_MENOR_A },
+    {
+      clave: "glucemia",
+      etiqueta: `Glucemia ${SCORE_GLUCEMIA_DESDE}-${SCORE_GLUCEMIA_HASTA}`,
+      cumple: datos.glucemia === null ? null : datos.glucemia >= SCORE_GLUCEMIA_DESDE && datos.glucemia <= SCORE_GLUCEMIA_HASTA,
+    },
     { clave: "sodio", etiqueta: `Na <${SCORE_SODIO_MENOR_A}`, cumple: datos.sodio === null ? null : datos.sodio < SCORE_SODIO_MENOR_A },
     {
       clave: "ph",
@@ -500,55 +487,18 @@ export type InfusionFila = {
   velocidad_ml_h: number | null;
   dosis_calculada: number | null;
   unidad_dosis: string | null;
+  // inicio / cambio_dilucion: fila de dilución confirmada; cambio_velocidad:
+  // botón "cambié la velocidad" (solo gammas en vivo, no balance). null:
+  // filas viejas (Fase 1) y bolos.
+  motivo?: "inicio" | "cambio_dilucion" | "cambio_velocidad" | null;
+  cargado_por?: string | null;
   anulado: boolean;
 };
-
-// Última infusión no anulada de cada droga. "Activa" = velocidad > 0.
-export function estadoInfusiones(filas: InfusionFila[]): {
-  porDroga: Partial<Record<Droga, InfusionFila & { activa: boolean }>>;
-  vasopresinaActiva: boolean;
-  noradrenalinaGamma: number | null;
-  algunVasopresorActivo: boolean;
-  ultimoBoloDesmopresina: string | null;
-} {
-  const porDroga: Partial<Record<Droga, InfusionFila & { activa: boolean }>> = {};
-  for (const f of ordenarPorHora(filas)) {
-    if (f.anulado || f.tipo !== "infusion") continue;
-    porDroga[f.droga] = { ...f, activa: (f.velocidad_ml_h ?? 0) > 0 };
-  }
-  const nora = porDroga.noradrenalina;
-  const bolos = ordenarPorHora(filas).filter((f) => !f.anulado && f.tipo === "bolo" && f.droga === "desmopresina");
-  return {
-    porDroga,
-    vasopresinaActiva: porDroga.vasopresina?.activa ?? false,
-    noradrenalinaGamma: nora?.activa && nora.dosis_calculada !== null ? nora.dosis_calculada : null,
-    // Informativo, FUERA del score y del color.
-    algunVasopresorActivo: VASOPRESORES.some((d) => porDroga[d]?.activa),
-    ultimoBoloDesmopresina: bolos.length ? bolos[bolos.length - 1].registrado_en : null,
-  };
-}
 
 // Última dilución usada para una droga en el caso (no anulada): se
 // propone de nuevo al cambiar la velocidad, pero se vuelve a confirmar.
 export function ultimaDilucion(filas: InfusionFila[], droga: Droga): Dilucion | null {
-  const conDilucion = ordenarPorHora(filas).filter(
-    (f) =>
-      !f.anulado &&
-      f.droga === droga &&
-      f.tipo === "infusion" &&
-      f.ampollas !== null &&
-      f.contenido_por_ampolla !== null &&
-      f.unidad_contenido !== null &&
-      f.volumen_final_ml !== null
-  );
-  const u = conDilucion[conDilucion.length - 1];
-  if (!u) return null;
-  return {
-    ampollas: u.ampollas!,
-    contenidoPorAmpolla: u.contenido_por_ampolla!,
-    unidadContenido: u.unidad_contenido!,
-    volumenFinalMl: u.volumen_final_ml!,
-  };
+  return dilucionVigenteEn(filas, droga, Infinity)?.dilucion ?? null;
 }
 
 // =====================================================================
@@ -589,7 +539,10 @@ export function armarAlarmas(datos: {
     out.push({ nivel: "rojo", texto: `Último registro hace ${Math.floor(datos.minutosSinRegistro)} min (más de 1 h).` });
   for (const p of datos.parametros) {
     if (p.avanzado && !datos.monitoreoAvanzadoActivo) continue;
-    if (p.color === "rojo" || p.color === "amarillo")
+    // Hipoglucemia: solo con un valor al día (el desactualizado queda gris, sin color).
+    if (p.clave === "glucemia" && p.color !== "sin_dato" && p.valor !== null && p.valor < HIPOGLUCEMIA_MENOR_A) {
+      out.push({ nivel: "rojo", texto: `Hipoglucemia: ${fmt(p.valor)} mg/dL (<${HIPOGLUCEMIA_MENOR_A}).` });
+    } else if (p.color === "rojo" || p.color === "amarillo")
       out.push({ nivel: p.color, texto: `${p.etiqueta} fuera de meta: ${p.valor === null ? "—" : fmt(p.valor)}` });
   }
   if (datos.estadoDI === "probable") out.push({ nivel: "rojo", texto: "Diabetes insípida probable." });
@@ -633,16 +586,19 @@ export function camposFueraDeRango(valores: Record<string, number | null | undef
 
 
 // =====================================================================
-// Planilla de enfermería (vista de Enfermería, una fila por hora)
+// Fila horaria (una por hora de reloj; la cargan el médico y enfermería)
 // =====================================================================
 
-// Pérdidas insensibles de UNA hora: 255 × (T − 36) mL por 24 h, / 24.
-// T ≤ 36 -> 0. Sin temperatura -> null (no se inventa).
-export function perdidasInsensiblesHora(temperatura: number | null | undefined): number | null {
-  if (temperatura === null || temperatura === undefined || Number.isNaN(temperatura)) return null;
-  const { mlPorGradoPorDia, temperaturaBase, horasPorDia } = PERDIDAS_INSENSIBLES;
-  if (temperatura <= temperaturaBase) return 0;
-  return (mlPorGradoPorDia * (temperatura - temperaturaBase)) / horasPorDia;
+// Pérdidas insensibles de UNA hora (mL/h), por peso:
+//   peso × 10 / 24 × (1 + 0,10 × max(0, T − 37))
+// Sin peso -> null (no se inventa). Sin temperatura -> la base, sin
+// aumento. Sin descuento por hipotermia. Parámetros en
+// PERDIDAS_INSENSIBLES (REFERENCIA GENERAL, A VALIDAR).
+export function perdidasInsensiblesHora(pesoKg: number | null | undefined, temperatura: number | null | undefined): number | null {
+  if (pesoKg === null || pesoKg === undefined || !(pesoKg > 0)) return null;
+  const { mlPorKgPorDia, aumentoPorGrado, temperaturaBase } = PERDIDAS_INSENSIBLES;
+  const t = temperatura === null || temperatura === undefined || Number.isNaN(temperatura) ? temperaturaBase : temperatura;
+  return ((pesoKg * mlPorKgPorDia) / 24) * (1 + aumentoPorGrado * Math.max(0, t - temperaturaBase));
 }
 
 // "Hora" = hora de reloj local (09:00-09:59 es la hora 09).
@@ -654,6 +610,12 @@ export function inicioDeHora(ms: number): number {
 
 export function mismaHora(isoA: string, isoB: string): boolean {
   return inicioDeHora(new Date(isoA).getTime()) === inicioDeHora(new Date(isoB).getTime());
+}
+
+// "09:05" en hora local.
+export function horaMinutos(isoOMs: string | number): string {
+  const d = new Date(isoOMs);
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
 // Registro vigente (no anulado) de esa hora, si existe: se completa ese
@@ -696,8 +658,7 @@ export function horasDelCaso(registros: { id: string; registrado_en: string; anu
   return horas;
 }
 
-// Alarmas del enfermero: solo horas sin cargar (el balance acumulado se
-// muestra como dato, sin color).
+// Alarmas del enfermero: horas sin cargar (salvaguarda principal).
 export function alarmasEnfermeria(horas: HoraGrilla[]): { inicio: number; texto: string }[] {
   return horas
     .filter((h) => h.estado === "faltante")
@@ -707,75 +668,339 @@ export function alarmasEnfermeria(horas: HoraGrilla[]): { inicio: number; texto:
     });
 }
 
-// Volumen de las bombas en una hora (ESTIMADO: la velocidad vigente al
-// final de la hora × 1 h; si cambió dentro de la hora no es exacto).
-export function volumenBombasEnHora(
-  infusiones: InfusionFila[],
-  finHoraMs: number
-): { totalMl: number; detalle: { droga: Droga; velocidadMlH: number }[] } {
-  const previas = infusiones.filter((f) => !f.anulado && f.tipo === "infusion" && new Date(f.registrado_en).getTime() <= finHoraMs);
-  const porDroga = new Map<Droga, number>();
-  for (const f of ordenarPorHora(previas)) porDroga.set(f.droga, f.velocidad_ml_h ?? 0);
-  const detalle = [...porDroga.entries()].filter(([, v]) => v > 0).map(([droga, velocidadMlH]) => ({ droga, velocidadMlH }));
-  return { totalMl: detalle.reduce((s, d) => s + d.velocidadMlH, 0), detalle };
-}
-
-export type LiquidosFila = {
-  ing_sol_medio_ml: number | null;
-  ing_sol_09_ml: number | null;
-  ing_ringer_ml: number | null;
-  ing_dextrosa_ml: number | null;
+// ---------------------------------------------------------------------
+// Bombas de cada hora (tabla mantenimiento_bombas_hora)
+// ---------------------------------------------------------------------
+// Cada fila horaria lleva la velocidad (mL/h) de cada bomba: ese valor es
+// el ingreso de esa hora (velocidad × 1 h). Una hora sin fila es "sin
+// dato": no se asume que la bomba siguió igual.
+export type BombaHora = {
+  id: string;
+  registro_id: string;
+  droga: DrogaInfusion;
+  velocidad_ml_h: number;
+  dilucion_id: string | null; // fila de mantenimiento_infusiones con la dilución confirmada
+  anulado: boolean;
 };
 
-// Totales de la fila (el enfermero nunca suma). Ingresos = líquidos +
-// bombas (estimado). Egresos = diuresis + SNG/drenajes + pérdidas
-// insensibles.
-export function totalesFila(f: LiquidosFila & {
-  bombasMl: number;
-  diuresis_ml: number | null;
-  egr_sng_drenajes_ml: number | null;
-  perdidas_insensibles_ml: number | null;
-}): { ingresos: number; egresos: number; parcial: number } {
-  const ingresos =
-    (f.ing_sol_medio_ml ?? 0) + (f.ing_sol_09_ml ?? 0) + (f.ing_ringer_ml ?? 0) + (f.ing_dextrosa_ml ?? 0) + f.bombasMl;
-  const egresos = (f.diuresis_ml ?? 0) + (f.egr_sng_drenajes_ml ?? 0) + (f.perdidas_insensibles_ml ?? 0);
-  return { ingresos, egresos, parcial: ingresos - egresos };
+// Lo que el formulario quiere dejar guardado para una droga en esa hora.
+export type BombaFormulario = { droga: DrogaInfusion; velocidad_ml_h: number; dilucion_id: string | null };
+
+export function bombasDeFila(bombas: BombaHora[], registroId: string): BombaHora[] {
+  return bombas.filter((b) => !b.anulado && b.registro_id === registroId);
 }
 
-// Fila nueva: arranca con los líquidos de la hora anterior (los sueros
-// suelen seguir corriendo). Diuresis, SNG y signos NO se copian: son
-// mediciones de cada hora. Las bombas siguen solas (su estado vive en
-// las infusiones).
-export function liquidosPrecargados(anterior: (LiquidosFila & { anulado: boolean }) | null): LiquidosFila {
-  if (!anterior || anterior.anulado) return { ing_sol_medio_ml: null, ing_sol_09_ml: null, ing_ringer_ml: null, ing_dextrosa_ml: null };
+const ordenBomba = (d: DrogaInfusion) => {
+  const i = BOMBAS_ENFERMERIA.indexOf(d);
+  return i === -1 ? BOMBAS_ENFERMERIA.length : i;
+};
+
+// Plan para guardar las bombas de UNA fila sin duplicados: el índice único
+// de la base exige una sola bomba vigente por droga y hora.
+// - Droga con una vigente: se actualiza (solo si cambió).
+// - Droga con más de una vigente (datos viejos): se actualiza la primera
+//   y se anulan las demás.
+// - Droga sin vigente: se inserta.
+// - Vigente que ya no está en el formulario: se anula.
+// - Droga repetida en el formulario: gana la última.
+// Orden de ejecución: anular, actualizar, insertar.
+export function planGuardadoBombas(
+  existentes: BombaHora[],
+  formulario: BombaFormulario[]
+): { anular: string[]; actualizar: { id: string; velocidad_ml_h: number; dilucion_id: string | null }[]; insertar: BombaFormulario[] } {
+  const deseadas = new Map<DrogaInfusion, BombaFormulario>();
+  for (const f of formulario) deseadas.set(f.droga, f);
+  const porDroga = new Map<DrogaInfusion, BombaHora[]>();
+  for (const b of existentes) {
+    if (b.anulado) continue;
+    porDroga.set(b.droga, [...(porDroga.get(b.droga) ?? []), b]);
+  }
+  const anular: string[] = [];
+  const actualizar: { id: string; velocidad_ml_h: number; dilucion_id: string | null }[] = [];
+  const insertar: BombaFormulario[] = [];
+  for (const [droga, filas] of porDroga) {
+    const d = deseadas.get(droga);
+    if (!d) {
+      anular.push(...filas.map((f) => f.id));
+      continue;
+    }
+    const [primera, ...resto] = filas;
+    anular.push(...resto.map((f) => f.id));
+    if (primera.velocidad_ml_h !== d.velocidad_ml_h || primera.dilucion_id !== d.dilucion_id) {
+      actualizar.push({ id: primera.id, velocidad_ml_h: d.velocidad_ml_h, dilucion_id: d.dilucion_id });
+    }
+  }
+  for (const [droga, d] of deseadas) if (!porDroga.has(droga)) insertar.push(d);
+  return { anular, actualizar, insertar };
+}
+
+// Dilución confirmada vigente para una droga en un momento: la última
+// fila de dilución (inicio o cambio de dilución) no anulada hasta ese
+// momento. Los eventos "cambié la velocidad" no traen dilución.
+export function dilucionVigenteEn(filas: InfusionFila[], droga: Droga, momentoMs: number): { id: string; dilucion: Dilucion } | null {
+  const candidatas = ordenarPorHora(filas).filter(
+    (f) =>
+      !f.anulado &&
+      f.droga === droga &&
+      f.tipo === "infusion" &&
+      f.motivo !== "cambio_velocidad" &&
+      f.ampollas !== null &&
+      f.contenido_por_ampolla !== null &&
+      f.unidad_contenido !== null &&
+      f.volumen_final_ml !== null &&
+      new Date(f.registrado_en).getTime() <= momentoMs
+  );
+  const u = candidatas[candidatas.length - 1];
+  if (!u) return null;
   return {
-    ing_sol_medio_ml: anterior.ing_sol_medio_ml,
-    ing_sol_09_ml: anterior.ing_sol_09_ml,
-    ing_ringer_ml: anterior.ing_ringer_ml,
-    ing_dextrosa_ml: anterior.ing_dextrosa_ml,
+    id: u.id,
+    dilucion: { ampollas: u.ampollas!, contenidoPorAmpolla: u.contenido_por_ampolla!, unidadContenido: u.unidad_contenido!, volumenFinalMl: u.volumen_final_ml! },
   };
 }
 
-// Totales que se GUARDAN con cada fila (ingresos_ml y egresos_ml quedan
-// como totales calculados; egresos_incluye_diuresis = true). Pérdidas
-// insensibles: calculadas con la temperatura de la fila (o la última),
-// salvo que el enfermero las haya editado a mano.
-export function totalesParaGuardar(
-  fila: LiquidosFila & {
-    temperatura: number | null;
-    diuresis_ml: number | null;
-    egr_sng_drenajes_ml: number | null;
-    perdidas_insensibles_ml: number | null;
-    perdidas_insensibles_editadas: boolean;
-  },
-  inicioHoraMs: number,
-  registros: { registrado_en: string; anulado: boolean; temperatura?: number | null }[],
-  infusiones: InfusionFila[]
-): { perdidas_insensibles_ml: number | null; ingresos_ml: number; egresos_ml: number; egresos_incluye_diuresis: true; bombasMl: number } {
-  const perdidas = fila.perdidas_insensibles_editadas
-    ? fila.perdidas_insensibles_ml
-    : perdidasInsensiblesHora(temperaturaParaPerdidas(registros, inicioHoraMs, fila.temperatura)?.valor ?? null);
-  const bombasMl = volumenBombasEnHora(infusiones, inicioHoraMs + 3_600_000 - 1).totalMl;
-  const t = totalesFila({ ...fila, bombasMl, perdidas_insensibles_ml: perdidas });
-  return { perdidas_insensibles_ml: perdidas, ingresos_ml: t.ingresos, egresos_ml: t.egresos, egresos_incluye_diuresis: true, bombasMl };
+export function dilucionPorId(filas: InfusionFila[], id: string | null): Dilucion | null {
+  if (!id) return null;
+  const f = filas.find((x) => x.id === id && !x.anulado);
+  if (!f || f.ampollas === null || f.contenido_por_ampolla === null || f.unidad_contenido === null || f.volumen_final_ml === null) return null;
+  return { ampollas: f.ampollas, contenidoPorAmpolla: f.contenido_por_ampolla, unidadContenido: f.unidad_contenido, volumenFinalMl: f.volumen_final_ml };
+}
+
+// Eventos "cambié la velocidad" no anulados, en orden.
+function eventosVelocidad(infusiones: InfusionFila[]): InfusionFila[] {
+  return ordenarPorHora(infusiones).filter((f) => !f.anulado && f.tipo === "infusion" && f.motivo === "cambio_velocidad" && f.velocidad_ml_h !== null);
+}
+
+// ---------------------------------------------------------------------
+// Fila nueva precargada
+// ---------------------------------------------------------------------
+export type CampoLiquido = (typeof LIQUIDOS_ENFERMERIA)[number]["campo"];
+
+export type FilaHoraria = {
+  id: string;
+  registrado_en: string;
+  anulado: boolean;
+  temperatura: number | null;
+  diuresis_ml: number | null;
+  egr_sng_drenajes_ml: number | null;
+  perdidas_insensibles_ml: number | null;
+  perdidas_insensibles_editadas: boolean;
+} & Record<CampoLiquido, number | null>;
+
+export type Precarga = {
+  desdeRegistroId: string | null; // fila de la que se copió (null = no había)
+  liquidos: Partial<Record<CampoLiquido, number>>;
+  bombas: BombaFormulario[];
+};
+
+// La fila nueva arranca con las bombas y los líquidos de la hora anterior
+// (etiqueta "copiado de la hora anterior" hasta que se toquen o se
+// guarde). Signos, glucemia, diuresis, SNG y hemoderivados arrancan
+// vacíos. Bombas en 0 (suspendidas) no se precargan. Un "cambié la
+// velocidad" posterior a esa fila manda sobre ella.
+export function filaPrecargada(registros: FilaHoraria[], bombas: BombaHora[], infusiones: InfusionFila[], inicioHoraMs: number): Precarga {
+  const previas = ordenarPorHora(registros).filter((r) => !r.anulado && inicioDeHora(new Date(r.registrado_en).getTime()) < inicioHoraMs);
+  const anterior = previas[previas.length - 1] ?? null;
+  const liquidos: Partial<Record<CampoLiquido, number>> = {};
+  if (anterior) {
+    for (const l of LIQUIDOS_ENFERMERIA) {
+      const v = anterior[l.campo];
+      if (l.precarga && v !== null && v !== undefined) liquidos[l.campo] = v;
+    }
+  }
+  const porDroga = new Map<DrogaInfusion, BombaFormulario>();
+  if (anterior) {
+    for (const b of bombasDeFila(bombas, anterior.id)) {
+      porDroga.set(b.droga, { droga: b.droga, velocidad_ml_h: b.velocidad_ml_h, dilucion_id: b.dilucion_id });
+    }
+  }
+  const desde = anterior ? new Date(anterior.registrado_en).getTime() : -Infinity;
+  const finHora = inicioHoraMs + 3_600_000;
+  for (const ev of eventosVelocidad(infusiones)) {
+    const t = new Date(ev.registrado_en).getTime();
+    if (t <= desde || t >= finHora) continue;
+    const droga = ev.droga as DrogaInfusion;
+    const previa = porDroga.get(droga);
+    porDroga.set(droga, { droga, velocidad_ml_h: ev.velocidad_ml_h!, dilucion_id: previa?.dilucion_id ?? dilucionVigenteEn(infusiones, droga, t)?.id ?? null });
+  }
+  const lista = [...porDroga.values()].filter((b) => b.velocidad_ml_h > 0).sort((a, b) => ordenBomba(a.droga) - ordenBomba(b.droga));
+  return { desdeRegistroId: anterior?.id ?? null, liquidos, bombas: lista };
+}
+
+// Bombas que arrancan (o se reinician) en esta fila: velocidad > 0 y no
+// venían corriendo en la precarga. Vuelven a pedir el toque de dilución.
+export function bombasQueArrancan(precarga: BombaFormulario[], formulario: BombaFormulario[]): DrogaInfusion[] {
+  const corriendo = new Set(precarga.filter((b) => b.velocidad_ml_h > 0).map((b) => b.droga));
+  return formulario.filter((b) => b.velocidad_ml_h > 0 && !corriendo.has(b.droga)).map((b) => b.droga);
+}
+
+// ---------------------------------------------------------------------
+// Balance (siempre calculado, nunca guardado)
+// ---------------------------------------------------------------------
+export type PerdidasFila = {
+  valor: number | null;
+  editada: boolean;
+  faltaPeso: boolean;
+  temperatura: { valor: number; registrado_en: string | null; propia: boolean } | null;
+};
+
+// Pérdidas de una fila: la editada a mano (marca "editado") o la
+// calculada con el peso y la temperatura de la fila (o la última).
+export function perdidasDeFila(fila: FilaHoraria, registros: FilaHoraria[], pesoKg: number | null): PerdidasFila {
+  if (fila.perdidas_insensibles_editadas) return { valor: fila.perdidas_insensibles_ml, editada: true, faltaPeso: false, temperatura: null };
+  const temperatura = temperaturaParaPerdidas(registros, inicioDeHora(new Date(fila.registrado_en).getTime()), fila.temperatura);
+  const valor = perdidasInsensiblesHora(pesoKg, temperatura?.valor ?? null);
+  return { valor, editada: false, faltaPeso: valor === null, temperatura };
+}
+
+// Totales de una fila: ingresos = líquidos + hemoderivados + bombas
+// (velocidad × 1 h); egresos = diuresis + SNG/drenajes + pérdidas.
+export function totalesHora(
+  fila: FilaHoraria,
+  bombasFila: { velocidad_ml_h: number }[],
+  perdidasMl: number | null
+): { liquidosMl: number; bombasMl: number; ingresos: number; egresos: number; parcial: number } {
+  const liquidosMl = LIQUIDOS_ENFERMERIA.reduce((s, l) => s + (fila[l.campo] ?? 0), 0);
+  const bombasMl = bombasFila.reduce((s, b) => s + b.velocidad_ml_h, 0);
+  const ingresos = liquidosMl + bombasMl;
+  const egresos = (fila.diuresis_ml ?? 0) + (fila.egr_sng_drenajes_ml ?? 0) + (perdidasMl ?? 0);
+  return { liquidosMl, bombasMl, ingresos, egresos, parcial: ingresos - egresos };
+}
+
+export type BalanceHora =
+  | {
+      inicio: number;
+      estado: "cargada";
+      registroId: string;
+      registrado_en: string;
+      liquidosMl: number;
+      bombasMl: number;
+      ingresos: number;
+      egresos: number;
+      perdidas: PerdidasFila;
+      parcial: number;
+      acumulado: number;
+    }
+  | { inicio: number; estado: "faltante" | "en_curso" };
+
+// Balance hora por hora desde la primera fila hasta ahora. Acumulado =
+// suma de los parciales de las horas cargadas; las horas sin fila no
+// suman ("faltan N horas"). Se recalcula solo al completar o anular.
+export function balancePorHora(
+  registros: FilaHoraria[],
+  bombas: BombaHora[],
+  pesoKg: number | null,
+  ahora: number
+): { horas: BalanceHora[]; acumulado: number; faltan: number; horasSinPerdidas: number } {
+  let acumulado = 0;
+  let horasSinPerdidas = 0;
+  const horas: BalanceHora[] = horasDelCaso(registros, ahora).map((h): BalanceHora => {
+    if (h.estado !== "cargada" || !h.registroId) return { inicio: h.inicio, estado: h.estado === "cargada" ? "en_curso" : h.estado };
+    const fila = registros.find((r) => r.id === h.registroId)!;
+    const perdidas = perdidasDeFila(fila, registros, pesoKg);
+    if (perdidas.valor === null) horasSinPerdidas++;
+    const t = totalesHora(fila, bombasDeFila(bombas, fila.id), perdidas.valor);
+    acumulado += t.parcial;
+    return { inicio: h.inicio, estado: "cargada", registroId: fila.id, registrado_en: fila.registrado_en, ...t, perdidas, acumulado };
+  });
+  return { horas, acumulado, faltan: horas.filter((h) => h.estado === "faltante").length, horasSinPerdidas };
+}
+
+// ---------------------------------------------------------------------
+// Gammas en vivo y alarmas de dosis
+// ---------------------------------------------------------------------
+export type EstadoBomba = {
+  droga: DrogaInfusion;
+  velocidadMlH: number;
+  origen: "fila" | "evento"; // fila horaria o "cambié la velocidad"
+  momento: string; // hora del dato
+  dilucion: Dilucion | null;
+  dosis: (ResultadoDosis & { ok: true }) | null;
+  estado: "ok" | "sin_dilucion" | "falta_peso";
+  desactualizado: boolean; // más de MINUTOS_DOSIS_DESACTUALIZADA sin dato nuevo
+};
+
+export type EstadoBombas = {
+  porDroga: Partial<Record<DrogaInfusion, EstadoBomba>>; // solo las que corren (> 0 mL/h)
+  filaDato: string | null; // registrado_en de la última fila horaria
+  noradrenalina: EstadoBomba | null;
+  noradrenalinaGamma: number | null; // solo si la dosis es utilizable (ok y al día)
+  vasopresinaActiva: boolean;
+  algunVasopresorActivo: boolean; // informativo, FUERA del score y del color
+  ultimoBoloDesmopresina: string | null;
+};
+
+// Las gammas salen de la última fila horaria; un "cambié la velocidad"
+// posterior manda sobre ella para esa droga. Los bolos NUNCA cuentan
+// como bomba activa.
+export function estadoBombas(datos: {
+  registros: { id: string; registrado_en: string; anulado: boolean }[];
+  bombas: BombaHora[];
+  infusiones: InfusionFila[];
+  pesoKg: number | null;
+  ahora: number;
+}): EstadoBombas {
+  const vigentes = ordenarPorHora(datos.registros.filter((r) => !r.anulado));
+  const ultima = vigentes[vigentes.length - 1] ?? null;
+  type Dato = { velocidad: number; origen: "fila" | "evento"; momento: string; dilucion: Dilucion | null };
+  const porDroga = new Map<DrogaInfusion, Dato>();
+  if (ultima) {
+    for (const b of bombasDeFila(datos.bombas, ultima.id)) {
+      porDroga.set(b.droga, { velocidad: b.velocidad_ml_h, origen: "fila", momento: ultima.registrado_en, dilucion: dilucionPorId(datos.infusiones, b.dilucion_id) });
+    }
+  }
+  const desde = ultima ? new Date(ultima.registrado_en).getTime() : -Infinity;
+  for (const ev of eventosVelocidad(datos.infusiones)) {
+    const t = new Date(ev.registrado_en).getTime();
+    if (t <= desde || t > datos.ahora) continue;
+    const droga = ev.droga as DrogaInfusion;
+    porDroga.set(droga, { velocidad: ev.velocidad_ml_h!, origen: "evento", momento: ev.registrado_en, dilucion: dilucionVigenteEn(datos.infusiones, droga, t)?.dilucion ?? null });
+  }
+
+  const salida: Partial<Record<DrogaInfusion, EstadoBomba>> = {};
+  for (const [droga, d] of porDroga) {
+    if (!(d.velocidad > 0)) continue;
+    const desactualizado = datos.ahora - new Date(d.momento).getTime() > MINUTOS_DOSIS_DESACTUALIZADA * 60_000;
+    let estado: EstadoBomba["estado"] = "sin_dilucion";
+    let dosis: EstadoBomba["dosis"] = null;
+    if (d.dilucion) {
+      const c = concentracion(droga, d.dilucion);
+      if (c.ok) {
+        const r = dosisDesdeVelocidad(droga, d.velocidad, c.valor, datos.pesoKg);
+        if (r.ok) {
+          dosis = r;
+          estado = "ok";
+        } else if (r.motivo === "sin_peso") estado = "falta_peso";
+      }
+    }
+    salida[droga] = { droga, velocidadMlH: d.velocidad, origen: d.origen, momento: d.momento, dilucion: d.dilucion, dosis, estado, desactualizado };
+  }
+  const nora = salida.noradrenalina ?? null;
+  const bolos = ordenarPorHora(datos.infusiones).filter((f) => !f.anulado && f.tipo === "bolo" && f.droga === "desmopresina");
+  return {
+    porDroga: salida,
+    filaDato: ultima?.registrado_en ?? null,
+    noradrenalina: nora,
+    noradrenalinaGamma: nora && nora.estado === "ok" && !nora.desactualizado ? nora.dosis!.dosis : null,
+    vasopresinaActiva: salida.vasopresina !== undefined,
+    algunVasopresorActivo: VASOPRESORES.some((d) => salida[d as DrogaInfusion] !== undefined),
+    ultimoBoloDesmopresina: bolos.length ? bolos[bolos.length - 1].registrado_en : null,
+  };
+}
+
+// Alarmas de dosis: si el dato está desactualizado, falta la dilución o
+// falta el peso, las alarmas de dosis de esa droga quedan inactivas y se
+// avisa con un cartel.
+export function alarmasDosis(e: EstadoBombas): Alarma[] {
+  const out: Alarma[] = [];
+  const activas = Object.values(e.porDroga).filter((b): b is EstadoBomba => b !== undefined);
+  const viejas = activas.filter((b) => b.desactualizado);
+  if (viejas.length) {
+    const ultimo = viejas.map((b) => b.momento).sort().pop()!;
+    out.push({ nivel: "amarillo", texto: `Dosis de bombas: dato desactualizado (de las ${horaMinutos(ultimo)}); alarmas de dosis en pausa.` });
+  }
+  for (const b of activas) {
+    if (b.estado === "sin_dilucion") out.push({ nivel: "amarillo", texto: `${DROGAS_INFUSION[b.droga].etiqueta} sin dilución confirmada: sin dosis y sin alarmas de dosis.` });
+  }
+  if (activas.some((b) => b.estado === "falta_peso")) out.push({ nivel: "amarillo", texto: "Falta peso: dosis por kg sin calcular." });
+  return out;
 }

@@ -1,7 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  calcularBalance,
   calcularDiuresis,
   colorDe,
   concentracion,
@@ -117,7 +116,9 @@ test("semáforo: bordes sin huecos con decimales", () => {
     ["diuresis", 1, "amarillo"], ["diuresis", 1.01, "verde"], ["diuresis", 0.5, "amarillo"], ["diuresis", 0.49, "rojo"],
     ["pafi", 331, "verde"], ["pafi", 330, "amarillo"], ["pafi", 299, "rojo"],
     ["ph", 7.345, "amarillo"], ["ph", 7.35, "verde"], ["ph", 7.5, "verde"], ["ph", 7.56, "rojo"],
-    ["glucemia", 179.9, "verde"], ["glucemia", 180, "amarillo"], ["glucemia", 201, "rojo"],
+    ["glucemia", 69, "rojo"], ["glucemia", 70, "amarillo"], ["glucemia", 109, "amarillo"], ["glucemia", 109.5, "amarillo"], ["glucemia", 110, "verde"],
+    ["glucemia", 180, "verde"], ["glucemia", 180.5, "amarillo"], ["glucemia", 181, "amarillo"], ["glucemia", 200, "amarillo"], ["glucemia", 201, "rojo"],
+    ["sat_o2", 95, "verde"], ["sat_o2", 94.5, "verde"], ["sat_o2", 94, "amarillo"], ["sat_o2", 90, "amarillo"], ["sat_o2", 89, "rojo"],
     ["sodio", 134, "rojo"], ["sodio", 150, "verde"], ["sodio", 151, "amarillo"], ["sodio", 155, "amarillo"], ["sodio", 156, "rojo"],
     ["potasio", 3.4, "amarillo"], ["potasio", 5.6, "rojo"],
     ["temperatura", 35.95, "amarillo"], ["temperatura", 37.5, "verde"], ["temperatura", 38.1, "rojo"],
@@ -169,8 +170,6 @@ const reg = (id: string, hora: string, extra: Partial<RegistroBase> = {}): Regis
   anulado: false,
   diuresis_ml: null,
   diuresis_es_ultima_hora: false,
-  ingresos_ml: null,
-  egresos_ml: null,
   ...extra,
 });
 
@@ -209,18 +208,6 @@ test("diuresis: anulado en el medio + intervalo >2 h -> 'intervalo largo' en vez
   cerca(sinAnular[1].mlH!, 60);
 });
 
-test("balance: ingresos − (egresos + diuresis), parcial y acumulado, sin lo anulado", () => {
-  const b = calcularBalance([
-    reg("1", "08:00", { ingresos_ml: 500, egresos_ml: 50, diuresis_ml: 300 }),
-    reg("2", "09:00", { ingresos_ml: 999, anulado: true }),
-    reg("3", "10:00", { ingresos_ml: 200, diuresis_ml: 400 }),
-  ]);
-  assert.deepEqual(
-    b.map((f) => [f.id, f.parcial, f.acumulado]),
-    [["1", 150, 150], ["3", -200, -50]]
-  );
-});
-
 test("tendencia: últimos N no anulados con dato", () => {
   const rs = ["01", "02", "03", "04", "05", "06", "07", "08"].map((h, i) => ({ ...reg(String(i), `${h}:00`, { pam: 60 + i }), anulado: i === 7 }));
   const t = tendencia(rs, (r) => r.pam, 6);
@@ -232,7 +219,12 @@ test("score de calidad X/4 (sin dato = no cuenta)", () => {
   const s = scoreCalidad({ glucemia: 150, sodio: 154, ph: 7.4, pafi: 300 });
   assert.equal(s.cumplidos, 3);
   assert.equal(scoreCalidad({ glucemia: null, sodio: null, ph: null, pafi: null }).cumplidos, 0);
-  assert.equal(scoreCalidad({ glucemia: 180, sodio: 155, ph: 7.51, pafi: 331 }).cumplidos, 1);
+  assert.equal(scoreCalidad({ glucemia: 181, sodio: 155, ph: 7.51, pafi: 331 }).cumplidos, 1);
+});
+
+test("score: la glucemia cuenta cumplida solo en 110-180", () => {
+  const g = (glucemia: number) => scoreCalidad({ glucemia, sodio: null, ph: null, pafi: null }).items[0].cumple;
+  assert.deepEqual([g(69), g(109), g(110), g(150), g(180), g(181)], [false, false, true, true, true, false]);
 });
 
 // ---------------------------------------------------------------- volemia
@@ -284,42 +276,12 @@ test("ΔPP >13% y elevación pasiva de miembros ≥10% del VS o GC son variables
 });
 
 // ---------------------------------------------------------------- infusiones
-import { armarAlarmas, camposFueraDeRango, contarFueraDeMeta, estadoInfusiones, minutosDesdeUltimoRegistro, ultimaDilucion, validarHoraRegistro, type InfusionFila } from "../mantenimiento-calculos.ts";
+import { armarAlarmas, camposFueraDeRango, contarFueraDeMeta, minutosDesdeUltimoRegistro, ultimaDilucion, validarHoraRegistro, type InfusionFila } from "../mantenimiento-calculos.ts";
 
 const inf = (id: string, hora: string, droga: InfusionFila["droga"], extra: Partial<InfusionFila> = {}): InfusionFila => ({
   id, registrado_en: `2026-10-06T${hora}:00Z`, droga, tipo: "infusion",
   ampollas: 2, contenido_por_ampolla: 4, unidad_contenido: "mg", volumen_final_ml: 100,
   velocidad_ml_h: 10, dosis_calculada: 0.19, unidad_dosis: "mcg/kg/min", anulado: false, ...extra,
-});
-
-test("estado de infusiones: última no anulada por droga; 0 mL/h = suspendida", () => {
-  const e = estadoInfusiones([
-    inf("1", "08:00", "noradrenalina", { velocidad_ml_h: 10, dosis_calculada: 0.19 }),
-    inf("2", "09:00", "noradrenalina", { velocidad_ml_h: 20, dosis_calculada: 0.38 }),
-    inf("3", "10:00", "noradrenalina", { velocidad_ml_h: 30, dosis_calculada: 0.57, anulado: true }), // anulada: no cuenta
-    inf("4", "08:30", "vasopresina", { velocidad_ml_h: 0, unidad_contenido: "U" }), // suspendida
-    inf("5", "09:30", "desmopresina", { tipo: "bolo" }),
-  ]);
-  assert.equal(e.noradrenalinaGamma, 0.38);
-  assert.equal(e.vasopresinaActiva, false);
-  assert.equal(e.algunVasopresorActivo, true);
-  assert.equal(e.ultimoBoloDesmopresina, "2026-10-06T09:30:00Z");
-});
-
-test("'al menos un vasopresor': solo noradrenalina, adrenalina o vasopresina (no dopamina ni dobutamina)", () => {
-  for (const droga of ["noradrenalina", "adrenalina", "vasopresina"] as const)
-    assert.equal(estadoInfusiones([inf("1", "08:00", droga)]).algunVasopresorActivo, true, droga);
-  for (const droga of ["dopamina", "dobutamina"] as const)
-    assert.equal(estadoInfusiones([inf("1", "08:00", droga)]).algunVasopresorActivo, false, droga);
-  assert.equal(
-    estadoInfusiones([inf("1", "08:00", "dopamina"), inf("2", "08:00", "dobutamina")]).algunVasopresorActivo,
-    false
-  );
-});
-
-test("vasopresina activa = no anulada y velocidad > 0", () => {
-  assert.equal(estadoInfusiones([inf("1", "08:00", "vasopresina", { velocidad_ml_h: 6 })]).vasopresinaActiva, true);
-  assert.equal(estadoInfusiones([inf("1", "08:00", "vasopresina", { velocidad_ml_h: 6, anulado: true })]).vasopresinaActiva, false);
 });
 
 test("se recuerda la última dilución usada (no anulada)", () => {
@@ -343,6 +305,31 @@ test("alarmas: rojas primero; avanzados solo con el monitoreo activo; sin regist
   assert.ok(!a.some((x) => x.texto.startsWith("PVC")));
   assert.equal(contarFueraDeMeta(parametros, false), 2);
   assert.equal(contarFueraDeMeta(parametros, true), 3);
+});
+
+test("alarma de hipoglucemia (<70, roja) en lugar del 'fuera de meta' genérico", () => {
+  const a = armarAlarmas({
+    parametros: [{ clave: "glucemia", etiqueta: "Glucemia", valor: 62, color: "rojo", avanzado: false }],
+    monitoreoAvanzadoActivo: false,
+    minutosSinRegistro: 10,
+    estadoDI: "sin_criterios",
+  });
+  assert.deepEqual(a, [{ nivel: "rojo", texto: "Hipoglucemia: 62 mg/dL (<70)." }]);
+  const alta = armarAlarmas({
+    parametros: [{ clave: "glucemia", etiqueta: "Glucemia", valor: 250, color: "rojo", avanzado: false }],
+    monitoreoAvanzadoActivo: false,
+    minutosSinRegistro: 10,
+    estadoDI: "sin_criterios",
+  });
+  assert.equal(alta[0].texto, "Glucemia fuera de meta: 250");
+  // desactualizada (más de 6 h): gris, sin alarma
+  const vieja = armarAlarmas({
+    parametros: [{ clave: "glucemia", etiqueta: "Glucemia", valor: 62, color: "sin_dato", avanzado: false }],
+    monitoreoAvanzadoActivo: false,
+    minutosSinRegistro: 10,
+    estadoDI: "sin_criterios",
+  });
+  assert.deepEqual(vieja, []);
 });
 
 test("minutos desde el último registro no anulado", () => {

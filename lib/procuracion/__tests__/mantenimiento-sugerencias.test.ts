@@ -7,6 +7,7 @@ const base: EstadoParaSugerencias = {
   pam: 70,
   fc: 90,
   noradrenalinaGamma: null,
+  noradrenalinaSinDosis: null,
   vasopresinaActiva: false,
   disfuncionMiocardica: false,
   ic: null,
@@ -150,4 +151,10 @@ test("diabetes insípida e hipernatremia muestran la edad del sodio, destacada s
   // sin sodio: DI igual se sugiere, sin nota
   const sinNa = generarSugerencias({ ...base, sodio: null, estadoDI: "sospecha" }).find((x) => x.id === "diabetes_insipida")!;
   assert.deepEqual(sinNa.notas, []);
+});
+
+test("hipotensión con la dosis de noradrenalina no utilizable: no sugiere ajuste por dosis", () => {
+  const t = texto({ pam: 50, noradrenalinaSinDosis: "dato desactualizado" });
+  assert.match(t, /Dosis de noradrenalina no disponible \(dato desactualizado\): no se sugiere ajuste por dosis\./);
+  assert.doesNotMatch(t, /asociar vasopresina/);
 });
