@@ -5,23 +5,30 @@ import { createClient } from "@/lib/supabase/client";
 import {
   CAMPOS_REGISTRO,
   anularRegistro,
+  guardarBombasDeFila,
   guardarRegistro,
   type CampoNumericoRegistro,
   type DatosRegistro,
   type RegistroMantenimiento,
 } from "@/lib/procuracion/mantenimiento";
 import {
+  bombasDeFila,
   camposFueraDeRango,
+  filaPrecargada,
   inicioDeHora,
   ordenarPorHora,
   registroDeLaHora,
-  totalesParaGuardar,
   validarHoraRegistro,
+  type BombaFormulario,
+  type BombaHora,
   type InfusionFila,
 } from "@/lib/procuracion/mantenimiento-calculos";
+import { BombasDeLaHora, bombasFormDesde, bombasParaGuardar, type BombasForm } from "./mantenimiento-dilucion";
 import { Confirmacion, ErrorVisible, aInputLocal, aNumero, fechaHora, hora, momentoActual, num } from "./mantenimiento-ui";
 
 const supabase = createClient();
+
+const mismaHoraQueAhora = (iso: string) => inicioDeHora(new Date(iso).getTime()) === inicioDeHora(momentoActual());
 
 type Pendiente = { tipo: "orden" | "plausibilidad"; texto: string };
 
@@ -32,19 +39,33 @@ export type ControlRegistros = { abrirNuevo: () => void };
 // anulación. Validaciones antes de guardar: hora futura no se acepta; si
 // la edición cambia el orden de los registros, pide confirmación; valores
 // fuera de rango plausible piden "¿seguro?" (no bloquea).
+// Las bombas van en la misma fila horaria que carga enfermería (una sola
+// fuente): fila nueva precargada con la hora anterior; si el registro
+// completa una hora que ya existe, las bombas se guardan solo si se
+// tocaron (no se pisa lo que cargó enfermería).
 export default function MantenimientoRegistros({
   donanteId,
   registros,
   infusiones,
+  bombas,
+  pesoKg,
   monitoreoAvanzado,
   onRegistrosChange,
+  onInfusionesChange,
+  onBombasChange,
+  onGuardarPeso,
   ref,
 }: {
   donanteId: string;
   registros: RegistroMantenimiento[];
-  infusiones: InfusionFila[]; // para el volumen de bombas en el balance
+  infusiones: InfusionFila[];
+  bombas: BombaHora[];
+  pesoKg: number | null;
   monitoreoAvanzado: boolean;
   onRegistrosChange: (r: RegistroMantenimiento[]) => void;
+  onInfusionesChange: (f: InfusionFila[]) => void;
+  onBombasChange: (b: BombaHora[]) => void;
+  onGuardarPeso: (pesoKg: number) => Promise<void>;
   ref?: Ref<ControlRegistros>;
 }) {
   const [abierto, setAbierto] = useState(false);
@@ -57,8 +78,34 @@ export default function MantenimientoRegistros({
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [anulandoId, setAnulandoId] = useState<string | null>(null);
+  const [bombasForm, setBombasForm] = useState<BombasForm>({});
+  const [precarga, setPrecarga] = useState<BombaFormulario[]>([]);
+  const [bombasTocadas, setBombasTocadas] = useState(false);
 
   const vigentes = ordenarPorHora(registros.filter((r) => !r.anulado));
+
+  // Bombas del formulario para una hora: las de esa fila si ya existe;
+  // si no, las de la hora anterior ("copiado de la hora anterior").
+  function prepararBombas(inicioHora: number, propio: RegistroMantenimiento | null) {
+    const fila = propio ?? registroDeLaHora(registros, inicioHora);
+    const pre = filaPrecargada(registros, bombas, infusiones, inicioHora);
+    setPrecarga(pre.bombas);
+    setBombasForm(
+      fila
+        ? bombasFormDesde(
+            bombasDeFila(bombas, fila.id).map((b) => ({ droga: b.droga, velocidad_ml_h: b.velocidad_ml_h, dilucion_id: b.dilucion_id })),
+            false
+          )
+        : bombasFormDesde(pre.bombas, true)
+    );
+    setBombasTocadas(false);
+  }
+
+  function cambiarHora(texto: string) {
+    setHoraTexto(texto);
+    if (!texto || bombasTocadas || editId) return;
+    prepararBombas(inicioDeHora(new Date(texto).getTime()), null);
+  }
 
   function abrirNuevo() {
     setEditId(null);
@@ -70,6 +117,7 @@ export default function MantenimientoRegistros({
     setPendiente(null);
     setConfirmados({ orden: false, plausibilidad: false });
     setError(null);
+    prepararBombas(inicioDeHora(momentoActual()), null);
     setAbierto(true);
   }
 
@@ -85,6 +133,7 @@ export default function MantenimientoRegistros({
     setPendiente(null);
     setConfirmados({ orden: false, plausibilidad: false });
     setError(null);
+    prepararBombas(inicioDeHora(new Date(r.registrado_en).getTime()), r);
     setAbierto(true);
   }
 
@@ -115,7 +164,9 @@ export default function MantenimientoRegistros({
       if (n !== null && Number.isNaN(n)) return setError(`Valor inválido en ${c.etiqueta}.`);
       valores[c.campo] = n;
     }
-    if (Object.values(valores).every((x) => x === null)) return setError("Cargá al menos un valor.");
+    const pb = bombasParaGuardar(bombasForm, precarga);
+    if (!pb.ok) return setError(pb.error);
+    if (Object.values(valores).every((x) => x === null) && pb.filas.length === 0) return setError("Cargá al menos un valor.");
 
     if (v.cambiaOrden && !conf.orden) {
       return setPendiente({ tipo: "orden", texto: "Con esta hora cambia el orden de los registros (y los intervalos de diuresis). ¿Confirmás?" });
@@ -138,39 +189,27 @@ export default function MantenimientoRegistros({
     const aplicar: Partial<Record<CampoNumericoRegistro, number | null>> = editId
       ? valores
       : Object.fromEntries(Object.entries(valores).filter(([, x]) => x !== null));
-    const combinado = { ...(existente ?? {}), ...aplicar } as Partial<RegistroMantenimiento>;
     const registradoEn = existente && !editId ? existente.registrado_en : iso;
-    const totales = totalesParaGuardar(
-      {
-        ing_sol_medio_ml: combinado.ing_sol_medio_ml ?? null,
-        ing_sol_09_ml: combinado.ing_sol_09_ml ?? null,
-        ing_ringer_ml: combinado.ing_ringer_ml ?? null,
-        ing_dextrosa_ml: combinado.ing_dextrosa_ml ?? null,
-        temperatura: combinado.temperatura ?? null,
-        diuresis_ml: combinado.diuresis_ml ?? null,
-        egr_sng_drenajes_ml: combinado.egr_sng_drenajes_ml ?? null,
-        perdidas_insensibles_ml: existente?.perdidas_insensibles_ml ?? null,
-        perdidas_insensibles_editadas: existente?.perdidas_insensibles_editadas ?? false,
-      },
-      inicioDeHora(new Date(registradoEn).getTime()),
-      registros.filter((r) => r.id !== idDestino),
-      infusiones
-    );
+    // Fila nueva: guardar confirma las bombas precargadas. Fila que ya
+    // existía: solo si se tocaron las bombas.
+    const guardarBombas = idDestino === null || bombasTocadas;
 
     const datos: DatosRegistro = {
       registrado_en: registradoEn,
       ...aplicar,
       disfuncion_miocardica: disfuncion,
       diuresis_es_ultima_hora: anteriorA(registradoEn) === null,
-      perdidas_insensibles_ml: totales.perdidas_insensibles_ml,
-      ingresos_ml: totales.ingresos_ml,
-      egresos_ml: totales.egresos_ml,
-      egresos_incluye_diuresis: true,
     };
     setGuardando(true);
     try {
       const guardado = await guardarRegistro(supabase, donanteId, datos, idDestino);
       onRegistrosChange(idDestino ? registros.map((r) => (r.id === idDestino ? guardado : r)) : [...registros, guardado]);
+      if (guardarBombas) {
+        const instante = mismaHoraQueAhora(registradoEn) ? new Date(momentoActual()).toISOString() : registradoEn;
+        const { nuevasInfusiones, bombas: deLaFila } = await guardarBombasDeFila(supabase, donanteId, guardado.id, pb.filas, instante, null);
+        if (nuevasInfusiones.length) onInfusionesChange([...infusiones, ...nuevasInfusiones]);
+        onBombasChange([...bombas.filter((b) => b.registro_id !== guardado.id), ...deLaFila]);
+      }
       setAbierto(false);
       setPendiente(null);
     } catch (e) {
@@ -219,7 +258,7 @@ export default function MantenimientoRegistros({
         <div style={{ border: "1px solid var(--border)", borderRadius: 8, padding: 10, marginBottom: 10 }}>
           <div className="field-row">
             <span className="field-label">{editId ? "Editar registro · hora" : "Hora del registro"}</span>
-            <input type="datetime-local" className="mini-input" value={horaTexto} onChange={(e) => setHoraTexto(e.target.value)} />
+            <input type="datetime-local" className="mini-input" value={horaTexto} onChange={(e) => cambiarHora(e.target.value)} />
           </div>
           {existenteEnLaHora && (
             <div className="tiny" style={{ color: "var(--amber)", marginBottom: 6 }}>
@@ -245,6 +284,21 @@ export default function MantenimientoRegistros({
               />
             </div>
           ))}
+          <div className="section-label" style={{ marginTop: 8 }}>Bombas de esta hora (mL/h)</div>
+          {existenteEnLaHora && !bombasTocadas && (
+            <div className="tiny muted">Son las bombas ya cargadas en esa hora; si no las tocás, no se cambian.</div>
+          )}
+          <BombasDeLaHora
+            form={bombasForm}
+            onChange={(f) => {
+              setBombasForm(f);
+              setBombasTocadas(true);
+            }}
+            precarga={precarga}
+            infusiones={infusiones}
+            pesoKg={pesoKg}
+            onGuardarPeso={onGuardarPeso}
+          />
           <label className="check-row" style={{ cursor: "pointer" }}>
             <input type="checkbox" checked={disfuncion} onChange={(e) => setDisfuncion(e.target.checked)} /> Disfunción miocárdica
             (criterio clínico o ecocardiograma)

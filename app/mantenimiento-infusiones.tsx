@@ -3,166 +3,191 @@
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { anularInfusion, guardarInfusion, type NuevaInfusion } from "@/lib/procuracion/mantenimiento";
-import {
-  concentracion,
-  dosisDesdeVelocidad,
-  estadoInfusiones,
-  ordenarPorHora,
-  ultimaDilucion,
-  velocidadDesdeDosis,
-  type InfusionFila,
-} from "@/lib/procuracion/mantenimiento-calculos";
-import { DROGAS_INFUSION } from "@/lib/procuracion/mantenimiento-metas";
-import DilucionBomba, { type DrogaInfusion, type EstadoDilucion } from "./mantenimiento-dilucion";
-import { Confirmacion, ErrorVisible, PedirPeso, aInputLocal, aNumero, esFutura, fechaHora, hora, num } from "./mantenimiento-ui";
+import { concentracion, dosisDesdeVelocidad, horaMinutos, ordenarPorHora, type EstadoBomba, type EstadoBombas, type InfusionFila } from "@/lib/procuracion/mantenimiento-calculos";
+import { BOLOS, BOMBAS_ENFERMERIA, DROGAS_INFUSION, MINUTOS_DOSIS_DESACTUALIZADA, type DrogaBolo, type DrogaInfusion } from "@/lib/procuracion/mantenimiento-metas";
+import { Confirmacion, ErrorVisible, aInputLocal, aNumero, esFutura, fechaHora, momentoActual, num } from "./mantenimiento-ui";
 
 const supabase = createClient();
-const DROGAS = Object.keys(DROGAS_INFUSION) as DrogaInfusion[];
 
-// Texto corto de una fila de infusión ("10 mL/h · 0,19 mcg/kg/min").
+const etiquetaDroga = (d: InfusionFila["droga"]) =>
+  d === "desmopresina" ? BOLOS.desmopresina.etiqueta : DROGAS_INFUSION[d].etiqueta;
+
+// Texto corto de una fila de mantenimiento_infusiones.
 export function textoInfusion(f: InfusionFila): string {
-  if (f.tipo === "bolo") return `bolo ${num(f.dosis_calculada)} mcg`;
+  if (f.tipo === "bolo") return `bolo ${num(f.dosis_calculada)} ${f.unidad_dosis ?? ""}`;
+  if (f.motivo === "cambio_velocidad") return `cambié la velocidad: ${num(f.velocidad_ml_h)} mL/h`;
+  if (f.motivo === "inicio" || f.motivo === "cambio_dilucion") {
+    return `${f.motivo === "inicio" ? "dilución (inicio)" : "cambio de dilución"}: ${num(f.ampollas)} × ${num(f.contenido_por_ampolla)} ${f.unidad_contenido ?? ""} en ${num(f.volumen_final_ml)} mL`;
+  }
+  // Filas viejas (Fase 1): velocidad como evento.
   if ((f.velocidad_ml_h ?? 0) === 0) return "suspendida";
-  const decimales = f.unidad_dosis === "U/min" ? 4 : f.unidad_dosis === "mcg/kg/min" ? 3 : 2;
-  const uh = f.unidad_dosis === "U/min" && f.dosis_calculada !== null ? ` (${num(f.dosis_calculada * 60)} U/h)` : "";
-  return `${num(f.velocidad_ml_h)} mL/h · ${num(f.dosis_calculada, decimales)} ${f.unidad_dosis ?? ""}${uh}`;
+  return `${num(f.velocidad_ml_h)} mL/h · ${num(f.dosis_calculada, 3)} ${f.unidad_dosis ?? ""}`;
 }
 
-// Dilución vigente de una droga en curso (ya confirmada cuando se inició):
-// cambiar solo la velocidad no la repregunta.
-export function dilucionVigente(infusiones: InfusionFila[], droga: DrogaInfusion): EstadoDilucion {
-  if (!estadoInfusiones(infusiones).porDroga[droga]?.activa) return null;
-  const d = ultimaDilucion(infusiones, droga);
-  if (!d) return null;
-  const c = concentracion(droga, d);
-  return c.ok ? { dilucion: d, concentracion: c.valor, unidad: c.unidad } : null;
+// Dosis de una bomba en curso, como texto ("0,19 mcg/kg/min" / motivo).
+export function textoDosisBomba(b: EstadoBomba): string {
+  if (b.estado === "sin_dilucion") return "sin dilución confirmada";
+  if (b.estado === "falta_peso") return "falta peso";
+  const dec = b.dosis!.unidad === "U/min" ? 4 : b.dosis!.unidad === "mcg/kg/min" ? 3 : 2;
+  const uh = b.dosis!.uPorHora !== undefined ? ` (${num(b.dosis!.uPorHora)} U/h)` : "";
+  return `${num(b.dosis!.dosis, dec)} ${b.dosis!.unidad}${uh}`;
 }
 
-// Infusiones (vista del médico). La dilución se confirma con un toque al
-// iniciar una droga o al cambiar su dilución (DilucionBomba); cambiar solo
-// la velocidad de una droga en curso no la repregunta. La cuenta se
-// muestra siempre. Desmopresina: solo bolos en mcg, sin bomba.
-export default function MantenimientoInfusiones({
-  pesoKg,
+// ---------------------------------------------------------------------
+// Bombas en curso (gammas en vivo) + "cambié la velocidad"
+// ---------------------------------------------------------------------
+// Las dosis salen de la última fila horaria; "cambié la velocidad" guarda
+// un evento con la hora real que actualiza las gammas en vivo entre
+// cargas. NO cambia el balance (sigue horario); la fila siguiente se
+// precarga con esa velocidad.
+export function BombasEnCurso({
+  estado,
   donanteId,
+  pesoKg,
   infusiones,
   onInfusionesChange,
-  onGuardarPeso,
 }: {
-  pesoKg: number | null;
+  estado: EstadoBombas;
   donanteId: string;
+  pesoKg: number | null;
   infusiones: InfusionFila[];
   onInfusionesChange: (f: InfusionFila[]) => void;
-  onGuardarPeso: (pesoKg: number) => Promise<void>;
 }) {
-  const [droga, setDroga] = useState<DrogaInfusion | null>(null);
-  const [dil, setDil] = useState<EstadoDilucion>(null);
-  const [velocidadTexto, setVelocidadTexto] = useState("");
-  const [dosisObjetivoTexto, setDosisObjetivoTexto] = useState("");
-  const [horaTexto, setHoraTexto] = useState("");
-  const [suspendiendo, setSuspendiendo] = useState<DrogaInfusion | null>(null);
-  const [anulandoId, setAnulandoId] = useState<string | null>(null);
-  const [boloAbierto, setBoloAbierto] = useState(false);
-  const [boloMcg, setBoloMcg] = useState("");
+  const [editando, setEditando] = useState<DrogaInfusion | null>(null);
+  const [texto, setTexto] = useState("");
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const activas = BOMBAS_ENFERMERIA.map((d) => estado.porDroga[d]).filter((b): b is EstadoBomba => b !== undefined);
 
-  const estado = estadoInfusiones(infusiones);
-  const enCurso = DROGAS.filter((d) => estado.porDroga[d]?.activa);
-
-  function abrir(d: DrogaInfusion) {
-    const enCursoD = estado.porDroga[d]?.activa ?? false;
-    setDroga(d);
-    setDil(dilucionVigente(infusiones, d));
-    setVelocidadTexto(enCursoD ? String(estado.porDroga[d]?.velocidad_ml_h ?? "").replace(".", ",") : "");
-    setDosisObjetivoTexto("");
-    setHoraTexto(aInputLocal(new Date().toISOString()));
-    setError(null);
-  }
-
-  const unidadDosis = droga ? DROGAS_INFUSION[droga].unidadDosis : null;
-  const usaPeso = unidadDosis === "mcg/kg/min";
-  const velocidad = aNumero(velocidadTexto);
-  const resultado =
-    droga && dil && velocidad !== null && !Number.isNaN(velocidad) ? dosisDesdeVelocidad(droga, velocidad, dil.concentracion, pesoKg) : null;
-  const dosisObjetivo = aNumero(dosisObjetivoTexto);
-  const inversa =
-    droga && dil && dosisObjetivo !== null && !Number.isNaN(dosisObjetivo)
-      ? velocidadDesdeDosis(droga, dosisObjetivo, dil.concentracion, pesoKg)
-      : null;
-
-  async function insertar(fila: NuevaInfusion, despues: () => void) {
+  async function guardarCambio(b: EstadoBomba) {
+    const v = aNumero(texto);
+    if (v === null || Number.isNaN(v) || v < 0) return setError("Velocidad inválida (mL/h).");
     setError(null);
     setGuardando(true);
     try {
-      const nueva = await guardarInfusion(supabase, donanteId, fila);
+      const conc = b.dilucion ? concentracion(b.droga, b.dilucion) : null;
+      const dosis = conc?.ok ? dosisDesdeVelocidad(b.droga, v, conc.valor, pesoKg) : null;
+      const nueva = await guardarInfusion(supabase, donanteId, {
+        registrado_en: new Date(momentoActual()).toISOString(),
+        droga: b.droga,
+        tipo: "infusion",
+        motivo: "cambio_velocidad",
+        cargado_por: null,
+        ampollas: null,
+        contenido_por_ampolla: null,
+        unidad_contenido: null,
+        volumen_final_ml: null,
+        concentracion_calculada: conc?.ok ? conc.valor : null,
+        unidad_concentracion: conc?.ok ? conc.unidad : null,
+        velocidad_ml_h: v,
+        dosis_calculada: dosis?.ok ? dosis.dosis : null,
+        unidad_dosis: dosis?.ok ? dosis.unidad : null,
+        peso_usado_kg: DROGAS_INFUSION[b.droga].unidadDosis === "mcg/kg/min" ? pesoKg : null,
+      });
       onInfusionesChange([...infusiones, nueva]);
-      despues();
+      setEditando(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "No se pudo guardar la infusión.");
+      setError(e instanceof Error ? e.message : "No se pudo guardar el cambio de velocidad.");
     } finally {
       setGuardando(false);
     }
   }
 
-  function guardar() {
-    if (!droga || !dil) return setError("Confirmá la dilución antes de guardar.");
-    if (!resultado?.ok) return setError(resultado?.error ?? "Cargá la velocidad en mL/h.");
+  return (
+    <div>
+      <ErrorVisible mensaje={error} />
+      {activas.length === 0 && <div className="tiny muted">Sin bombas corriendo en la última fila cargada.</div>}
+      {activas.map((b) => (
+        <div key={b.droga} style={{ padding: "3px 0" }}>
+          <div className="field-row">
+            <span className="field-label">
+              {DROGAS_INFUSION[b.droga].etiqueta} · {num(b.velocidadMlH)} mL/h ·{" "}
+              <span style={{ color: b.estado === "ok" && !b.desactualizado ? undefined : "var(--amber)" }}>{textoDosisBomba(b)}</span>
+              <span className="tiny muted" style={{ display: "block" }}>
+                Dato de las {horaMinutos(b.momento)} ({b.origen === "fila" ? "fila horaria" : "cambié la velocidad"})
+                {b.desactualizado ? (
+                  <span style={{ color: "var(--amber)", fontWeight: 600 }}> · dato desactualizado (más de {MINUTOS_DOSIS_DESACTUALIZADA} min)</span>
+                ) : null}
+              </span>
+            </span>
+            {editando !== b.droga && (
+              <button
+                className="btn btn-sm"
+                onClick={() => {
+                  setEditando(b.droga);
+                  setTexto(String(b.velocidadMlH).replace(".", ","));
+                  setError(null);
+                }}
+              >
+                Cambié la velocidad
+              </button>
+            )}
+          </div>
+          {editando === b.droga && (
+            <div className="field-row">
+              <span className="field-label tiny">Velocidad nueva (mL/h), con la hora de ahora. No cambia el balance.</span>
+              <span style={{ display: "flex", gap: 4 }}>
+                <input className="mini-input" inputMode="decimal" style={{ width: 64 }} value={texto} onChange={(e) => setTexto(e.target.value)} />
+                <button className="btn btn-sm btn-accent" disabled={guardando} onClick={() => guardarCambio(b)}>
+                  {guardando ? "Guardando…" : "Guardar"}
+                </button>
+                <button className="btn btn-sm" disabled={guardando} onClick={() => setEditando(null)}>
+                  Cancelar
+                </button>
+              </span>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------
+// Bolos (solapa aparte): hora y dosis, FUERA del balance
+// ---------------------------------------------------------------------
+const DROGAS_BOLO = Object.keys(BOLOS) as DrogaBolo[];
+
+export function Bolos({
+  donanteId,
+  infusiones,
+  onInfusionesChange,
+}: {
+  donanteId: string;
+  infusiones: InfusionFila[];
+  onInfusionesChange: (f: InfusionFila[]) => void;
+}) {
+  const [droga, setDroga] = useState<DrogaBolo | null>(null);
+  const [dosisTexto, setDosisTexto] = useState("");
+  const [horaTexto, setHoraTexto] = useState("");
+  const [anulandoId, setAnulandoId] = useState<string | null>(null);
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const bolos = ordenarPorHora(infusiones.filter((f) => f.tipo === "bolo")).reverse();
+
+  function abrir(d: DrogaBolo) {
+    setDroga(d);
+    setDosisTexto("");
+    setHoraTexto(aInputLocal(new Date(momentoActual()).toISOString()));
+    setError(null);
+  }
+
+  async function registrar() {
+    if (!droga) return;
+    const dosis = aNumero(dosisTexto);
+    if (dosis === null || Number.isNaN(dosis) || dosis <= 0) return setError(`Dosis inválida (${BOLOS[droga].unidad}).`);
     if (!horaTexto) return setError("Falta la hora.");
     const iso = new Date(horaTexto).toISOString();
     if (esFutura(iso)) return setError("La hora no puede ser futura.");
-    insertar(
-      {
+    setError(null);
+    setGuardando(true);
+    try {
+      const fila: NuevaInfusion = {
         registrado_en: iso,
         droga,
-        tipo: "infusion",
-        ampollas: dil.dilucion.ampollas,
-        contenido_por_ampolla: dil.dilucion.contenidoPorAmpolla,
-        unidad_contenido: dil.dilucion.unidadContenido,
-        volumen_final_ml: dil.dilucion.volumenFinalMl,
-        concentracion_calculada: dil.concentracion,
-        unidad_concentracion: dil.unidad,
-        velocidad_ml_h: velocidad,
-        dosis_calculada: resultado.dosis,
-        unidad_dosis: resultado.unidad,
-        peso_usado_kg: usaPeso ? pesoKg : null,
-      },
-      () => setDroga(null)
-    );
-  }
-
-  // Suspender = fila con 0 mL/h y la misma dilución.
-  function suspender(d: DrogaInfusion) {
-    const actual = estado.porDroga[d];
-    if (!actual) return;
-    insertar(
-      {
-        registrado_en: new Date().toISOString(),
-        droga: d,
-        tipo: "infusion",
-        ampollas: actual.ampollas,
-        contenido_por_ampolla: actual.contenido_por_ampolla,
-        unidad_contenido: actual.unidad_contenido,
-        volumen_final_ml: actual.volumen_final_ml,
-        concentracion_calculada: null,
-        unidad_concentracion: null,
-        velocidad_ml_h: 0,
-        dosis_calculada: 0,
-        unidad_dosis: DROGAS_INFUSION[d].unidadDosis,
-        peso_usado_kg: null,
-      },
-      () => setSuspendiendo(null)
-    );
-  }
-
-  function guardarBolo() {
-    const mcg = aNumero(boloMcg);
-    if (mcg === null || Number.isNaN(mcg) || mcg <= 0) return setError("Dosis de desmopresina inválida (mcg).");
-    insertar(
-      {
-        registrado_en: new Date().toISOString(),
-        droga: "desmopresina",
         tipo: "bolo",
+        motivo: null,
+        cargado_por: null,
         ampollas: null,
         contenido_por_ampolla: null,
         unidad_contenido: null,
@@ -170,15 +195,18 @@ export default function MantenimientoInfusiones({
         concentracion_calculada: null,
         unidad_concentracion: null,
         velocidad_ml_h: null,
-        dosis_calculada: mcg,
-        unidad_dosis: "mcg",
+        dosis_calculada: dosis,
+        unidad_dosis: BOLOS[droga].unidad,
         peso_usado_kg: null,
-      },
-      () => {
-        setBoloAbierto(false);
-        setBoloMcg("");
-      }
-    );
+      };
+      const nueva = await guardarInfusion(supabase, donanteId, fila);
+      onInfusionesChange([...infusiones, nueva]);
+      setDroga(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo registrar el bolo.");
+    } finally {
+      setGuardando(false);
+    }
   }
 
   async function anular(id: string) {
@@ -198,124 +226,29 @@ export default function MantenimientoInfusiones({
   return (
     <div>
       <ErrorVisible mensaje={error} />
-
-      {enCurso.length === 0 && <div className="tiny muted">Sin infusiones en curso.</div>}
-      {enCurso.map((d) => {
-        const f = estado.porDroga[d]!;
-        return (
-          <div key={d}>
-            <div className="field-row">
-              <span className="field-label">
-                {DROGAS_INFUSION[d].etiqueta} · {textoInfusion(f)} <span className="muted">desde {hora(f.registrado_en)}</span>
-              </span>
-              <span style={{ display: "flex", gap: 4 }}>
-                <button className="btn btn-sm" onClick={() => abrir(d)}>
-                  Cambiar
-                </button>
-                <button className="btn btn-sm" onClick={() => setSuspendiendo(d)}>
-                  Suspender
-                </button>
-              </span>
-            </div>
-            {suspendiendo === d && (
-              <Confirmacion
-                texto={`¿Suspender ${DROGAS_INFUSION[d].etiqueta}? Se registra 0 mL/h.`}
-                textoSi="Sí, suspender"
-                ocupado={guardando}
-                onSi={() => suspender(d)}
-                onNo={() => setSuspendiendo(null)}
-              />
-            )}
-          </div>
-        );
-      })}
-
-      {!droga && (
-        <div className="btn-row" style={{ marginTop: 8, flexWrap: "wrap" }}>
-          <select className="mini-input" value="" onChange={(e) => e.target.value && abrir(e.target.value as DrogaInfusion)}>
-            <option value="">+ Iniciar / cambiar droga…</option>
-            {DROGAS.map((d) => (
-              <option key={d} value={d}>
-                {DROGAS_INFUSION[d].etiqueta} ({DROGAS_INFUSION[d].unidadDosis})
-              </option>
-            ))}
-          </select>
-          <button className="btn btn-sm" onClick={() => setBoloAbierto((v) => !v)}>
-            Bolo de desmopresina
+      <div className="tiny muted" style={{ marginBottom: 6 }}>Los bolos se registran con hora y dosis y no entran al balance.</div>
+      <div className="btn-row" style={{ flexWrap: "wrap" }}>
+        {DROGAS_BOLO.map((d) => (
+          <button key={d} className={`btn btn-sm ${droga === d ? "btn-accent" : ""}`} onClick={() => abrir(d)}>
+            {BOLOS[d].etiqueta} ({BOLOS[d].unidad})
           </button>
-        </div>
-      )}
-
-      {boloAbierto && !droga && (
-        <div className="field-row">
-          <span className="field-label">Desmopresina (bolo, mcg)</span>
-          <span style={{ display: "flex", gap: 4 }}>
-            <input className="mini-input" inputMode="decimal" style={{ width: 80 }} value={boloMcg} onChange={(e) => setBoloMcg(e.target.value)} />
-            <button className="btn btn-sm btn-accent" disabled={guardando} onClick={guardarBolo}>
-              Registrar
-            </button>
-          </span>
-        </div>
-      )}
-
+        ))}
+      </div>
       {droga && (
         <div style={{ border: "1px solid var(--border)", borderRadius: 8, padding: 10, marginTop: 8 }}>
-          <div className="tiny" style={{ marginBottom: 6, fontWeight: 600 }}>
-            {DROGAS_INFUSION[droga].etiqueta} — dosis en {unidadDosis}
-            {droga === "vasopresina" ? " (y U/h)" : ""}
+          <div className="field-row">
+            <span className="field-label">
+              {BOLOS[droga].etiqueta} — dosis ({BOLOS[droga].unidad})
+            </span>
+            <input className="mini-input" inputMode="decimal" style={{ width: 80 }} value={dosisTexto} onChange={(e) => setDosisTexto(e.target.value)} />
           </div>
-          <DilucionBomba
-            key={droga}
-            droga={droga}
-            inicial={ultimaDilucion(infusiones, droga)}
-            vigente={estado.porDroga[droga]?.activa ?? false}
-            onConfirmada={setDil}
-          />
-
-          {dil && (
-            <>
-              {usaPeso && !pesoKg && <PedirPeso onGuardar={onGuardarPeso} />}
-              <div className="field-row">
-                <span className="field-label">Velocidad (mL/h)</span>
-                <input className="mini-input" inputMode="decimal" style={{ width: 80 }} value={velocidadTexto} onChange={(e) => setVelocidadTexto(e.target.value)} />
-              </div>
-              {resultado && (
-                <div className="tiny" style={{ margin: "4px 0", color: resultado.ok ? "var(--text)" : "var(--red)" }}>
-                  {resultado.ok ? `= ${resultado.cuenta}` : resultado.error}
-                </div>
-              )}
-              <div className="field-row">
-                <span className="field-label">¿Qué velocidad para una dosis? ({unidadDosis})</span>
-                <span style={{ display: "flex", gap: 4 }}>
-                  <input
-                    className="mini-input"
-                    inputMode="decimal"
-                    style={{ width: 80 }}
-                    value={dosisObjetivoTexto}
-                    onChange={(e) => setDosisObjetivoTexto(e.target.value)}
-                  />
-                  {inversa?.ok && (
-                    <button className="btn btn-sm" onClick={() => setVelocidadTexto(String(Number(inversa.velocidadMlH.toFixed(2))).replace(".", ","))}>
-                      Usar
-                    </button>
-                  )}
-                </span>
-              </div>
-              {inversa && (
-                <div className="tiny" style={{ margin: "4px 0", color: inversa.ok ? "var(--text)" : "var(--red)" }}>
-                  {inversa.ok ? `= ${inversa.cuenta}` : inversa.error}
-                </div>
-              )}
-              <div className="field-row">
-                <span className="field-label">Hora</span>
-                <input type="datetime-local" className="mini-input" value={horaTexto} onChange={(e) => setHoraTexto(e.target.value)} />
-              </div>
-            </>
-          )}
-
-          <div className="btn-row" style={{ marginTop: 8 }}>
-            <button className="btn btn-sm btn-accent" disabled={guardando || !dil || !resultado?.ok} onClick={guardar}>
-              {guardando ? "Guardando…" : "Guardar"}
+          <div className="field-row">
+            <span className="field-label">Hora</span>
+            <input type="datetime-local" className="mini-input" value={horaTexto} onChange={(e) => setHoraTexto(e.target.value)} />
+          </div>
+          <div className="btn-row" style={{ marginTop: 6 }}>
+            <button className="btn btn-sm btn-accent" disabled={guardando} onClick={registrar}>
+              {guardando ? "Guardando…" : "Registrar bolo"}
             </button>
             <button className="btn btn-sm" disabled={guardando} onClick={() => setDroga(null)}>
               Cancelar
@@ -323,7 +256,86 @@ export default function MantenimientoInfusiones({
           </div>
         </div>
       )}
+      <div style={{ marginTop: 8 }}>
+        {bolos.length === 0 && <div className="tiny muted">Sin bolos registrados.</div>}
+        {bolos.slice(0, 20).map((f) => (
+          <div key={f.id}>
+            <div className="field-row" style={{ opacity: f.anulado ? 0.5 : 1 }}>
+              <span className="field-label" style={{ textDecoration: f.anulado ? "line-through" : undefined }}>
+                {fechaHora(f.registrado_en)} · {etiquetaDroga(f.droga)} · {num(f.dosis_calculada)} {f.unidad_dosis ?? ""}
+                {f.anulado ? " (anulado)" : ""}
+              </span>
+              {!f.anulado && (
+                <button className="btn btn-sm" onClick={() => setAnulandoId(f.id)}>
+                  Anular
+                </button>
+              )}
+            </div>
+            {anulandoId === f.id && (
+              <Confirmacion
+                texto="¿Anular este bolo? Va a quedar tachado. Si fue un error de carga, volvé a registrar el correcto."
+                textoSi="Sí, anular"
+                ocupado={guardando}
+                onSi={() => anular(f.id)}
+                onNo={() => setAnulandoId(null)}
+              />
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
+// ---------------------------------------------------------------------
+// Vista del médico: bombas en curso, bolos e historial de diluciones
+// ---------------------------------------------------------------------
+// La velocidad de cada hora se carga en la fila horaria (Registro); las
+// diluciones se confirman ahí con un toque. Acá: gammas en vivo, "cambié
+// la velocidad", bolos y el historial (con anulación).
+export default function MantenimientoInfusiones({
+  pesoKg,
+  donanteId,
+  infusiones,
+  estado,
+  onInfusionesChange,
+}: {
+  pesoKg: number | null;
+  donanteId: string;
+  infusiones: InfusionFila[];
+  estado: EstadoBombas;
+  onInfusionesChange: (f: InfusionFila[]) => void;
+}) {
+  const [anulandoId, setAnulandoId] = useState<string | null>(null);
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function anular(id: string) {
+    setError(null);
+    setGuardando(true);
+    try {
+      await anularInfusion(supabase, id);
+      onInfusionesChange(infusiones.map((f) => (f.id === id ? { ...f, anulado: true } : f)));
+      setAnulandoId(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo anular.");
+    } finally {
+      setGuardando(false);
+    }
+  }
+
+  const historial = ordenarPorHora(infusiones.filter((f) => f.tipo === "infusion")).reverse().slice(0, 20);
+
+  return (
+    <div>
+      <ErrorVisible mensaje={error} />
+      <div className="tiny muted" style={{ marginBottom: 6 }}>
+        La velocidad de cada hora se carga en la fila horaria (Registro), igual que en Enfermería.
+      </div>
+      <BombasEnCurso estado={estado} donanteId={donanteId} pesoKg={pesoKg} infusiones={infusiones} onInfusionesChange={onInfusionesChange} />
+
+      <div className="section-label" style={{ marginTop: 10 }}>Bolos</div>
+      <Bolos donanteId={donanteId} infusiones={infusiones} onInfusionesChange={onInfusionesChange} />
       {estado.ultimoBoloDesmopresina && (
         <div className="tiny muted" style={{ marginTop: 6 }}>
           Último bolo de desmopresina: {fechaHora(estado.ultimoBoloDesmopresina)} (informativo)
@@ -331,34 +343,32 @@ export default function MantenimientoInfusiones({
       )}
 
       <details style={{ marginTop: 8 }}>
-        <summary className="tiny">Historial de infusiones</summary>
-        {ordenarPorHora(infusiones)
-          .reverse()
-          .slice(0, 20)
-          .map((f) => (
-            <div key={f.id}>
-              <div className="field-row" style={{ opacity: f.anulado ? 0.5 : 1 }}>
-                <span className="field-label" style={{ textDecoration: f.anulado ? "line-through" : undefined }}>
-                  {fechaHora(f.registrado_en)} · {f.droga === "desmopresina" ? "Desmopresina" : DROGAS_INFUSION[f.droga].etiqueta} · {textoInfusion(f)}
-                  {f.anulado ? " (anulada)" : ""}
-                </span>
-                {!f.anulado && (
-                  <button className="btn btn-sm" onClick={() => setAnulandoId(f.id)}>
-                    Anular
-                  </button>
-                )}
-              </div>
-              {anulandoId === f.id && (
-                <Confirmacion
-                  texto="¿Anular esta fila? Va a quedar tachada y no cuenta. Si fue un error de carga, volvé a cargar la correcta."
-                  textoSi="Sí, anular"
-                  ocupado={guardando}
-                  onSi={() => anular(f.id)}
-                  onNo={() => setAnulandoId(null)}
-                />
+        <summary className="tiny">Historial de diluciones y cambios de velocidad</summary>
+        {historial.length === 0 && <div className="tiny muted">Sin diluciones cargadas.</div>}
+        {historial.map((f) => (
+          <div key={f.id}>
+            <div className="field-row" style={{ opacity: f.anulado ? 0.5 : 1 }}>
+              <span className="field-label" style={{ textDecoration: f.anulado ? "line-through" : undefined }}>
+                {fechaHora(f.registrado_en)} · {etiquetaDroga(f.droga)} · {textoInfusion(f)}
+                {f.anulado ? " (anulada)" : ""}
+              </span>
+              {!f.anulado && (
+                <button className="btn btn-sm" onClick={() => setAnulandoId(f.id)}>
+                  Anular
+                </button>
               )}
             </div>
-          ))}
+            {anulandoId === f.id && (
+              <Confirmacion
+                texto="¿Anular esta fila? Va a quedar tachada y no cuenta. Si fue un error de carga, volvé a cargar la correcta."
+                textoSi="Sí, anular"
+                ocupado={guardando}
+                onSi={() => anular(f.id)}
+                onNo={() => setAnulandoId(null)}
+              />
+            )}
+          </div>
+        ))}
       </details>
     </div>
   );

@@ -16,6 +16,9 @@ export type ValorLaboratorio = {
   valor: number;
   unidad: string | null;
   medido_en: string;
+  // Quién lo cargó: "enfermeria" (glucemia capilar de la fila horaria) o
+  // "laboratorio". null en los valores viejos.
+  origen: "laboratorio" | "enfermeria" | null;
   anulado: boolean;
 };
 
@@ -30,7 +33,7 @@ export const PARAMETROS_LAB_MANTENIMIENTO: { parametro: string; etiqueta: string
   { parametro: "hb", etiqueta: "Hb", unidad: "g/dL" },
 ];
 
-const COLUMNAS = "id, toma_id, parametro, valor, unidad, medido_en, anulado";
+const COLUMNAS = "id, toma_id, parametro, valor, unidad, medido_en, origen, anulado";
 
 export async function cargarLaboratorioValores(supabase: SupabaseClient, donanteId: string): Promise<ValorLaboratorio[]> {
   const { data, error } = await supabase
@@ -48,17 +51,33 @@ export async function guardarTomaLaboratorio(
   supabase: SupabaseClient,
   donanteId: string,
   medidoEn: string,
-  valores: { parametro: string; valor: number; unidad: string | null }[]
+  valores: { parametro: string; valor: number; unidad: string | null }[],
+  origen: "laboratorio" | "enfermeria" = "laboratorio"
 ): Promise<ValorLaboratorio[]> {
   if (valores.length === 0) throw new Error("Cargá al menos un valor.");
   const tomaId = crypto.randomUUID();
-  const filas = valores.map((v) => ({ donante_id: donanteId, toma_id: tomaId, medido_en: medidoEn, ...v }));
+  const filas = valores.map((v) => ({ donante_id: donanteId, toma_id: tomaId, medido_en: medidoEn, origen, ...v }));
   const r = await guardarConReintento(() => supabase.from("laboratorio_valores").insert(filas).select(COLUMNAS));
   if (!r.ok) throw new Error(r.mensaje);
   return (r.resultado.data as ValorLaboratorio[]) ?? [];
 }
 
+// Glucemia suelta desde la fila horaria, con su propia hora de medición
+// (editable; NO es la hora de la fila). Mismo parámetro que la de
+// laboratorio: el tablero y el score leen la última de las dos.
+export async function guardarGlucemia(
+  supabase: SupabaseClient,
+  donanteId: string,
+  valor: number,
+  medidoEn: string,
+  origen: "laboratorio" | "enfermeria"
+): Promise<ValorLaboratorio> {
+  const [v] = await guardarTomaLaboratorio(supabase, donanteId, medidoEn, [{ parametro: "glucemia", valor, unidad: "mg/dL" }], origen);
+  return v;
+}
+
 // Única edición permitida (por permisos de la base): marcar anulado.
+// "Corregir" = anular y cargar uno nuevo.
 export async function anularValorLaboratorio(supabase: SupabaseClient, id: string): Promise<void> {
   const r = await guardarConReintento(() => supabase.from("laboratorio_valores").update({ anulado: true }).eq("id", id));
   if (!r.ok) throw new Error(r.mensaje);

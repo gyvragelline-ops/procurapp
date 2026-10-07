@@ -82,6 +82,25 @@ export default function MantenimientoLaboratorio({
     }
   }
 
+  // "Corregir" (glucemia): un toque anula el valor y abre uno nuevo con el
+  // valor y la hora anteriores para editar.
+  async function corregir(v: ValorLaboratorio) {
+    setError(null);
+    setGuardando(true);
+    try {
+      await anularValorLaboratorio(supabase, v.id);
+      onValoresChange(valores.map((x) => (x.id === v.id ? { ...x, anulado: true } : x)));
+      setHoraTexto(aInputLocal(v.medido_en));
+      setTextos({ [v.parametro]: String(v.valor).replace(".", ",") });
+      setPendiente(null);
+      setAbierto(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo anular el valor.");
+    } finally {
+      setGuardando(false);
+    }
+  }
+
   async function anular(id: string) {
     setError(null);
     setGuardando(true);
@@ -156,12 +175,22 @@ export default function MantenimientoLaboratorio({
               <div className="field-row" style={{ opacity: v.anulado ? 0.5 : 1 }}>
                 <span className="field-label" style={{ textDecoration: v.anulado ? "line-through" : undefined }}>
                   {etiqueta(v.parametro)}: {num(v.valor)} {v.unidad ?? ""}
+                  {v.parametro === "glucemia" && v.origen ? (
+                    <span className="muted"> · {v.origen === "enfermeria" ? "enfermería" : "laboratorio"}</span>
+                  ) : null}
                   {v.anulado ? " (anulado)" : ""}
                 </span>
                 {!v.anulado && (
-                  <button className="btn btn-sm" onClick={() => setAnulandoId(v.id)}>
-                    Anular
-                  </button>
+                  <span style={{ display: "flex", gap: 4 }}>
+                    {v.parametro === "glucemia" && (
+                      <button className="btn btn-sm" disabled={guardando} onClick={() => corregir(v)}>
+                        Corregir
+                      </button>
+                    )}
+                    <button className="btn btn-sm" onClick={() => setAnulandoId(v.id)}>
+                      Anular
+                    </button>
+                  </span>
                 )}
               </div>
               {anulandoId === v.id && (

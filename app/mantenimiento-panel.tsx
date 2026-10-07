@@ -13,12 +13,13 @@ import {
 } from "@/lib/procuracion/mantenimiento";
 import { cargarLaboratorioValores, type ValorLaboratorio } from "@/lib/procuracion/laboratorio-valores";
 import {
+  alarmasDosis,
   armarAlarmas,
-  calcularBalance,
+  balancePorHora,
   calcularDiuresis,
   colorDe,
   contarFueraDeMeta,
-  estadoInfusiones,
+  estadoBombas,
   evaluarDiabetesInsipida,
   evaluarVolemia,
   indiceCardiaco,
@@ -29,6 +30,7 @@ import {
   tendencia,
   ultimaPafi,
   ultimoValorLab,
+  type BombaHora,
   type Color,
   type InfusionFila,
   type ParametroTablero,
@@ -91,6 +93,7 @@ export default function MantenimientoPanel({
 }) {
   const [registros, setRegistros] = useState<RegistroMantenimiento[]>([]);
   const [infusiones, setInfusiones] = useState<InfusionFila[]>([]);
+  const [bombas, setBombas] = useState<BombaHora[]>([]);
   const [config, setConfig] = useState<ConfigMantenimiento | null>(null);
   const [lab, setLab] = useState<ValorLaboratorio[]>([]);
   const [cargado, setCargado] = useState(false);
@@ -117,6 +120,7 @@ export default function MantenimientoPanel({
         if (!vivo) return;
         setRegistros(m.registros);
         setInfusiones(m.infusiones);
+        setBombas(m.bombas);
         setConfig(m.config);
         setLab(l);
         setErrorCarga(null);
@@ -170,7 +174,10 @@ export default function MantenimientoPanel({
   const ultimo = vigentes[vigentes.length - 1] ?? null;
   const diuresis = calcularDiuresis(registros, peso);
   const ultimaDiuresis = diuresis[diuresis.length - 1] ?? null;
-  const inf = estadoInfusiones(infusiones);
+  // Gammas en vivo: de la última fila horaria (o de un "cambié la
+  // velocidad" posterior). Más de 70 min sin dato nuevo: desactualizado.
+  const inf = estadoBombas({ registros, bombas, infusiones, pesoKg: peso, ahora });
+  const nora = inf.noradrenalina;
 
   const labDe = (p: string) => ultimoValorLab(lab, p, ahora);
   const na = labDe("na");
@@ -208,7 +215,7 @@ export default function MantenimientoPanel({
       filas: [
         fila("fc", ultimo?.fc ?? null, { hora: ultimo?.registrado_en, tendencia: tend("fc") }),
         fila("pam", ultimo?.pam ?? null, { hora: ultimo?.registrado_en, tendencia: tend("pam") }),
-        fila("noradrenalina", inf.noradrenalinaGamma, { hora: inf.porDroga.noradrenalina?.registrado_en }),
+        fila("noradrenalina", nora?.estado === "ok" ? nora.dosis!.dosis : null, { hora: nora?.momento, desactualizado: nora?.desactualizado }),
         fila("pvc", ultimo?.pvc ?? null, { hora: ultimo?.registrado_en, tendencia: tend("pvc"), avanzado: true }),
         fila("ic", ic?.valor ?? null, { hora: ultimo?.registrado_en, avanzado: true }),
         fila("rvs", rvs, { hora: ultimo?.registrado_en, avanzado: true }),
@@ -216,7 +223,10 @@ export default function MantenimientoPanel({
     },
     {
       titulo: "Respiratorio",
-      filas: [fila("pafi", pafi?.valor ?? null, { hora: pafi?.medido_en, desactualizado: pafi?.desactualizado })],
+      filas: [
+        fila("sat_o2", ultimo?.sat_o2 ?? null, { hora: ultimo?.registrado_en, tendencia: tend("sat_o2") }),
+        fila("pafi", pafi?.valor ?? null, { hora: pafi?.medido_en, desactualizado: pafi?.desactualizado }),
+      ],
     },
     {
       titulo: "Medio interno",
@@ -254,7 +264,11 @@ export default function MantenimientoPanel({
     densidadUrinaria: ultimo?.densidad_urinaria ?? null,
     osmSerica: ultimo?.osm_serica ?? null,
   });
-  const alarmas = armarAlarmas({ parametros: todas, monitoreoAvanzadoActivo: avanzado, minutosSinRegistro: minutos, estadoDI: di.estado });
+  const alarmasTodas = [
+    ...armarAlarmas({ parametros: todas, monitoreoAvanzadoActivo: avanzado, minutosSinRegistro: minutos, estadoDI: di.estado }),
+    ...alarmasDosis(inf),
+  ];
+  const alarmas = [...alarmasTodas.filter((a) => a.nivel === "rojo"), ...alarmasTodas.filter((a) => a.nivel === "amarillo")];
   const volemia = ultimo
     ? evaluarVolemia({
         delta_pp: ultimo.delta_pp,
@@ -268,6 +282,14 @@ export default function MantenimientoPanel({
     pam: ultimo?.pam ?? null,
     fc: ultimo?.fc ?? null,
     noradrenalinaGamma: inf.noradrenalinaGamma,
+    noradrenalinaSinDosis:
+      nora && inf.noradrenalinaGamma === null
+        ? nora.desactualizado
+          ? "dato desactualizado"
+          : nora.estado === "sin_dilucion"
+            ? "sin dilución confirmada"
+            : "falta peso"
+        : null,
     vasopresinaActiva: inf.vasopresinaActiva,
     disfuncionMiocardica: ultimo?.disfuncion_miocardica ?? false,
     ic: ic?.valor ?? null,
@@ -278,7 +300,7 @@ export default function MantenimientoPanel({
     estadoDI: di.estado,
     nutricionPrevia: config?.nutricion_previa ?? null,
   });
-  const balance = calcularBalance(registros);
+  const balance = balancePorHora(registros, bombas, peso, ahora);
 
   const chip = (c: Color, texto: string) => <span className={`chip ${CHIP_COLOR[c]}`}>{texto}</span>;
   const avisoDiuresis = (a: string | null | undefined) =>
@@ -306,9 +328,14 @@ export default function MantenimientoPanel({
           pesoKg={peso}
           registros={registros}
           infusiones={infusiones}
+          bombas={bombas}
+          lab={lab}
+          estado={inf}
           ahora={ahora}
           onRegistrosChange={setRegistros}
           onInfusionesChange={setInfusiones}
+          onBombasChange={setBombas}
+          onLabChange={setLab}
           onGuardarPeso={guardarPeso}
         />
       ) : (
@@ -513,7 +540,17 @@ export default function MantenimientoPanel({
         {/* ------------------------------------------------ balance hídrico */}
         <div style={{ marginTop: 12 }}>
           <div className="section-label">Balance hídrico</div>
-          {balance.length === 0 ? (
+          <div className="tiny" style={{ marginBottom: 4 }}>
+            Acumulado: <strong>{num(balance.acumulado, 0)} mL</strong>
+            {balance.faltan > 0 && (
+              <span style={{ color: "var(--red)" }}>
+                {" "}
+                · faltan {balance.faltan} {balance.faltan === 1 ? "hora" : "horas"}
+              </span>
+            )}
+            {balance.horasSinPerdidas > 0 && !peso && <span style={{ color: "var(--amber)" }}> · falta peso: balance sin pérdidas insensibles</span>}
+          </div>
+          {vigentes.length === 0 ? (
             <div className="tiny muted">Sin registros.</div>
           ) : (
             <div style={{ overflowX: "auto" }}>
@@ -522,20 +559,37 @@ export default function MantenimientoPanel({
                   <tr style={{ textAlign: "right" }}>
                     <th style={{ textAlign: "left" }}>Hora</th>
                     <th>Diuresis mL/h</th>
+                    <th>Ingresos</th>
+                    <th>Egresos</th>
                     <th>Parcial</th>
                     <th>Acumulado</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {balance
+                  {balance.horas
                     .slice()
                     .reverse()
                     .map((b) => {
-                      const d = diuresis.find((x) => x.id === b.id);
+                      if (b.estado !== "cargada") {
+                        return (
+                          <tr key={b.inicio} style={{ color: b.estado === "faltante" ? "var(--red)" : undefined }}>
+                            <td>{String(new Date(b.inicio).getHours()).padStart(2, "0")}:00</td>
+                            <td colSpan={5} className="muted">
+                              {b.estado === "faltante" ? "sin dato (hora sin cargar)" : "en curso"}
+                            </td>
+                          </tr>
+                        );
+                      }
+                      const d = diuresis.find((x) => x.id === b.registroId);
                       return (
-                        <tr key={b.id} style={{ textAlign: "right" }}>
+                        <tr key={b.inicio} style={{ textAlign: "right" }}>
                           <td style={{ textAlign: "left" }}>{hora(b.registrado_en)}</td>
                           <td>{d?.mlH !== null && d?.mlH !== undefined ? num(d.mlH, 0) : avisoDiuresis(d?.aviso) ?? "—"}</td>
+                          <td>{num(b.ingresos, 0)}</td>
+                          <td>
+                            {num(b.egresos, 0)}
+                            {b.perdidas.valor === null ? "*" : ""}
+                          </td>
                           <td>{num(b.parcial, 0)} mL</td>
                           <td>{num(b.acumulado, 0)} mL</td>
                         </tr>
@@ -555,19 +609,18 @@ export default function MantenimientoPanel({
               donanteId={donante.id}
               registros={registros}
               infusiones={infusiones}
+              bombas={bombas}
+              pesoKg={peso}
               monitoreoAvanzado={avanzado}
               onRegistrosChange={setRegistros}
+              onInfusionesChange={setInfusiones}
+              onBombasChange={setBombas}
+              onGuardarPeso={guardarPeso}
             />
           </Seccion>
         </div>
-        <Seccion titulo="Infusiones" abierta={secciones.infusiones} onToggle={() => alternar("infusiones")}>
-          <MantenimientoInfusiones
-            pesoKg={peso}
-            donanteId={donante.id}
-            infusiones={infusiones}
-            onInfusionesChange={setInfusiones}
-            onGuardarPeso={guardarPeso}
-          />
+        <Seccion titulo="Infusiones y bolos" abierta={secciones.infusiones} onToggle={() => alternar("infusiones")}>
+          <MantenimientoInfusiones pesoKg={peso} donanteId={donante.id} infusiones={infusiones} estado={inf} onInfusionesChange={setInfusiones} />
         </Seccion>
         <Seccion titulo="Laboratorio" abierta={secciones.laboratorio} onToggle={() => alternar("laboratorio")}>
           <MantenimientoLaboratorio donanteId={donante.id} valores={lab} fio2Ultima={ultimo?.fio2 ?? null} onValoresChange={setLab} />

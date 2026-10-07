@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { guardarConReintento } from "./guardar";
 import type { Donante } from "./types";
-import type { InfusionFila } from "./mantenimiento-calculos";
+import { planGuardadoBombas, type BombaFormulario, type BombaHora, type InfusionFila } from "./mantenimiento-calculos";
 
 // Acceso a datos del panel de Mantenimiento (tablas de
 // handoff/mantenimiento.sql). Escrituras con guardarConReintento: si
@@ -40,6 +40,7 @@ export type RegistroMantenimiento = {
   ing_sol_09_ml: number | null;
   ing_ringer_ml: number | null;
   ing_dextrosa_ml: number | null;
+  ing_hemoderivados_ml: number | null;
   egr_sng_drenajes_ml: number | null;
   perdidas_insensibles_ml: number | null;
   perdidas_insensibles_editadas: boolean;
@@ -60,7 +61,8 @@ export type CampoNumericoRegistro = Exclude<
   | "egresos_incluye_diuresis"
   | "cargado_por"
   | "aviso_medico"
-  // Totales calculados: el formulario nunca los pide.
+  // Totales: ya no se guardan (el balance se calcula siempre); quedan
+  // en la base por las filas viejas. El formulario nunca los pide.
   | "ingresos_ml"
   | "egresos_ml"
   | "perdidas_insensibles_ml"
@@ -77,10 +79,11 @@ export const CAMPOS_REGISTRO: { campo: CampoNumericoRegistro; etiqueta: string; 
   { campo: "peep", etiqueta: "PEEP", unidad: "cmH2O" },
   { campo: "volumen_corriente", etiqueta: "Volumen corriente", unidad: "mL" },
   { campo: "diuresis_ml", etiqueta: "Diuresis", unidad: "mL" },
-  { campo: "ing_sol_medio_ml", etiqueta: "Solución al medio (0,45 %)", unidad: "mL" },
   { campo: "ing_sol_09_ml", etiqueta: "Solución 0,9 %", unidad: "mL" },
-  { campo: "ing_ringer_ml", etiqueta: "Ringer", unidad: "mL" },
+  { campo: "ing_ringer_ml", etiqueta: "Ringer lactato", unidad: "mL" },
+  { campo: "ing_sol_medio_ml", etiqueta: "Solución al medio (0,45 %)", unidad: "mL" },
   { campo: "ing_dextrosa_ml", etiqueta: "Dextrosa", unidad: "mL" },
+  { campo: "ing_hemoderivados_ml", etiqueta: "Hemoderivados", unidad: "mL" },
   { campo: "egr_sng_drenajes_ml", etiqueta: "SNG / drenajes", unidad: "mL" },
   { campo: "osm_urinaria", etiqueta: "Osmolaridad urinaria", unidad: "mOsm/kg" },
   { campo: "osm_serica", etiqueta: "Osmolaridad sérica", unidad: "mOsm/kg" },
@@ -106,25 +109,28 @@ export type ConfigMantenimiento = {
 export type DatosRegistro = Partial<Omit<RegistroMantenimiento, "id" | "anulado">> & { registrado_en: string };
 
 const COLS_REGISTRO =
-  "id, registrado_en, fc, pam, temperatura, sat_o2, fio2, peep, volumen_corriente, diuresis_ml, diuresis_es_ultima_hora, ingresos_ml, egresos_ml, osm_urinaria, osm_serica, densidad_urinaria, pvc, gc, ic_medido, sat_venosa, delta_pp, delta_vs, delta_co2_espirado, indice_vena_cava, resultado_pasivo_miembros, disfuncion_miocardica, ing_sol_medio_ml, ing_sol_09_ml, ing_ringer_ml, ing_dextrosa_ml, egr_sng_drenajes_ml, perdidas_insensibles_ml, perdidas_insensibles_editadas, egresos_incluye_diuresis, cargado_por, aviso_medico, anulado";
+  "id, registrado_en, fc, pam, temperatura, sat_o2, fio2, peep, volumen_corriente, diuresis_ml, diuresis_es_ultima_hora, ingresos_ml, egresos_ml, osm_urinaria, osm_serica, densidad_urinaria, pvc, gc, ic_medido, sat_venosa, delta_pp, delta_vs, delta_co2_espirado, indice_vena_cava, resultado_pasivo_miembros, disfuncion_miocardica, ing_sol_medio_ml, ing_sol_09_ml, ing_ringer_ml, ing_dextrosa_ml, ing_hemoderivados_ml, egr_sng_drenajes_ml, perdidas_insensibles_ml, perdidas_insensibles_editadas, egresos_incluye_diuresis, cargado_por, aviso_medico, anulado";
 const COLS_INFUSION =
-  "id, registrado_en, droga, tipo, ampollas, contenido_por_ampolla, unidad_contenido, volumen_final_ml, velocidad_ml_h, dosis_calculada, unidad_dosis, anulado";
+  "id, registrado_en, droga, tipo, ampollas, contenido_por_ampolla, unidad_contenido, volumen_final_ml, velocidad_ml_h, dosis_calculada, unidad_dosis, motivo, cargado_por, anulado";
+const COLS_BOMBA = "id, registro_id, droga, velocidad_ml_h, dilucion_id, anulado";
 const COLS_CONFIG = "donante_id, nutricion_previa, monitoreo_avanzado_activo, corazon_candidato";
 
 export async function cargarMantenimiento(
   supabase: SupabaseClient,
   donanteId: string
-): Promise<{ registros: RegistroMantenimiento[]; infusiones: InfusionFila[]; config: ConfigMantenimiento | null }> {
-  const [reg, inf, cfg] = await Promise.all([
+): Promise<{ registros: RegistroMantenimiento[]; infusiones: InfusionFila[]; bombas: BombaHora[]; config: ConfigMantenimiento | null }> {
+  const [reg, inf, bom, cfg] = await Promise.all([
     supabase.from("mantenimiento_registros").select(COLS_REGISTRO).eq("donante_id", donanteId).order("registrado_en"),
     supabase.from("mantenimiento_infusiones").select(COLS_INFUSION).eq("donante_id", donanteId).order("registrado_en"),
+    supabase.from("mantenimiento_bombas_hora").select(COLS_BOMBA).eq("donante_id", donanteId),
     supabase.from("mantenimiento_config").select(COLS_CONFIG).eq("donante_id", donanteId).maybeSingle(),
   ]);
-  const error = reg.error ?? inf.error ?? cfg.error;
+  const error = reg.error ?? inf.error ?? bom.error ?? cfg.error;
   if (error) throw new Error(`No se pudieron cargar los datos de Mantenimiento: ${error.message}`);
   return {
     registros: (reg.data as RegistroMantenimiento[]) ?? [],
     infusiones: (inf.data as InfusionFila[]) ?? [],
+    bombas: (bom.data as BombaHora[]) ?? [],
     config: (cfg.data as ConfigMantenimiento | null) ?? null,
   };
 }
@@ -156,7 +162,9 @@ export type NuevaInfusion = Omit<InfusionFila, "id" | "anulado"> & {
   peso_usado_kg: number | null;
 };
 
-// Una fila por inicio / cambio de velocidad / suspensión (0 mL/h) / bolo.
+// Una fila por dilución confirmada (inicio o cambio de dilución), por
+// "cambié la velocidad" o por bolo. La velocidad de cada hora NO va acá:
+// va en la fila horaria (guardarBombasHora).
 export async function guardarInfusion(supabase: SupabaseClient, donanteId: string, fila: NuevaInfusion): Promise<InfusionFila> {
   const r = await guardarConReintento(() =>
     supabase.from("mantenimiento_infusiones").insert({ ...fila, donante_id: donanteId }).select(COLS_INFUSION).single()
@@ -169,6 +177,104 @@ export async function guardarInfusion(supabase: SupabaseClient, donanteId: strin
 export async function anularInfusion(supabase: SupabaseClient, id: string): Promise<void> {
   const r = await guardarConReintento(() => supabase.from("mantenimiento_infusiones").update({ anulado: true }).eq("id", id));
   if (!r.ok) throw new Error(r.mensaje);
+}
+
+// Bombas de UNA fila horaria: deja exactamente lo del formulario, con una
+// sola bomba vigente por droga (lo exige el índice único de la base).
+// Siempre relee de la base antes de planear (no confía en la pantalla);
+// si otro equipo insertó la misma droga en el medio, relee y reintenta
+// una vez (esa segunda vez ya actualiza en lugar de insertar).
+export async function guardarBombasHora(
+  supabase: SupabaseClient,
+  donanteId: string,
+  registroId: string,
+  formulario: BombaFormulario[]
+): Promise<BombaHora[]> {
+  const leer = async (): Promise<BombaHora[]> => {
+    const { data, error } = await supabase.from("mantenimiento_bombas_hora").select(COLS_BOMBA).eq("registro_id", registroId);
+    if (error) throw new Error(`No se pudieron leer las bombas de esa hora: ${error.message}`);
+    return (data as BombaHora[]) ?? [];
+  };
+  const aplicar = async (existentes: BombaHora[]): Promise<string | null> => {
+    const plan = planGuardadoBombas(existentes, formulario);
+    if (plan.anular.length) {
+      const r = await guardarConReintento(() => supabase.from("mantenimiento_bombas_hora").update({ anulado: true }).in("id", plan.anular));
+      if (!r.ok) throw new Error(r.mensaje);
+    }
+    for (const u of plan.actualizar) {
+      const r = await guardarConReintento(() =>
+        supabase.from("mantenimiento_bombas_hora").update({ velocidad_ml_h: u.velocidad_ml_h, dilucion_id: u.dilucion_id }).eq("id", u.id)
+      );
+      if (!r.ok) throw new Error(r.mensaje);
+    }
+    if (plan.insertar.length) {
+      const filas = plan.insertar.map((b) => ({ ...b, registro_id: registroId, donante_id: donanteId }));
+      const r = await guardarConReintento(() => supabase.from("mantenimiento_bombas_hora").insert(filas));
+      if (!r.ok) return r.mensaje;
+    }
+    return null;
+  };
+  let fallo = await aplicar(await leer());
+  if (fallo) {
+    fallo = await aplicar(await leer());
+    if (fallo) throw new Error(fallo);
+  }
+  return leer();
+}
+
+// Bomba de la fila tal como sale del formulario: si se confirmó una
+// dilución nueva con el toque (arranque, reinicio o cambio de dilución),
+// primero se guarda esa dilución y su id queda en la bomba.
+export type BombaParaGuardar = {
+  droga: BombaFormulario["droga"];
+  velocidad_ml_h: number;
+  dilucion_id: string | null;
+  dilucionNueva: {
+    dilucion: { ampollas: number; contenidoPorAmpolla: number; unidadContenido: "mg" | "mcg" | "U" | "mEq"; volumenFinalMl: number };
+    concentracion: number;
+    unidad: string;
+    motivo: "inicio" | "cambio_dilucion";
+  } | null;
+};
+
+export async function guardarBombasDeFila(
+  supabase: SupabaseClient,
+  donanteId: string,
+  registroId: string,
+  filas: BombaParaGuardar[],
+  instanteIso: string,
+  cargadoPor: string | null
+): Promise<{ nuevasInfusiones: InfusionFila[]; bombas: BombaHora[] }> {
+  const nuevasInfusiones: InfusionFila[] = [];
+  const formulario: BombaFormulario[] = [];
+  for (const f of filas) {
+    let dilucionId = f.dilucion_id;
+    if (f.dilucionNueva) {
+      const d = f.dilucionNueva;
+      const nueva = await guardarInfusion(supabase, donanteId, {
+        registrado_en: instanteIso,
+        droga: f.droga,
+        tipo: "infusion",
+        motivo: d.motivo,
+        cargado_por: cargadoPor,
+        ampollas: d.dilucion.ampollas,
+        contenido_por_ampolla: d.dilucion.contenidoPorAmpolla,
+        unidad_contenido: d.dilucion.unidadContenido,
+        volumen_final_ml: d.dilucion.volumenFinalMl,
+        concentracion_calculada: d.concentracion,
+        unidad_concentracion: d.unidad,
+        velocidad_ml_h: null,
+        dosis_calculada: null,
+        unidad_dosis: null,
+        peso_usado_kg: null,
+      });
+      nuevasInfusiones.push(nueva);
+      dilucionId = nueva.id;
+    }
+    formulario.push({ droga: f.droga, velocidad_ml_h: f.velocidad_ml_h, dilucion_id: dilucionId });
+  }
+  const bombas = await guardarBombasHora(supabase, donanteId, registroId, formulario);
+  return { nuevasInfusiones, bombas };
 }
 
 export async function guardarConfig(
