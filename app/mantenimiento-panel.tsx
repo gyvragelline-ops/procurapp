@@ -28,6 +28,7 @@ import {
   resistenciaVascularSistemica,
   scoreCalidad,
   tendencia,
+  textoHuecos,
   ultimaPafi,
   ultimoValorLab,
   type BombaHora,
@@ -542,12 +543,7 @@ export default function MantenimientoPanel({
           <div className="section-label">Balance hídrico</div>
           <div className="tiny" style={{ marginBottom: 4 }}>
             Acumulado: <strong>{num(balance.acumulado, 0)} mL</strong>
-            {balance.faltan > 0 && (
-              <span style={{ color: "var(--red)" }}>
-                {" "}
-                · faltan {balance.faltan} {balance.faltan === 1 ? "hora" : "horas"}
-              </span>
-            )}
+            {textoHuecos(balance.huecos) && <span className="muted"> · {textoHuecos(balance.huecos)}</span>}
             {balance.horasSinPerdidas > 0 && !peso && <span style={{ color: "var(--amber)" }}> · falta peso: balance sin pérdidas insensibles</span>}
           </div>
           {vigentes.length === 0 ? (
@@ -572,10 +568,10 @@ export default function MantenimientoPanel({
                     .map((b) => {
                       if (b.estado !== "cargada") {
                         return (
-                          <tr key={b.inicio} style={{ color: b.estado === "faltante" ? "var(--red)" : undefined }}>
+                          <tr key={b.inicio}>
                             <td>{String(new Date(b.inicio).getHours()).padStart(2, "0")}:00</td>
                             <td colSpan={5} className="muted">
-                              {b.estado === "faltante" ? "sin dato (hora sin cargar)" : "en curso"}
+                              sin dato (hora intermedia sin cargar)
                             </td>
                           </tr>
                         );

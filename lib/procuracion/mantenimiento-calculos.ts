@@ -723,26 +723,31 @@ export function horasDelCaso(registros: { id: string; registrado_en: string; anu
 }
 
 // Alarma roja del enfermero: SOLO la hora en curso, pasados 15 minutos
-// sin cargar (salvaguarda principal). Las horas anteriores sin cargar no
-// alarman una por una: se resumen en "Faltan N horas anteriores". Una
-// hora salteada ("sin datos") no alarma.
-export function alarmasEnfermeria(horas: HoraGrilla[], salteadas: number[] = []): { inicio: number; texto: string }[] {
+// sin cargar (salvaguarda principal). Las horas anteriores no alarman.
+export function alarmasEnfermeria(horas: HoraGrilla[]): { inicio: number; texto: string }[] {
   const actual = horas[horas.length - 1];
-  if (!actual || actual.estado !== "faltante" || salteadas.includes(actual.inicio)) return [];
+  if (!actual || actual.estado !== "faltante") return [];
   const d = new Date(actual.inicio);
   return [{ inicio: actual.inicio, texto: `Hora ${String(d.getHours()).padStart(2, "0")} sin cargar` }];
 }
 
-// Horas ANTERIORES a la actual sin fila (salteadas incluidas: siguen sin dato).
-export function horasAnterioresSinCargar(horas: HoraGrilla[]): number {
-  return horas.slice(0, -1).filter((h) => h.registroId === null).length;
+// La pantalla principal muestra solo la próxima hora pendiente: la hora
+// actual si todavía no está cargada ("pendiente", con alarma pasados 15
+// minutos); si ya está cargada, la siguiente ("próxima carga HH:00").
+export function horaPendiente(
+  registros: { registrado_en: string; anulado: boolean }[],
+  ahora: number
+): { inicio: number; estado: "pendiente" | "proxima"; alarma: boolean } {
+  const actual = inicioDeHora(ahora);
+  if (registroDeLaHora(registros, actual)) return { inicio: actual + 3_600_000, estado: "proxima", alarma: false };
+  return { inicio: actual, estado: "pendiente", alarma: ahora - actual >= MINUTOS_HORA_SIN_CARGAR * 60_000 };
 }
 
-// Una hora por vez: la PRÓXIMA SIN CARGAR (la más vieja sin fila y no
-// salteada), hasta la hora actual. null = al día (la próxima carga es la
-// hora siguiente).
-export function proximaHoraSinCargar(horas: HoraGrilla[], salteadas: number[] = []): number | null {
-  return horas.find((h) => h.registroId === null && !salteadas.includes(h.inicio))?.inicio ?? null;
+// Aviso de hueco (gris, chico, junto al balance): solo horas sin cargar
+// ENTRE dos horas cargadas. Al día -> null.
+export function textoHuecos(huecos: number): string | null {
+  if (huecos <= 0) return null;
+  return huecos === 1 ? "falta 1 hora intermedia" : `faltan ${huecos} horas intermedias`;
 }
 
 // ---------------------------------------------------------------------
@@ -1015,21 +1020,28 @@ export type BalanceHora =
       parcial: number;
       acumulado: number;
     }
-  | { inicio: number; estado: "faltante" | "en_curso" };
+  | { inicio: number; estado: "hueco" }; // sin cargar, entre dos horas cargadas
 
-// Balance hora por hora desde la primera fila hasta ahora. Acumulado =
-// suma de los parciales de las horas cargadas; las horas sin fila no
-// suman ("faltan N horas"). Se recalcula solo al completar o anular.
+// Balance hora por hora, desde la PRIMERA hora cargada del caso hasta la
+// ÚLTIMA cargada (lo de antes no existe para el balance; lo de después
+// todavía no se cargó). Acumulado = suma de los parciales de las horas
+// cargadas; una hora sin cargar en el medio es un hueco: no suma (ni
+// cero) y se cuenta en `huecos`. Se recalcula al completar o anular.
 export function balancePorHora(
   registros: FilaHoraria[],
   bombas: BombaHora[],
   pesoKg: number | null,
   ahora: number
-): { horas: BalanceHora[]; acumulado: number; faltan: number; horasSinPerdidas: number } {
+): { horas: BalanceHora[]; acumulado: number; huecos: number; horasSinPerdidas: number } {
   let acumulado = 0;
   let horasSinPerdidas = 0;
-  const horas: BalanceHora[] = horasDelCaso(registros, ahora).map((h): BalanceHora => {
-    if (h.estado !== "cargada" || !h.registroId) return { inicio: h.inicio, estado: h.estado === "cargada" ? "en_curso" : h.estado };
+  const grilla = horasDelCaso(registros, ahora);
+  let ultima = -1;
+  grilla.forEach((h, i) => {
+    if (h.registroId) ultima = i;
+  });
+  const horas: BalanceHora[] = grilla.slice(0, ultima + 1).map((h): BalanceHora => {
+    if (!h.registroId) return { inicio: h.inicio, estado: "hueco" };
     const fila = registros.find((r) => r.id === h.registroId)!;
     const perdidas = perdidasDeFila(fila, registros, pesoKg);
     if (perdidas.valor === null) horasSinPerdidas++;
@@ -1037,7 +1049,7 @@ export function balancePorHora(
     acumulado += t.parcial;
     return { inicio: h.inicio, estado: "cargada", registroId: fila.id, registrado_en: fila.registrado_en, ...t, perdidas, acumulado };
   });
-  return { horas, acumulado, faltan: horas.filter((h) => h.estado === "faltante").length, horasSinPerdidas };
+  return { horas, acumulado, huecos: horas.filter((h) => h.estado === "hueco").length, horasSinPerdidas };
 }
 
 // ---------------------------------------------------------------------

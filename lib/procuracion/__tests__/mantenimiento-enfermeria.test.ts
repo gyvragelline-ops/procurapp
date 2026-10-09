@@ -176,7 +176,7 @@ test("totales de la hora: ingresos = líquidos + hemoderivados + bombas (velocid
   cerca(t.parcial, 386.33);
 });
 
-test("balance por hora: acumulado calculado; hora sin fila = 'faltan N horas'; fila anulada y bolos no cuentan", () => {
+test("balance por hora: acumulado calculado; hora sin fila en el medio = hueco; fila anulada y bolos no cuentan", () => {
   const regs = [
     fila("a", 8, 5, { ing_sol_09_ml: 100, diuresis_ml: 50 }),
     // 09: sin fila
@@ -185,7 +185,7 @@ test("balance por hora: acumulado calculado; hora sin fila = 'faltan N horas'; f
   ];
   const bombas = [bomba("b1", "a", "noradrenalina", 10), bomba("b2", "x", "noradrenalina", 50), bomba("b3", "c", "noradrenalina", 10, { anulado: true })];
   const b = balancePorHora(regs, bombas, null, h(10, 40));
-  assert.deepEqual(b.horas.map((x) => x.estado), ["cargada", "faltante", "cargada"]);
+  assert.deepEqual(b.horas.map((x) => x.estado), ["cargada", "hueco", "cargada"]);
   const [h8, , h10] = b.horas;
   assert.ok(h8.estado === "cargada" && h10.estado === "cargada");
   if (h8.estado === "cargada" && h10.estado === "cargada") {
@@ -194,18 +194,18 @@ test("balance por hora: acumulado calculado; hora sin fila = 'faltan N horas'; f
     assert.equal(h10.acumulado, 160);
   }
   assert.equal(b.acumulado, 160);
-  assert.equal(b.faltan, 1);
+  assert.equal(b.huecos, 1);
   assert.equal(b.horasSinPerdidas, 2);
 });
 
 test("balance: con peso descuenta las pérdidas; completar la hora faltante la suma", () => {
   const regs = [fila("a", 8, 0, { ing_sol_09_ml: 100, temperatura: 37 })];
   let b = balancePorHora(regs, [], 70, h(9, 30));
-  assert.equal(b.faltan, 1);
+  assert.equal(b.huecos, 0); // la 09 está pendiente, no es un hueco
   const ph = (70 * 10) / 24; // 29,17 mL/h
   cerca(b.acumulado, 100 - ph);
   b = balancePorHora([...regs, fila("b", 9, 10, { ing_sol_09_ml: 50 })], [], 70, h(9, 30));
-  assert.equal(b.faltan, 0);
+  assert.equal(b.huecos, 0);
   cerca(b.acumulado, 150 - 2 * ph);
 });
 
@@ -431,38 +431,8 @@ test("solución: el texto solo va con 'otra', recortado a 40 caracteres; vacío 
   assert.equal(solucionPorId([], null), null);
 });
 
-// ---------------------------------------------------------------- una hora por vez
-import { fraseSeteo, horasAnterioresSinCargar, ordenarBombas, preguntasFaltantes, proximaHoraSinCargar, SETEO_VACIO, seteoDesdeCampos } from "../mantenimiento-calculos.ts";
-
-test("orden de horas: la próxima sin cargar es la más vieja sin fila, hasta la hora actual", () => {
-  const regs = [
-    { id: "a", registrado_en: iso(8), anulado: false },
-    { id: "c", registrado_en: iso(10, 5), anulado: false },
-  ];
-  const grilla = horasDelCaso(regs, h(11, 20)); // 08 ✓, 09 sin cargar, 10 ✓, 11 en curso
-  assert.equal(proximaHoraSinCargar(grilla), h(9));
-  // saltar la 09 (sin datos): pasa a la 11
-  assert.equal(proximaHoraSinCargar(grilla, [h(9)]), h(11));
-  // con la 09 y la 11 cargadas: al día
-  const alDia = horasDelCaso([...regs, { id: "b", registrado_en: iso(9), anulado: false }, { id: "d", registrado_en: iso(11), anulado: false }], h(11, 20));
-  assert.equal(proximaHoraSinCargar(alDia), null);
-  // sin ninguna fila: la hora actual
-  assert.equal(proximaHoraSinCargar(horasDelCaso([], h(11, 20))), h(11));
-});
-
-test("saltar una hora: queda sin dato (no cero), cuenta en 'faltan N horas' y no alarma", () => {
-  const regs = [fila("a", 8, 0, { ing_sol_09_ml: 100 }), fila("c", 10, 0, { ing_sol_09_ml: 100 })];
-  const b = balancePorHora(regs, [], null, h(10, 30));
-  assert.equal(b.faltan, 1); // la 09, salteada o no
-  assert.equal(b.acumulado, 200); // la 09 no suma cero ni nada
-  const grilla = horasDelCaso(regs, h(10, 30));
-  assert.deepEqual(alarmasEnfermeria(grilla), []); // la 09 es anterior: no alarma
-  assert.equal(horasAnterioresSinCargar(grilla), 1);
-  // hora en curso salteada: tampoco alarma
-  const enCurso = horasDelCaso(regs, h(11, 30));
-  assert.equal(alarmasEnfermeria(enCurso).length, 1);
-  assert.deepEqual(alarmasEnfermeria(enCurso, [h(11)]), []);
-});
+// ---------------------------------------------------------------- horas: pendiente y huecos
+import { horaPendiente, ordenarBombas, preguntasFaltantes, fraseSeteo, SETEO_VACIO, seteoDesdeCampos, textoHuecos } from "../mantenimiento-calculos.ts";
 
 test("seteo: la cantidad de ampollas es obligatoria (sin valor por defecto)", () => {
   const sin = seteoDesdeCampos("noradrenalina", { cantidad: null, contenidoPorAmpolla: 4, volumenMl: 100 });
@@ -492,15 +462,45 @@ test("seteo: 4 mg en 100 mL con 1 ampolla = 40 mcg/mL; con 2 ampollas = 80 mcg/m
   assert.ok(vaso.ok && vaso.dilucion.unidadContenido === "U" && vaso.unidad === "U/mL");
 });
 
-// ---------------------------------------------------------------- pantalla: una alarma, no una por hora
-test("con N horas anteriores sin cargar no hay una alarma por hora: solo 'faltan N' y, a lo sumo, la hora en curso", () => {
+// ---------------------------------------------------------------- pantalla: la próxima hora pendiente
+test("el conteo arranca en la primera hora cargada: lo de antes no existe para el balance", () => {
+  const regs = [fila("a", 8, 0, { ing_sol_09_ml: 100 }), fila("d", 11, 0, { ing_sol_09_ml: 100 })];
+  const b = balancePorHora(regs, [], null, h(12, 30));
+  assert.equal(b.horas[0].inicio, h(8)); // nada antes de la primera cargada
+  assert.deepEqual(b.horas.map((x) => x.estado), ["cargada", "hueco", "hueco", "cargada"]); // y nada después de la última
+  assert.equal(b.huecos, 2);
+  assert.equal(b.acumulado, 200);
+  assert.deepEqual(balancePorHora([], [], null, h(12, 30)), { horas: [], acumulado: 0, huecos: 0, horasSinPerdidas: 0 });
+});
+
+test("aviso de hueco: solo con una hora sin cargar ENTRE dos cargadas; al día, nada", () => {
+  const conHueco = balancePorHora([fila("a", 8, 0), fila("c", 10, 0)], [], null, h(10, 40));
+  assert.equal(textoHuecos(conHueco.huecos), "falta 1 hora intermedia");
+  assert.equal(textoHuecos(2), "faltan 2 horas intermedias");
+  const alDia = balancePorHora([fila("a", 8, 0), fila("b", 9, 0), fila("c", 10, 0)], [], null, h(10, 40));
+  assert.equal(textoHuecos(alDia.huecos), null);
+  // horas sin cargar DESPUÉS de la última cargada no son huecos
+  const atrasada = balancePorHora([fila("a", 8, 0)], [], null, h(11, 30));
+  assert.equal(textoHuecos(atrasada.huecos), null);
+});
+
+test("hora pendiente: la actual sin cargar; alarma solo pasados 15 minutos; cargada -> próxima carga", () => {
+  assert.deepEqual(horaPendiente([], h(10, 10)), { inicio: h(10), estado: "pendiente", alarma: false });
+  assert.deepEqual(horaPendiente([], h(10, 15)), { inicio: h(10), estado: "pendiente", alarma: true });
+  const cargada = [{ registrado_en: iso(10, 5), anulado: false }];
+  assert.deepEqual(horaPendiente(cargada, h(10, 40)), { inicio: h(11), estado: "proxima", alarma: false });
+  // anulada no cuenta como cargada
+  assert.equal(horaPendiente([{ registrado_en: iso(10, 5), anulado: true }], h(10, 40)).estado, "pendiente");
+});
+
+test("sin horas anteriores en pantalla: nunca una alarma por hora anterior, solo la de la hora en curso", () => {
   const regs = [{ id: "a", registrado_en: iso(4), anulado: false }];
-  const grilla = horasDelCaso(regs, h(10, 30)); // 05 a 09 sin cargar, 10 en curso pasado :15
-  assert.equal(horasAnterioresSinCargar(grilla), 5);
-  const alarmas = alarmasEnfermeria(grilla);
-  assert.equal(alarmas.length, 1);
-  assert.equal(alarmas[0].inicio, h(10));
-  assert.deepEqual(alarmasEnfermeria(horasDelCaso(regs, h(10, 5))), []); // antes de :15, ninguna
+  const alarmas = alarmasEnfermeria(horasDelCaso(regs, h(10, 30))); // 05 a 09 sin cargar
+  assert.deepEqual(alarmas.map((a) => a.inicio), [h(10)]);
+  assert.deepEqual(alarmasEnfermeria(horasDelCaso(regs, h(10, 5))), []);
+  // para corregir solo se listan horas cargadas
+  const b = balancePorHora([fila("a", 8, 0), fila("c", 10, 0)], [], null, h(11, 30));
+  assert.deepEqual(b.horas.filter((x) => x.estado === "cargada").map((x) => x.inicio), [h(8), h(10)]);
 });
 
 // ---------------------------------------------------------------- tarjeta de cada bomba

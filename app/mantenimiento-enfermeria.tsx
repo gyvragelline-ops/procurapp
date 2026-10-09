@@ -11,17 +11,16 @@ import {
 } from "@/lib/procuracion/mantenimiento";
 import { anularValorLaboratorio, guardarGlucemia, type ValorLaboratorio } from "@/lib/procuracion/laboratorio-valores";
 import {
-  alarmasEnfermeria,
   balancePorHora,
   bombasDeFila,
   camposFueraDeRango,
   filaPrecargada,
-  horasAnterioresSinCargar,
-  horasDelCaso,
+  horaPendiente,
   inicioDeHora,
   ordenarPorHora,
   perdidasDeFila,
   registroDeLaHora,
+  textoHuecos,
   totalesHora,
   type BombaHora,
   type CampoLiquido,
@@ -52,27 +51,6 @@ const numeroO = (t: string): number | null => {
   return n === null || Number.isNaN(n) ? null : n;
 };
 
-// ---------------------------------------------------------------------
-// Horas salteadas: por ahora recordadas en el dispositivo (no viajan a la
-// base). Si el navegador no deja guardar, se sigue funcionando.
-// ---------------------------------------------------------------------
-const claveSalteadas = (donanteId: string) => `procurapp:mantenimiento:salteadas:${donanteId}`;
-function leerLocal<T>(clave: string, porDefecto: T): T {
-  try {
-    const v = window.localStorage.getItem(clave);
-    return v === null ? porDefecto : (JSON.parse(v) as T);
-  } catch {
-    return porDefecto;
-  }
-}
-function escribirLocal(clave: string, valor: unknown) {
-  try {
-    window.localStorage.setItem(clave, JSON.stringify(valor));
-  } catch {
-    // sin almacenamiento: no se recuerda, pero la carga sigue
-  }
-}
-
 type Comunes = {
   donanteId: string;
   pesoKg: number | null;
@@ -87,32 +65,22 @@ type Comunes = {
   onGuardarPeso: (pesoKg: number) => Promise<void>;
 };
 
-// Vista de ENFERMERÍA: la pantalla muestra la HORA ACTUAL. Las horas
-// anteriores sin cargar se resumen en una línea ("Faltan N horas
-// anteriores") que abre "Horas anteriores", donde se cargan, se saltan
-// (quedan sin dato, no cero), se corrigen o se anulan. La alarma roja es
-// solo para la hora en curso, pasados 15 minutos.
+// Vista de ENFERMERÍA: la pantalla muestra solo la próxima hora
+// pendiente. Si ya llegó y no está cargada: "Hora HH:00 pendiente" con el
+// botón para cargarla (alarma roja pasados 15 minutos); si no, "Próxima
+// carga HH:00". Una hora no cargada es un hueco y listo: si queda ENTRE
+// dos horas cargadas, se avisa en gris junto al balance acumulado.
+// "Corregir una hora anterior" (plegado) solo edita o anula horas ya
+// cargadas.
 export default function MantenimientoEnfermeria(props: Comunes & { estado: EstadoBombas; ahora: number }) {
   const { donanteId, pesoKg, registros, infusiones, bombas, estado, ahora, onInfusionesChange } = props;
   const [solapa, setSolapa] = useState<"hora" | "bolos">("hora");
-  const [horaElegida, setHoraElegida] = useState<number | null>(null); // hora anterior abierta a mano
-  const [salteadas, setSalteadas] = useState<number[]>(() => leerLocal<number[]>(claveSalteadas(donanteId), []));
-  const [anterioresAbiertas, setAnterioresAbiertas] = useState(false);
+  const [abierta, setAbierta] = useState<number | null>(null); // hora con el formulario abierto
 
   const horaActual = inicioDeHora(ahora);
-  const grilla = horasDelCaso(registros, ahora);
-  const alarmas = alarmasEnfermeria(grilla, salteadas);
+  const pendiente = horaPendiente(registros, ahora);
   const balance = balancePorHora(registros, bombas, pesoKg, ahora);
-  const faltanAnteriores = horasAnterioresSinCargar(grilla);
-  const actualCargada = registroDeLaHora(registros, horaActual) !== null;
-  const abierta = horaElegida ?? (actualCargada ? null : horaActual);
-
-  function saltar(inicio: number) {
-    const nuevas = [...new Set([...salteadas, inicio])];
-    setSalteadas(nuevas);
-    escribirLocal(claveSalteadas(donanteId), nuevas);
-    setHoraElegida(null);
-  }
+  const cargadas = balance.horas.filter((h) => h.estado === "cargada");
   const acumuladoAntesDe = (inicio: number) =>
     balance.horas.reduce((acc, h) => (h.estado === "cargada" && h.inicio < inicio ? h.acumulado : acc), 0);
 
@@ -130,53 +98,43 @@ export default function MantenimientoEnfermeria(props: Comunes & { estado: Estad
         </div>
       </div>
 
-      {alarmas.map((a) => (
-        <div key={a.inicio} className="tiny" style={{ color: "var(--red)", fontWeight: 600, marginBottom: 6 }}>
-          ● {a.texto}
-        </div>
-      ))}
-      {faltanAnteriores > 0 && (
-        <button
-          className="btn btn-sm"
-          style={{ fontSize: 11, marginBottom: 8 }}
-          onClick={() => {
-            setSolapa("hora");
-            setAnterioresAbiertas(true);
-          }}
-        >
-          Faltan {faltanAnteriores} {faltanAnteriores === 1 ? "hora anterior" : "horas anteriores"}
-        </button>
-      )}
-
       {solapa === "bolos" ? (
         <Bolos donanteId={donanteId} infusiones={infusiones} onInfusionesChange={onInfusionesChange} />
       ) : (
         <>
-          {abierta === null ? (
-            <div style={{ border: "1px solid var(--green)", borderRadius: 10, padding: 12, marginBottom: 12, textAlign: "center" }}>
-              <div style={{ fontWeight: 700 }}>Hora {textoHora(horaActual)} cargada ✓</div>
-              <div className="tiny muted">
-                Próxima carga {textoHora(horaActual + 3_600_000)} ·{" "}
-                <button className="btn btn-sm" style={{ fontSize: 11, padding: "0 6px" }} onClick={() => setHoraElegida(horaActual)}>
-                  corregir
-                </button>
-              </div>
-              <ResumenBalance acumulado={balance.acumulado} faltan={balance.faltan} />
-            </div>
-          ) : (
+          {abierta !== null ? (
             <FilaHora
               key={abierta}
               {...props}
               inicio={abierta}
               esHoraActual={abierta === horaActual}
-              esProxima={horaElegida === null}
-              puedeSaltar={abierta < horaActual}
               acumuladoPrevio={acumuladoAntesDe(abierta)}
-              faltan={balance.faltan}
-              onFijar={() => setHoraElegida(abierta)}
-              onListo={() => setHoraElegida(null)}
-              onSaltar={() => saltar(abierta)}
+              huecos={balance.huecos}
+              onListo={() => setAbierta(null)}
             />
+          ) : pendiente.estado === "pendiente" ? (
+            <div
+              style={{
+                border: `2px solid ${pendiente.alarma ? "var(--red)" : "var(--amber)"}`,
+                borderRadius: 10,
+                padding: 12,
+                marginBottom: 12,
+                textAlign: "center",
+              }}
+            >
+              <div style={{ fontWeight: 700, fontSize: 18, color: pendiente.alarma ? "var(--red)" : undefined }}>
+                Hora {textoHora(pendiente.inicio)} pendiente
+              </div>
+              <button className="btn btn-accent" style={{ fontSize: 16, padding: "10px 18px", marginTop: 8 }} onClick={() => setAbierta(pendiente.inicio)}>
+                Cargar hora {textoHora(pendiente.inicio)}
+              </button>
+              <ResumenBalance acumulado={balance.acumulado} huecos={balance.huecos} />
+            </div>
+          ) : (
+            <div style={{ border: "1px solid var(--border)", borderRadius: 10, padding: 12, marginBottom: 12, textAlign: "center" }}>
+              <div style={{ fontWeight: 700 }}>Próxima carga {textoHora(pendiente.inicio)}</div>
+              <ResumenBalance acumulado={balance.acumulado} huecos={balance.huecos} />
+            </div>
           )}
 
           <details style={{ marginBottom: 10 }}>
@@ -184,78 +142,44 @@ export default function MantenimientoEnfermeria(props: Comunes & { estado: Estad
             <BombasEnCurso estado={estado} donanteId={donanteId} pesoKg={pesoKg} infusiones={infusiones} onInfusionesChange={onInfusionesChange} />
           </details>
 
-          {/* ------------------------------------------------ horas anteriores */}
-          <details open={anterioresAbiertas} onToggle={(e) => setAnterioresAbiertas((e.target as HTMLDetailsElement).open)}>
-            <summary className="tiny">Horas anteriores</summary>
-            {balance.horas.length === 0 && <div className="tiny muted">Todavía no hay horas.</div>}
-            <div style={{ overflowX: "auto" }}>
-              <table className="tiny" style={{ width: "100%", borderCollapse: "collapse" }}>
-                <tbody>
-                  {[...balance.horas].filter((b) => b.inicio < horaActual).reverse().map((b) => {
-                    const salteada = b.estado !== "cargada" && salteadas.includes(b.inicio);
-                    const r = b.estado === "cargada" ? registros.find((x) => x.id === b.registroId) : null;
-                    return (
-                      <tr
-                        key={b.inicio}
-                        style={{ cursor: "pointer", color: b.estado === "faltante" && !salteada ? "var(--red)" : undefined }}
-                        onClick={() => setHoraElegida(b.inicio)}
-                      >
-                        <td>{textoHora(b.inicio)}</td>
-                        {b.estado === "cargada" ? (
-                          <>
-                            <td style={{ textAlign: "right" }}>+{num(b.ingresos, 0)}</td>
-                            <td style={{ textAlign: "right" }}>
-                              −{num(b.egresos, 0)}
-                              {b.perdidas.valor === null ? "*" : ""}
-                            </td>
-                            <td style={{ textAlign: "right" }}>= {num(b.parcial, 0)}</td>
-                            <td className="muted">{r?.aviso_medico ? `⚠ ${r.aviso_medico}` : ""}</td>
-                          </>
-                        ) : (
-                          <td colSpan={4} className="muted">
-                            {salteada ? (
-                              "salteada (sin datos)"
-                            ) : (
-                              <>
-                                sin cargar ·{" "}
-                                <button
-                                  className="btn btn-sm"
-                                  style={{ fontSize: 11, padding: "0 6px" }}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    saltar(b.inicio);
-                                  }}
-                                >
-                                  saltar (sin datos)
-                                </button>
-                              </>
-                            )}
+          {/* ------------------------------------------------ corregir (solo horas ya cargadas) */}
+          {cargadas.length > 0 && (
+            <details>
+              <summary className="tiny">Corregir una hora anterior</summary>
+              <div style={{ overflowX: "auto" }}>
+                <table className="tiny" style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <tbody>
+                    {[...cargadas].reverse().map((b) =>
+                      b.estado !== "cargada" ? null : (
+                        <tr key={b.inicio} style={{ cursor: "pointer" }} onClick={() => setAbierta(b.inicio)}>
+                          <td>{textoHora(b.inicio)}</td>
+                          <td style={{ textAlign: "right" }}>+{num(b.ingresos, 0)}</td>
+                          <td style={{ textAlign: "right" }}>
+                            −{num(b.egresos, 0)}
+                            {b.perdidas.valor === null ? "*" : ""}
                           </td>
-                        )}
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-            {balance.horasSinPerdidas > 0 && <div className="tiny muted">* sin pérdidas insensibles (falta peso).</div>}
-          </details>
+                          <td style={{ textAlign: "right" }}>= {num(b.parcial, 0)}</td>
+                        </tr>
+                      )
+                    )}
+                  </tbody>
+                </table>
+              </div>
+              {balance.horasSinPerdidas > 0 && <div className="tiny muted">* sin pérdidas insensibles (falta peso).</div>}
+            </details>
+          )}
         </>
       )}
     </div>
   );
 }
 
-function ResumenBalance({ acumulado, faltan }: { acumulado: number; faltan: number }) {
+function ResumenBalance({ acumulado, huecos }: { acumulado: number; huecos: number }) {
+  const hueco = textoHuecos(huecos);
   return (
-    <div className="tiny" style={{ marginTop: 4 }}>
+    <div className="tiny" style={{ marginTop: 8 }}>
       Balance acumulado: <strong>{num(acumulado, 0)} mL</strong>
-      {faltan > 0 && (
-        <span style={{ color: "var(--red)" }}>
-          {" "}
-          · faltan {faltan} {faltan === 1 ? "hora" : "horas"}
-        </span>
-      )}
+      {hueco && <span className="muted"> · {hueco}</span>}
     </div>
   );
 }
@@ -279,26 +203,15 @@ function FilaHora({
   onGuardarPeso,
   inicio,
   esHoraActual,
-  esProxima,
-  puedeSaltar,
   acumuladoPrevio,
-  faltan,
-  onFijar,
+  huecos,
   onListo,
-  onSaltar,
 }: Comunes & {
   inicio: number;
   esHoraActual: boolean;
-  esProxima: boolean; // la hora actual; si no, una hora anterior abierta a mano
-  puedeSaltar: boolean; // hora anterior sin cargar
   acumuladoPrevio: number;
-  faltan: number;
-  // Mientras se guarda, la hora queda fija: al aparecer su registro, "la
-  // próxima sin cargar" cambiaría y el formulario se iría antes de
-  // terminar (y un error de las bombas no se vería).
-  onFijar: () => void;
-  onListo: () => void;
-  onSaltar: () => void;
+  huecos: number;
+  onListo: () => void; // cerrar el formulario (después de guardar, anular o cancelar)
 }) {
   const reg = registroDeLaHora(registros, inicio);
   const [precarga] = useState(() => filaPrecargada(registros, bombas, infusiones, inicio).bombas);
@@ -405,7 +318,6 @@ function FilaHora({
       return setPendiente(`¿Seguro? Fuera del rango esperable: ${textos.join("; ")}.`);
     }
 
-    onFijar();
     setGuardando(true);
     try {
       // 1) La fila de la hora (completa la existente o crea una a hh:00).
@@ -433,7 +345,7 @@ function FilaHora({
         const v = await guardarGlucemia(supabase, donanteId, glu, gluIso, "enfermeria");
         onLabChange([v, ...lab]);
       }
-      onListo(); // vuelve a la hora actual
+      onListo(); // cierra el formulario: la pantalla vuelve a la hora pendiente
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo guardar la hora.");
     } finally {
@@ -444,7 +356,6 @@ function FilaHora({
   async function anular() {
     if (!reg) return;
     setError(null);
-    onFijar();
     setGuardando(true);
     try {
       await anularRegistro(supabase, reg.id);
@@ -487,9 +398,9 @@ function FilaHora({
           Hora {textoHora(inicio)}
           {reg ? <span className="tiny muted"> · ya cargada a las {hora(reg.registrado_en)}</span> : null}
         </div>
-        {!esProxima && !guardando && (
+        {!guardando && (
           <button className="btn btn-sm" onClick={onListo}>
-            Volver a la hora actual
+            Cerrar
           </button>
         )}
       </div>
@@ -600,12 +511,7 @@ function FilaHora({
       </div>
       <div className="tiny muted" style={{ textAlign: "center" }}>
         Balance de esta hora: {num(totales.parcial, 0)} mL
-        {faltan > 0 && (
-          <span style={{ color: "var(--red)" }}>
-            {" "}
-            · faltan {faltan} {faltan === 1 ? "hora" : "horas"}
-          </span>
-        )}
+        {textoHuecos(huecos) && <> · {textoHuecos(huecos)}</>}
       </div>
 
       {/* ------------------------------------------------ aviso */}
@@ -629,11 +535,6 @@ function FilaHora({
           <button className="btn btn-accent" style={{ fontSize: 16, padding: "10px 18px" }} disabled={guardando} onClick={() => guardar()}>
             {guardando ? "Guardando…" : `Guardar hora ${textoHora(inicio)}`}
           </button>
-          {puedeSaltar && !reg && (
-            <button className="btn btn-sm" style={{ fontSize: 11 }} disabled={guardando} onClick={onSaltar}>
-              Saltar esta hora (sin datos)
-            </button>
-          )}
           {reg && (
             <button className="btn btn-sm" style={{ fontSize: 11 }} disabled={guardando} onClick={() => setAnulando(true)}>
               Anular esta hora
