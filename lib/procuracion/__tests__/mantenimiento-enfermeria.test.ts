@@ -209,7 +209,7 @@ test("balance: con peso descuenta las pérdidas; completar la hora faltante la s
 });
 
 // ---------------------------------------------------------------- precarga
-test("precarga: bombas y líquidos de la hora anterior; bombas en 0 no; signos, diuresis, SNG y hemoderivados vacíos", () => {
+test("precarga: solo las bombas de la hora anterior (sin las en 0); líquidos, hemoderivados, signos, diuresis y SNG vacíos", () => {
   const regs = [
     fila("a", 8, 0, { ing_sol_09_ml: 100, ing_ringer_ml: 50, ing_hemoderivados_ml: 300, diuresis_ml: 200, temperatura: 38 }),
   ];
@@ -219,7 +219,7 @@ test("precarga: bombas y líquidos de la hora anterior; bombas en 0 no; signos, 
   ];
   const p = filaPrecargada(regs, bombas, [], h(9));
   assert.equal(p.desdeRegistroId, "a");
-  assert.deepEqual(p.liquidos, { ing_sol_09_ml: 100, ing_ringer_ml: 50 });
+  assert.deepEqual(p.liquidos, {}); // los líquidos arrancan vacíos: solo cuenta lo escrito
   assert.deepEqual(p.bombas, [{ droga: "noradrenalina", velocidad_ml_h: 10, dilucion_id: "d1" }]);
   const vacia = filaPrecargada([], [], [], h(9));
   assert.deepEqual(vacia, { desdeRegistroId: null, liquidos: {}, bombas: [] });
@@ -428,4 +428,61 @@ test("solución: el texto solo va con 'otra', recortado a 40 caracteres; vacío 
   assert.equal(solucionDeFila(dil("v", 8, 0, "noradrenalina")), null);
   assert.equal(solucionPorId([dil("a", 8, 0, "noradrenalina", { solucion_dilucion: "sf_09", anulado: true })], "a"), null);
   assert.equal(solucionPorId([], null), null);
+});
+
+// ---------------------------------------------------------------- una hora por vez
+import { proximaHoraSinCargar, seteoDesdeCampos } from "../mantenimiento-calculos.ts";
+
+test("orden de horas: la próxima sin cargar es la más vieja sin fila, hasta la hora actual", () => {
+  const regs = [
+    { id: "a", registrado_en: iso(8), anulado: false },
+    { id: "c", registrado_en: iso(10, 5), anulado: false },
+  ];
+  const grilla = horasDelCaso(regs, h(11, 20)); // 08 ✓, 09 sin cargar, 10 ✓, 11 en curso
+  assert.equal(proximaHoraSinCargar(grilla), h(9));
+  // saltar la 09 (sin datos): pasa a la 11
+  assert.equal(proximaHoraSinCargar(grilla, [h(9)]), h(11));
+  // con la 09 y la 11 cargadas: al día
+  const alDia = horasDelCaso([...regs, { id: "b", registrado_en: iso(9), anulado: false }, { id: "d", registrado_en: iso(11), anulado: false }], h(11, 20));
+  assert.equal(proximaHoraSinCargar(alDia), null);
+  // sin ninguna fila: la hora actual
+  assert.equal(proximaHoraSinCargar(horasDelCaso([], h(11, 20))), h(11));
+});
+
+test("saltar una hora: queda sin dato (no cero), cuenta en 'faltan N horas' y no alarma", () => {
+  const regs = [fila("a", 8, 0, { ing_sol_09_ml: 100 }), fila("c", 10, 0, { ing_sol_09_ml: 100 })];
+  const b = balancePorHora(regs, [], null, h(10, 30));
+  assert.equal(b.faltan, 1); // la 09, salteada o no
+  assert.equal(b.acumulado, 200); // la 09 no suma cero ni nada
+  const grilla = horasDelCaso(regs, h(10, 30));
+  assert.deepEqual(alarmasEnfermeria(grilla).map((a) => a.inicio), [h(9)]);
+  assert.deepEqual(alarmasEnfermeria(grilla, [h(9)]), []);
+});
+
+test("seteo: la cantidad de ampollas es obligatoria (sin valor por defecto)", () => {
+  const sin = seteoDesdeCampos("noradrenalina", { cantidad: null, contenidoPorAmpolla: 4, volumenMl: 100 });
+  assert.deepEqual(sin, { ok: false, error: "Falta la cantidad de ampollas." });
+  assert.equal(seteoDesdeCampos("noradrenalina", { cantidad: 0, contenidoPorAmpolla: 4, volumenMl: 100 }).ok, false);
+  assert.equal(seteoDesdeCampos("noradrenalina", { cantidad: 1, contenidoPorAmpolla: 4, volumenMl: null }).ok, false);
+});
+
+test("seteo: 4 mg en 100 mL con 1 ampolla = 40 mcg/mL; con 2 ampollas = 80 mcg/mL", () => {
+  const una = seteoDesdeCampos("noradrenalina", { cantidad: 1, contenidoPorAmpolla: 4, volumenMl: 100 });
+  const dos = seteoDesdeCampos("noradrenalina", { cantidad: 2, contenidoPorAmpolla: 4, volumenMl: 100 });
+  assert.ok(una.ok && dos.ok);
+  if (una.ok && dos.ok) {
+    assert.deepEqual([una.concentracion, una.unidad], [40, "mcg/mL"]);
+    assert.deepEqual([dos.concentracion, dos.unidad], [80, "mcg/mL"]);
+    // 10 mL/h, 70 kg: la dosis se duplica con la segunda ampolla
+    const d1 = dosisDesdeVelocidad("noradrenalina", 10, una.concentracion, 70);
+    const d2 = dosisDesdeVelocidad("noradrenalina", 10, dos.concentracion, 70);
+    assert.ok(d1.ok && d2.ok);
+    if (d1.ok && d2.ok) {
+      cerca(d1.dosis, 400 / 4200, 1e-9);
+      cerca(d2.dosis, 800 / 4200, 1e-9);
+    }
+  }
+  // vasopresina en U; potasio en mEq
+  const vaso = seteoDesdeCampos("vasopresina", { cantidad: 1, contenidoPorAmpolla: 20, volumenMl: 100 });
+  assert.ok(vaso.ok && vaso.dilucion.unidadContenido === "U" && vaso.unidad === "U/mL");
 });

@@ -427,13 +427,14 @@ export const RANGOS_PLAUSIBLES: Record<string, { min: number; max: number }> = {
 // REFERENCIA GENERAL, A VALIDAR.
 export const PERDIDAS_INSENSIBLES = { mlPorKgPorDia: 10, aumentoPorGrado: 0.1, temperaturaBase: 37 } as const;
 
-// Líquidos de la fila horaria: se carga la cantidad en mL. Hemoderivados
-// NO se precargan de la hora anterior (una transfusión no se repite).
+// Líquidos de la fila horaria: se carga la cantidad en mL de esa hora.
+// ARRANCAN VACÍOS: no se precargan de la hora anterior (solo cuenta lo
+// escrito).
 export const LIQUIDOS_ENFERMERIA = [
-  { campo: "ing_sol_09_ml", etiqueta: "Solución 0,9 %", precarga: true },
-  { campo: "ing_ringer_ml", etiqueta: "Ringer lactato", precarga: true },
-  { campo: "ing_sol_medio_ml", etiqueta: "Solución al medio (0,45 %)", precarga: true },
-  { campo: "ing_dextrosa_ml", etiqueta: "Dextrosa", precarga: true },
+  { campo: "ing_sol_09_ml", etiqueta: "Solución 0,9 %", precarga: false },
+  { campo: "ing_ringer_ml", etiqueta: "Ringer lactato", precarga: false },
+  { campo: "ing_sol_medio_ml", etiqueta: "Solución al medio (0,45 %)", precarga: false },
+  { campo: "ing_dextrosa_ml", etiqueta: "Dextrosa", precarga: false },
   { campo: "ing_hemoderivados_ml", etiqueta: "Hemoderivados", precarga: false },
 ] as const;
 
@@ -441,22 +442,13 @@ export const LIQUIDOS_ENFERMERIA = [
 export const BOTONES_RAPIDOS_ML = [100, 250, 500] as const;
 
 // Bombas de la fila horaria (médico y enfermería ven y cargan las
-// mismas). Bicarbonato queda afuera de la interfaz (la base lo conserva).
-export const BOMBAS_ENFERMERIA: DrogaInfusion[] = [
-  "noradrenalina",
-  "vasopresina",
-  "dobutamina",
-  "dopamina",
-  "potasio",
-  "insulina",
-  "hidrocortisona",
-  "dexametasona",
-  "adrenalina",
-  "isoproterenol",
-  "amiodarona",
-  "esmolol",
-  "furosemida",
-];
+// mismas). Vasoactivas a la vista; el resto en "Otras infusiones"
+// (plegada). Bicarbonato queda afuera de la interfaz (la base lo
+// conserva). Esmolol y furosemida van por defecto como bolo, pero se
+// pueden cargar en bomba desde "Otras infusiones".
+export const BOMBAS_VASOACTIVAS: DrogaInfusion[] = ["noradrenalina", "vasopresina", "adrenalina", "dobutamina", "dopamina", "isoproterenol"];
+export const OTRAS_INFUSIONES: DrogaInfusion[] = ["potasio", "insulina", "hidrocortisona", "dexametasona", "amiodarona", "esmolol", "furosemida"];
+export const BOMBAS_ENFERMERIA: DrogaInfusion[] = [...BOMBAS_VASOACTIVAS, ...OTRAS_INFUSIONES];
 
 // Paso de los botones +/− de las bombas (mL/h) -- PROPUESTO, A VALIDAR.
 export const PASO_BOMBA_ML_H = 1;

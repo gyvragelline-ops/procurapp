@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
+  anularRegistro,
   guardarBombasDeFila,
   guardarRegistro,
   type DatosRegistro,
@@ -19,16 +20,16 @@ import {
   inicioDeHora,
   ordenarPorHora,
   perdidasDeFila,
+  proximaHoraSinCargar,
   registroDeLaHora,
   totalesHora,
-  type BombaFormulario,
   type BombaHora,
   type CampoLiquido,
   type EstadoBombas,
   type FilaHoraria,
   type InfusionFila,
 } from "@/lib/procuracion/mantenimiento-calculos";
-import { BOTONES_RAPIDOS_ML, LIQUIDOS_ENFERMERIA } from "@/lib/procuracion/mantenimiento-metas";
+import { LIQUIDOS_ENFERMERIA } from "@/lib/procuracion/mantenimiento-metas";
 import { BombasDeLaHora, avisosDosisDeFila, bombasFormDesde, bombasParaGuardar, type BombasForm } from "./mantenimiento-dilucion";
 import { Bolos, BombasEnCurso } from "./mantenimiento-infusiones";
 import { Confirmacion, ErrorVisible, PedirPeso, aInputLocal, aNumero, esFutura, fechaHora, hora, momentoActual, num } from "./mantenimiento-ui";
@@ -44,9 +45,6 @@ const SIGNOS: { campo: Signo; etiqueta: string; unidad: string }[] = [
   { campo: "sat_o2", etiqueta: "Saturación", unidad: "%" },
 ];
 
-type Liquido = { texto: string; copiado: boolean };
-const LIQUIDOS_VACIOS = Object.fromEntries(LIQUIDOS_ENFERMERIA.map((l) => [l.campo, { texto: "", copiado: false }])) as Record<CampoLiquido, Liquido>;
-
 const textoHora = (ms: number) => `${String(new Date(ms).getHours()).padStart(2, "0")}:00`;
 const aTexto = (n: number | null | undefined) => (n === null || n === undefined ? "" : String(n).replace(".", ","));
 const numeroO = (t: string): number | null => {
@@ -54,133 +52,301 @@ const numeroO = (t: string): number | null => {
   return n === null || Number.isNaN(n) ? null : n;
 };
 
-// Vista de ENFERMERÍA (planilla horaria del OP2). Una fila por hora de
-// reloj, precargada con las bombas y los líquidos de la hora anterior;
-// guardar equivale a confirmar. La app calcula totales, pérdidas
-// insensibles y balance (el enfermero nunca suma). Una sola fuente: si
-// ya hay un registro en esa hora (aunque sea del médico) se completa ese.
-export default function MantenimientoEnfermeria({
-  donanteId,
-  pesoKg,
-  registros,
-  infusiones,
-  bombas,
-  lab,
-  estado,
-  ahora,
-  onRegistrosChange,
-  onInfusionesChange,
-  onBombasChange,
-  onLabChange,
-  onGuardarPeso,
-}: {
+// ---------------------------------------------------------------------
+// Recordado en el dispositivo (no viaja a la base). Si el navegador no
+// deja guardar, se sigue funcionando sin recordar.
+// ---------------------------------------------------------------------
+const CLAVE_CARGADO_POR = "procurapp:mantenimiento:cargadoPor";
+const claveSalteadas = (donanteId: string) => `procurapp:mantenimiento:salteadas:${donanteId}`;
+function leerLocal<T>(clave: string, porDefecto: T): T {
+  try {
+    const v = window.localStorage.getItem(clave);
+    return v === null ? porDefecto : (JSON.parse(v) as T);
+  } catch {
+    return porDefecto;
+  }
+}
+function escribirLocal(clave: string, valor: unknown) {
+  try {
+    window.localStorage.setItem(clave, JSON.stringify(valor));
+  } catch {
+    // sin almacenamiento: no se recuerda, pero la carga sigue
+  }
+}
+
+type Comunes = {
   donanteId: string;
   pesoKg: number | null;
   registros: RegistroMantenimiento[];
   infusiones: InfusionFila[];
   bombas: BombaHora[];
   lab: ValorLaboratorio[];
-  estado: EstadoBombas;
-  ahora: number;
   onRegistrosChange: (r: RegistroMantenimiento[]) => void;
   onInfusionesChange: (f: InfusionFila[]) => void;
   onBombasChange: (b: BombaHora[]) => void;
   onLabChange: (v: ValorLaboratorio[]) => void;
   onGuardarPeso: (pesoKg: number) => Promise<void>;
-}) {
+};
+
+// Vista de ENFERMERÍA: una sola hora por vez, la PRÓXIMA SIN CARGAR
+// (hasta la hora actual). Al guardar pasa sola a la siguiente; si está
+// todo cargado, "Al día". Una hora se puede saltar (queda sin dato, no
+// cero) y las anteriores se corrigen o anulan desde "Horas anteriores".
+export default function MantenimientoEnfermeria(props: Comunes & { estado: EstadoBombas; ahora: number }) {
+  const { donanteId, pesoKg, registros, infusiones, bombas, estado, ahora, onInfusionesChange } = props;
   const [solapa, setSolapa] = useState<"hora" | "bolos">("hora");
-  const [horaSel, setHoraSel] = useState<number | null>(null);
-  const [liquidos, setLiquidos] = useState<Record<CampoLiquido, Liquido>>(LIQUIDOS_VACIOS);
-  const [diuresis, setDiuresis] = useState("");
-  const [sng, setSng] = useState("");
-  const [perdidasManual, setPerdidasManual] = useState<string | null>(null); // null = usar el cálculo
-  const [signos, setSignos] = useState<Partial<Record<Signo, string>>>({});
-  const [glucemia, setGlucemia] = useState("");
-  const [glucemiaHora, setGlucemiaHora] = useState("");
-  const [bombasForm, setBombasForm] = useState<BombasForm>({});
-  const [precarga, setPrecarga] = useState<BombaFormulario[]>([]);
-  const [cargadoPor, setCargadoPor] = useState("");
-  const [aviso, setAviso] = useState("");
-  const [pendiente, setPendiente] = useState<string | null>(null);
-  const [guardando, setGuardando] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [horaElegida, setHoraElegida] = useState<number | null>(null); // hora anterior abierta a mano
+  const [salteadas, setSalteadas] = useState<number[]>(() => leerLocal<number[]>(claveSalteadas(donanteId), []));
+  const [cargadoPor, setCargadoPor] = useState<string>(() => leerLocal<string>(CLAVE_CARGADO_POR, ""));
 
   const horaActual = inicioDeHora(ahora);
   const grilla = horasDelCaso(registros, ahora);
-  const alarmas = alarmasEnfermeria(grilla);
+  const alarmas = alarmasEnfermeria(grilla, salteadas);
   const balance = balancePorHora(registros, bombas, pesoKg, ahora);
-  const ultimaGlucemia = ordenarPorHora(
-    lab.filter((v) => v.parametro === "glucemia" && !v.anulado).map((v) => ({ ...v, registrado_en: v.medido_en }))
-  ).pop() ?? null;
+  const proxima = proximaHoraSinCargar(grilla, salteadas);
+  const abierta = horaElegida ?? proxima;
 
-  // ---------------------------------------------------------- abrir una hora
-  function abrirHora(inicio: number) {
-    const reg = registroDeLaHora(registros, inicio);
-    const pre = filaPrecargada(registros, bombas, infusiones, inicio);
-    const anterior = ordenarPorHora(registros.filter((r) => !r.anulado && inicioDeHora(new Date(r.registrado_en).getTime()) < inicio)).pop() ?? null;
-    const liq = { ...LIQUIDOS_VACIOS };
-    for (const l of LIQUIDOS_ENFERMERIA) {
-      liq[l.campo] = reg
-        ? { texto: aTexto(reg[l.campo]), copiado: false }
-        : { texto: aTexto(pre.liquidos[l.campo] ?? null), copiado: pre.liquidos[l.campo] !== undefined };
-    }
-    setLiquidos(liq);
-    setPrecarga(pre.bombas);
-    setBombasForm(
-      reg
-        ? bombasFormDesde(
-            bombasDeFila(bombas, reg.id).map((b) => ({ droga: b.droga, velocidad_ml_h: b.velocidad_ml_h, dilucion_id: b.dilucion_id })),
-            false
-          )
-        : bombasFormDesde(pre.bombas, true)
-    );
-    setDiuresis(aTexto(reg?.diuresis_ml));
-    setSng(aTexto(reg?.egr_sng_drenajes_ml));
-    setPerdidasManual(reg?.perdidas_insensibles_editadas ? aTexto(reg.perdidas_insensibles_ml) : null);
-    setSignos(reg ? Object.fromEntries(SIGNOS.map((s) => [s.campo, aTexto(reg[s.campo])])) : {});
-    setGlucemia("");
-    setGlucemiaHora(aInputLocal(new Date(momentoActual()).toISOString()));
-    setCargadoPor(reg?.cargado_por ?? anterior?.cargado_por ?? "");
-    setAviso(reg?.aviso_medico ?? "");
-    setPendiente(null);
-    setError(null);
-    setHoraSel(inicio);
+  function saltar(inicio: number) {
+    const nuevas = [...new Set([...salteadas, inicio])];
+    setSalteadas(nuevas);
+    escribirLocal(claveSalteadas(donanteId), nuevas);
+    setHoraElegida(null);
   }
+  function recordarCargadoPor(nombre: string) {
+    setCargadoPor(nombre);
+    escribirLocal(CLAVE_CARGADO_POR, nombre);
+  }
+  const acumuladoAntesDe = (inicio: number) =>
+    balance.horas.reduce((acc, h) => (h.estado === "cargada" && h.inicio < inicio ? h.acumulado : acc), 0);
 
-  // ---------------------------------------------------------- derivados de la fila abierta
-  const reg = horaSel !== null ? registroDeLaHora(registros, horaSel) : null;
-  const esHoraActual = horaSel === horaActual;
-  const filaForm: FilaHoraria | null =
-    horaSel === null
-      ? null
-      : {
-          id: reg?.id ?? "nueva",
-          registrado_en: reg?.registrado_en ?? new Date(horaSel).toISOString(),
-          anulado: false,
-          temperatura: numeroO(signos.temperatura ?? ""),
-          diuresis_ml: numeroO(diuresis),
-          egr_sng_drenajes_ml: numeroO(sng),
-          perdidas_insensibles_ml: perdidasManual !== null ? numeroO(perdidasManual) : null,
-          perdidas_insensibles_editadas: perdidasManual !== null,
-          ...(Object.fromEntries(LIQUIDOS_ENFERMERIA.map((l) => [l.campo, numeroO(liquidos[l.campo].texto)])) as Record<CampoLiquido, number | null>),
-        };
+  return (
+    <div>
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
+        <div style={{ fontSize: 22, fontWeight: 700 }}>{hora(new Date(ahora).toISOString())}</div>
+        <div className="btn-row">
+          <button className={`btn btn-sm ${solapa === "hora" ? "btn-accent" : ""}`} onClick={() => setSolapa("hora")}>
+            Hora
+          </button>
+          <button className={`btn btn-sm ${solapa === "bolos" ? "btn-accent" : ""}`} onClick={() => setSolapa("bolos")}>
+            Bolos
+          </button>
+        </div>
+      </div>
+
+      {alarmas.length > 0 && (
+        <div style={{ marginBottom: 8 }}>
+          {alarmas.map((a) => (
+            <button
+              key={a.inicio}
+              className="btn btn-sm"
+              style={{ color: "var(--red)", marginRight: 6, marginBottom: 4 }}
+              onClick={() => {
+                setSolapa("hora");
+                setHoraElegida(a.inicio);
+              }}
+            >
+              ● {a.texto}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {solapa === "bolos" ? (
+        <Bolos donanteId={donanteId} infusiones={infusiones} onInfusionesChange={onInfusionesChange} />
+      ) : (
+        <>
+          {abierta === null ? (
+            <div style={{ border: "1px solid var(--green)", borderRadius: 10, padding: 12, marginBottom: 12, textAlign: "center" }}>
+              <div style={{ fontWeight: 700 }}>Al día</div>
+              <div className="tiny muted">Próxima carga {textoHora(horaActual + 3_600_000)}</div>
+              <ResumenBalance acumulado={balance.acumulado} faltan={balance.faltan} />
+            </div>
+          ) : (
+            <FilaHora
+              key={abierta}
+              {...props}
+              inicio={abierta}
+              esHoraActual={abierta === horaActual}
+              esProxima={horaElegida === null}
+              acumuladoPrevio={acumuladoAntesDe(abierta)}
+              faltan={balance.faltan}
+              cargadoPor={cargadoPor}
+              onCargadoPor={recordarCargadoPor}
+              onFijar={() => setHoraElegida(abierta)}
+              onListo={() => setHoraElegida(null)}
+              onSaltar={() => saltar(abierta)}
+            />
+          )}
+
+          <details style={{ marginBottom: 10 }}>
+            <summary className="tiny">Bombas en curso (dosis en vivo){estado.filaDato ? ` · última fila ${hora(estado.filaDato)}` : ""}</summary>
+            <BombasEnCurso estado={estado} donanteId={donanteId} pesoKg={pesoKg} infusiones={infusiones} onInfusionesChange={onInfusionesChange} />
+          </details>
+
+          {/* ------------------------------------------------ horas anteriores */}
+          <details>
+            <summary className="tiny">Horas anteriores (corregir o anular)</summary>
+            {balance.horas.length === 0 && <div className="tiny muted">Todavía no hay horas.</div>}
+            <div style={{ overflowX: "auto" }}>
+              <table className="tiny" style={{ width: "100%", borderCollapse: "collapse" }}>
+                <tbody>
+                  {[...balance.horas].reverse().map((b) => {
+                    const salteada = b.estado !== "cargada" && salteadas.includes(b.inicio);
+                    const r = b.estado === "cargada" ? registros.find((x) => x.id === b.registroId) : null;
+                    return (
+                      <tr
+                        key={b.inicio}
+                        style={{ cursor: "pointer", color: b.estado === "faltante" && !salteada ? "var(--red)" : undefined }}
+                        onClick={() => setHoraElegida(b.inicio)}
+                      >
+                        <td>{textoHora(b.inicio)}</td>
+                        {b.estado === "cargada" ? (
+                          <>
+                            <td style={{ textAlign: "right" }}>+{num(b.ingresos, 0)}</td>
+                            <td style={{ textAlign: "right" }}>
+                              −{num(b.egresos, 0)}
+                              {b.perdidas.valor === null ? "*" : ""}
+                            </td>
+                            <td style={{ textAlign: "right" }}>= {num(b.parcial, 0)}</td>
+                            <td className="muted">
+                              {r?.cargado_por ?? ""}
+                              {r?.aviso_medico ? ` · ⚠ ${r.aviso_medico}` : ""}
+                            </td>
+                          </>
+                        ) : (
+                          <td colSpan={4} className="muted">
+                            {salteada ? "salteada (sin datos)" : b.estado === "faltante" ? "sin cargar" : "en curso"}
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            {balance.horasSinPerdidas > 0 && <div className="tiny muted">* sin pérdidas insensibles (falta peso).</div>}
+          </details>
+        </>
+      )}
+    </div>
+  );
+}
+
+function ResumenBalance({ acumulado, faltan }: { acumulado: number; faltan: number }) {
+  return (
+    <div className="tiny" style={{ marginTop: 4 }}>
+      Balance acumulado: <strong>{num(acumulado, 0)} mL</strong>
+      {faltan > 0 && (
+        <span style={{ color: "var(--red)" }}>
+          {" "}
+          · faltan {faltan} {faltan === 1 ? "hora" : "horas"}
+        </span>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------
+// La fila de UNA hora. Se monta de nuevo (key) cada vez que cambia la
+// hora, así arranca limpia: bombas precargadas de la hora anterior
+// ("copiado"), líquidos, signos, diuresis y SNG vacíos.
+// ---------------------------------------------------------------------
+function FilaHora({
+  donanteId,
+  pesoKg,
+  registros,
+  infusiones,
+  bombas,
+  lab,
+  onRegistrosChange,
+  onInfusionesChange,
+  onBombasChange,
+  onLabChange,
+  onGuardarPeso,
+  inicio,
+  esHoraActual,
+  esProxima,
+  acumuladoPrevio,
+  faltan,
+  cargadoPor,
+  onCargadoPor,
+  onFijar,
+  onListo,
+  onSaltar,
+}: Comunes & {
+  inicio: number;
+  esHoraActual: boolean;
+  esProxima: boolean; // la próxima sin cargar (se puede saltar); si no, una hora anterior abierta a mano
+  acumuladoPrevio: number;
+  faltan: number;
+  cargadoPor: string;
+  onCargadoPor: (nombre: string) => void;
+  // Mientras se guarda, la hora queda fija: al aparecer su registro, "la
+  // próxima sin cargar" cambiaría y el formulario se iría antes de
+  // terminar (y un error de las bombas no se vería).
+  onFijar: () => void;
+  onListo: () => void;
+  onSaltar: () => void;
+}) {
+  const reg = registroDeLaHora(registros, inicio);
+  const [precarga] = useState(() => filaPrecargada(registros, bombas, infusiones, inicio).bombas);
+  const [liquidos, setLiquidos] = useState<Record<CampoLiquido, string>>(
+    () => Object.fromEntries(LIQUIDOS_ENFERMERIA.map((l) => [l.campo, reg ? aTexto(reg[l.campo]) : ""])) as Record<CampoLiquido, string>
+  );
+  const [bombasForm, setBombasForm] = useState<BombasForm>(() =>
+    reg
+      ? bombasFormDesde(
+          bombasDeFila(bombas, reg.id).map((b) => ({ droga: b.droga, velocidad_ml_h: b.velocidad_ml_h, dilucion_id: b.dilucion_id })),
+          false
+        )
+      : bombasFormDesde(precarga, true)
+  );
+  const [diuresis, setDiuresis] = useState(aTexto(reg?.diuresis_ml));
+  const [sng, setSng] = useState(aTexto(reg?.egr_sng_drenajes_ml));
+  const [perdidasManual, setPerdidasManual] = useState<string | null>(reg?.perdidas_insensibles_editadas ? aTexto(reg.perdidas_insensibles_ml) : null);
+  const [signos, setSignos] = useState<Partial<Record<Signo, string>>>(() =>
+    reg ? Object.fromEntries(SIGNOS.map((s) => [s.campo, aTexto(reg[s.campo])])) : {}
+  );
+  const [glucemia, setGlucemia] = useState("");
+  const [glucemiaHora, setGlucemiaHora] = useState(() => aInputLocal(new Date(momentoActual()).toISOString()));
+  const [aviso, setAviso] = useState(reg?.aviso_medico ?? "");
+  const [nombre, setNombre] = useState(cargadoPor);
+  const [editandoNombre, setEditandoNombre] = useState(cargadoPor.trim() === "");
+  const [pendiente, setPendiente] = useState<string | null>(null);
+  const [anulando, setAnulando] = useState(false);
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const ultimaGlucemia =
+    ordenarPorHora(lab.filter((v) => v.parametro === "glucemia" && !v.anulado).map((v) => ({ ...v, registrado_en: v.medido_en }))).pop() ?? null;
+
+  // ---------------------------------------------------------- totales en vivo
   const otros = registros.filter((r) => r.id !== reg?.id);
-  const perdidas = filaForm ? perdidasDeFila(filaForm, [...otros, filaForm], pesoKg) : null;
-  const velocidadesForm = Object.values(bombasForm).map((f) => ({ velocidad_ml_h: numeroO(f?.velocidadTexto ?? "") ?? 0 }));
-  const totales = filaForm ? totalesHora(filaForm, velocidadesForm, perdidas?.valor ?? null) : null;
-  const acumuladoPrevio =
-    horaSel === null
-      ? 0
-      : balance.horas.reduce((acc, h) => (h.estado === "cargada" && h.inicio < horaSel ? h.acumulado : acc), 0);
+  const filaForm: FilaHoraria = {
+    id: reg?.id ?? "nueva",
+    registrado_en: reg?.registrado_en ?? new Date(inicio).toISOString(),
+    anulado: false,
+    temperatura: numeroO(signos.temperatura ?? ""),
+    diuresis_ml: numeroO(diuresis),
+    egr_sng_drenajes_ml: numeroO(sng),
+    perdidas_insensibles_ml: perdidasManual !== null ? numeroO(perdidasManual) : null,
+    perdidas_insensibles_editadas: perdidasManual !== null,
+    ...(Object.fromEntries(LIQUIDOS_ENFERMERIA.map((l) => [l.campo, numeroO(liquidos[l.campo])])) as Record<CampoLiquido, number | null>),
+  };
+  const perdidas = perdidasDeFila(filaForm, [...otros, filaForm], pesoKg);
+  const totales = totalesHora(
+    filaForm,
+    Object.values(bombasForm).map((f) => ({ velocidad_ml_h: numeroO(f?.velocidadTexto ?? "") ?? 0 })),
+    perdidas.valor
+  );
 
   // ---------------------------------------------------------- guardar
   async function guardar(confirmadoPlausible = false) {
-    if (horaSel === null) return;
     setError(null);
     const valores: Record<string, number | null> = {};
     for (const l of LIQUIDOS_ENFERMERIA) {
-      const n = aNumero(liquidos[l.campo].texto);
-      if (n !== null && Number.isNaN(n)) return setError(`Valor inválido en ${l.etiqueta}.`);
+      const n = aNumero(liquidos[l.campo]);
+      if (n !== null && (Number.isNaN(n) || n < 0)) return setError(`Valor inválido en ${l.etiqueta}.`);
       valores[l.campo] = n;
     }
     for (const [campo, texto, etiqueta] of [
@@ -188,7 +354,7 @@ export default function MantenimientoEnfermeria({
       ["egr_sng_drenajes_ml", sng, "SNG / drenajes"],
     ] as const) {
       const n = aNumero(texto);
-      if (n !== null && Number.isNaN(n)) return setError(`Valor inválido en ${etiqueta}.`);
+      if (n !== null && (Number.isNaN(n) || n < 0)) return setError(`Valor inválido en ${etiqueta}.`);
       valores[campo] = n;
     }
     let perdidasEditadas: number | null = null;
@@ -229,10 +395,13 @@ export default function MantenimientoEnfermeria({
       return setPendiente(`¿Seguro? Fuera del rango esperable: ${textos.join("; ")}.`);
     }
 
+    const quien = nombre.trim();
+    if (quien !== cargadoPor) onCargadoPor(quien);
+    onFijar();
     setGuardando(true);
     try {
       // 1) La fila de la hora (completa la existente o crea una a hh:00).
-      const registradoEn = reg?.registrado_en ?? new Date(horaSel).toISOString();
+      const registradoEn = reg?.registrado_en ?? new Date(inicio).toISOString();
       const anteriorVigente = otros.some((r) => !r.anulado && r.registrado_en < registradoEn);
       const datos: DatosRegistro = {
         registrado_en: registradoEn,
@@ -240,32 +409,24 @@ export default function MantenimientoEnfermeria({
         diuresis_es_ultima_hora: !anteriorVigente,
         perdidas_insensibles_ml: perdidasEditadas,
         perdidas_insensibles_editadas: perdidasEditadas !== null,
-        cargado_por: cargadoPor.trim() || null,
+        cargado_por: quien || null,
         aviso_medico: aviso.trim() || null,
       };
       const guardado = await guardarRegistro(supabase, donanteId, datos, reg?.id ?? null);
       onRegistrosChange(reg ? registros.map((r) => (r.id === reg.id ? guardado : r)) : [...registros, guardado]);
 
-      // 2) Bombas de la hora (y las diluciones confirmadas con el toque).
+      // 2) Bombas de la hora (y los seteos confirmados con "Listo").
       const instante = esHoraActual ? new Date(momentoActual()).toISOString() : registradoEn;
-      const { nuevasInfusiones, bombas: deLaFila } = await guardarBombasDeFila(
-        supabase,
-        donanteId,
-        guardado.id,
-        pb.filas,
-        instante,
-        cargadoPor.trim() || null
-      );
+      const { nuevasInfusiones, bombas: deLaFila } = await guardarBombasDeFila(supabase, donanteId, guardado.id, pb.filas, instante, quien || null);
       if (nuevasInfusiones.length) onInfusionesChange([...infusiones, ...nuevasInfusiones]);
       onBombasChange([...bombas.filter((b) => b.registro_id !== guardado.id), ...deLaFila]);
 
-      // 3) Glucemia: va a laboratorio_valores (una sola fuente), con su hora de medición.
+      // 3) Glucemia: a laboratorio_valores (una sola fuente), con su hora de medición.
       if (glu !== null && gluIso) {
         const v = await guardarGlucemia(supabase, donanteId, glu, gluIso, "enfermeria");
         onLabChange([v, ...lab]);
       }
-      setHoraSel(null);
-      setPendiente(null);
+      onListo(); // pasa sola a la próxima sin cargar (o "Al día")
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo guardar la hora.");
     } finally {
@@ -273,8 +434,23 @@ export default function MantenimientoEnfermeria({
     }
   }
 
-  // "Corregir" glucemia: un toque anula el valor y abre uno nuevo con
-  // el valor y la hora anteriores para editar.
+  async function anular() {
+    if (!reg) return;
+    setError(null);
+    onFijar();
+    setGuardando(true);
+    try {
+      await anularRegistro(supabase, reg.id);
+      onRegistrosChange(registros.map((r) => (r.id === reg.id ? { ...r, anulado: true } : r)));
+      onListo();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo anular la hora.");
+    } finally {
+      setGuardando(false);
+    }
+  }
+
+  // "Corregir" glucemia: un toque anula el valor y lo abre para cargarlo de nuevo.
   async function corregirGlucemia(v: ValorLaboratorio) {
     setError(null);
     try {
@@ -287,318 +463,187 @@ export default function MantenimientoEnfermeria({
     }
   }
 
-  // ---------------------------------------------------------- UI
-  const cambiarLiquido = (campo: CampoLiquido, texto: string) => setLiquidos((l) => ({ ...l, [campo]: { texto, copiado: false } }));
-  const sumarLiquido = (campo: CampoLiquido, ml: number) =>
-    setLiquidos((l) => ({ ...l, [campo]: { texto: aTexto((numeroO(l[campo].texto) ?? 0) + ml), copiado: false } }));
+  const campoMl = (etiqueta: string, valor: string, set: (x: string) => void) => (
+    <div className="field-row" key={etiqueta}>
+      <span className="field-label">{etiqueta}</span>
+      <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+        <input className="mini-input" inputMode="decimal" placeholder="ej. 500" style={{ width: 80 }} value={valor} onChange={(e) => set(e.target.value)} />
+        <span className="tiny">mL</span>
+      </span>
+    </div>
+  );
 
   return (
-    <div>
-      {/* ------------------------------------------------ arriba: hora y botón grande */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
-        <div>
-          <div style={{ fontSize: 22, fontWeight: 700 }}>{hora(new Date(ahora).toISOString())}</div>
-          <div className="tiny muted">
-            Balance acumulado: {num(balance.acumulado, 0)} mL
-            {balance.faltan > 0 && (
-              <span style={{ color: "var(--red)" }}>
-                {" "}
-                · faltan {balance.faltan} {balance.faltan === 1 ? "hora" : "horas"}
-              </span>
-            )}
-            {balance.horasSinPerdidas > 0 && !pesoKg && <span style={{ color: "var(--amber)" }}> · falta peso: balance sin pérdidas insensibles</span>}
-          </div>
+    <div style={{ border: "1px solid var(--border)", borderRadius: 10, padding: 10, marginBottom: 12 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, flexWrap: "wrap", marginBottom: 6 }}>
+        <div style={{ fontWeight: 700, fontSize: 16 }}>
+          Hora {textoHora(inicio)}
+          {reg ? <span className="tiny muted"> · ya cargada a las {hora(reg.registrado_en)}</span> : null}
         </div>
-        <button
-          className="btn btn-accent"
-          style={{ fontSize: 16, padding: "12px 18px" }}
-          onClick={() => {
-            setSolapa("hora");
-            abrirHora(horaActual);
-          }}
-        >
-          Cargar hora {textoHora(horaActual)}
-        </button>
+        {!esProxima && !guardando && (
+          <button className="btn btn-sm" onClick={onListo}>
+            Volver a la próxima
+          </button>
+        )}
       </div>
+      <ErrorVisible mensaje={error} />
 
-      {alarmas.length > 0 && (
-        <div style={{ marginBottom: 10 }}>
-          {alarmas.map((a) => (
-            <button
-              key={a.inicio}
-              className="btn btn-sm"
-              style={{ color: "var(--red)", marginRight: 6, marginBottom: 4 }}
-              onClick={() => {
-                setSolapa("hora");
-                abrirHora(a.inicio);
-              }}
-            >
-              ● {a.texto}
-            </button>
-          ))}
+      <div className="section-label">Signos</div>
+      {SIGNOS.map((s) => (
+        <div className="field-row" key={s.campo}>
+          <span className="field-label">
+            {s.etiqueta} ({s.unidad})
+          </span>
+          <input
+            className="mini-input"
+            inputMode="decimal"
+            style={{ width: 80 }}
+            value={signos[s.campo] ?? ""}
+            onChange={(e) => setSignos((x) => ({ ...x, [s.campo]: e.target.value }))}
+          />
+        </div>
+      ))}
+      <div className="field-row">
+        <span className="field-label">
+          Glucemia (mg/dL)
+          {ultimaGlucemia && (
+            <span className="tiny muted" style={{ display: "block" }}>
+              Última: {num(ultimaGlucemia.valor, 0)} · {fechaHora(ultimaGlucemia.medido_en)} ·{" "}
+              {ultimaGlucemia.origen === "enfermeria" ? "enfermería" : "laboratorio"}{" "}
+              <button className="btn btn-sm" style={{ fontSize: 11 }} onClick={() => corregirGlucemia(ultimaGlucemia)}>
+                Corregir
+              </button>
+            </span>
+          )}
+        </span>
+        <input className="mini-input" inputMode="decimal" style={{ width: 80 }} value={glucemia} onChange={(e) => setGlucemia(e.target.value)} />
+      </div>
+      {glucemia.trim() !== "" && (
+        <div className="field-row">
+          <span className="field-label">Hora de medición de la glucemia</span>
+          <input type="datetime-local" className="mini-input" value={glucemiaHora} onChange={(e) => setGlucemiaHora(e.target.value)} />
         </div>
       )}
 
-      <div className="btn-row" style={{ marginBottom: 10 }}>
-        <button className={`btn btn-sm ${solapa === "hora" ? "btn-accent" : ""}`} onClick={() => setSolapa("hora")}>
-          Hora
-        </button>
-        <button className={`btn btn-sm ${solapa === "bolos" ? "btn-accent" : ""}`} onClick={() => setSolapa("bolos")}>
-          Bolos
-        </button>
+      <div className="section-label" style={{ marginTop: 8 }}>Líquidos de esta hora</div>
+      {LIQUIDOS_ENFERMERIA.map((l) => campoMl(l.etiqueta, liquidos[l.campo], (x) => setLiquidos((v) => ({ ...v, [l.campo]: x }))))}
+
+      <div className="section-label" style={{ marginTop: 8 }}>Bombas</div>
+      <BombasDeLaHora form={bombasForm} onChange={setBombasForm} precarga={precarga} infusiones={infusiones} pesoKg={pesoKg} onGuardarPeso={onGuardarPeso} />
+
+      <div className="section-label" style={{ marginTop: 8 }}>Egresos</div>
+      {campoMl("Diuresis", diuresis, setDiuresis)}
+      {campoMl("SNG / drenajes", sng, setSng)}
+      <div className="field-row">
+        <span className="field-label">
+          Pérdidas insensibles
+          {perdidasManual !== null && (
+            <span className="chip chip-amber" style={{ marginLeft: 6 }}>
+              editado
+            </span>
+          )}
+          <span className="tiny muted" style={{ display: "block" }}>
+            {perdidasManual !== null ? "Editado a mano." : perdidas.faltaPeso ? "Falta peso: balance sin pérdidas insensibles." : "Calculado por peso y temperatura. Editable."}
+          </span>
+        </span>
+        <span style={{ display: "flex", gap: 4, alignItems: "center" }}>
+          <input
+            className="mini-input"
+            inputMode="decimal"
+            style={{ width: 80 }}
+            value={perdidasManual ?? aTexto(perdidas.valor === null ? null : Number(perdidas.valor.toFixed(1)))}
+            onChange={(e) => setPerdidasManual(e.target.value)}
+          />
+          <span className="tiny">mL</span>
+          {perdidasManual !== null && (
+            <button className="btn btn-sm" onClick={() => setPerdidasManual(null)}>
+              Usar cálculo
+            </button>
+          )}
+        </span>
+      </div>
+      {perdidas.faltaPeso && perdidasManual === null && <PedirPeso onGuardar={onGuardarPeso} />}
+
+      {/* ------------------------------------------------ final de la fila */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1fr auto 1fr",
+          alignItems: "center",
+          gap: 8,
+          marginTop: 12,
+          padding: "10px 0",
+          borderTop: "1px solid var(--border)",
+        }}
+      >
+        <div>
+          <div className="tiny muted">Ingresos</div>
+          <div style={{ fontWeight: 600 }}>{num(totales.ingresos, 0)} mL</div>
+        </div>
+        <div style={{ textAlign: "center" }}>
+          <div className="tiny muted">Balance acumulado</div>
+          <div style={{ fontSize: 24, fontWeight: 700 }}>{num(acumuladoPrevio + totales.parcial, 0)} mL</div>
+        </div>
+        <div style={{ textAlign: "right" }}>
+          <div className="tiny muted">Egresos</div>
+          <div style={{ fontWeight: 600 }}>{num(totales.egresos, 0)} mL</div>
+        </div>
+      </div>
+      <div className="tiny muted" style={{ textAlign: "center" }}>
+        Balance de esta hora: {num(totales.parcial, 0)} mL
+        {faltan > 0 && (
+          <span style={{ color: "var(--red)" }}>
+            {" "}
+            · faltan {faltan} {faltan === 1 ? "hora" : "horas"}
+          </span>
+        )}
       </div>
 
-      {solapa === "bolos" ? (
-        <Bolos donanteId={donanteId} infusiones={infusiones} onInfusionesChange={onInfusionesChange} />
+      {/* ------------------------------------------------ quién y aviso */}
+      <div className="field-row" style={{ marginTop: 10 }}>
+        <span className="field-label">Cargado por</span>
+        {editandoNombre ? (
+          <input className="mini-input" style={{ width: 160 }} value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Tu nombre (se recuerda)" />
+        ) : (
+          <span className="field-value">
+            {nombre}{" "}
+            <button className="btn btn-sm" style={{ fontSize: 11 }} onClick={() => setEditandoNombre(true)}>
+              cambiar
+            </button>
+          </span>
+        )}
+      </div>
+      <details open={aviso.trim() !== "" || undefined}>
+        <summary className="tiny">Aviso al médico (opcional)</summary>
+        <input className="mini-input" style={{ width: "100%", maxWidth: 320, marginTop: 4 }} value={aviso} onChange={(e) => setAviso(e.target.value)} placeholder="Nota corta" />
+      </details>
+
+      {pendiente ? (
+        <Confirmacion texto={pendiente} textoSi="Sí, guardar" ocupado={guardando} onSi={() => guardar(true)} onNo={() => setPendiente(null)} />
+      ) : anulando ? (
+        <Confirmacion
+          texto={`¿Anular la hora ${textoHora(inicio)}? Va a quedar tachada y sin dato (no cero). Si fue un error, volvé a cargarla.`}
+          textoSi="Sí, anular"
+          ocupado={guardando}
+          onSi={anular}
+          onNo={() => setAnulando(false)}
+        />
       ) : (
-        <>
-          <details style={{ marginBottom: 10 }}>
-            <summary className="tiny">Bombas en curso (dosis en vivo){estado.filaDato ? ` · última fila ${hora(estado.filaDato)}` : ""}</summary>
-            <BombasEnCurso estado={estado} donanteId={donanteId} pesoKg={pesoKg} infusiones={infusiones} onInfusionesChange={onInfusionesChange} />
-          </details>
-
-          {/* ------------------------------------------------ grilla de horas */}
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 10 }}>
-            {grilla.map((g) => (
-              <button
-                key={g.inicio}
-                className="btn btn-sm"
-                title={g.estado === "cargada" ? "Cargada" : g.estado === "faltante" ? "Sin cargar" : "En curso"}
-                onClick={() => abrirHora(g.inicio)}
-                style={{
-                  minWidth: 48,
-                  borderColor: g.estado === "cargada" ? "var(--green)" : g.estado === "faltante" ? "var(--red)" : "var(--border)",
-                  color: g.estado === "faltante" ? "var(--red)" : undefined,
-                  background: horaSel === g.inicio ? "var(--accent-dim)" : undefined,
-                }}
-              >
-                {textoHora(g.inicio)} {g.estado === "cargada" ? "✓" : g.estado === "faltante" ? "!" : ""}
-              </button>
-            ))}
-          </div>
-
-          <ErrorVisible mensaje={error} />
-
-          {/* ------------------------------------------------ fila de la hora */}
-          {horaSel !== null && totales && (
-            <div style={{ border: "1px solid var(--border)", borderRadius: 10, padding: 10, marginBottom: 12 }}>
-              <div style={{ fontWeight: 700, marginBottom: 6 }}>
-                Hora {textoHora(horaSel)}
-                {reg ? <span className="tiny muted"> · completa el registro de las {hora(reg.registrado_en)}</span> : null}
-              </div>
-
-              <div className="section-label">Signos</div>
-              {SIGNOS.map((s) => (
-                <div className="field-row" key={s.campo}>
-                  <span className="field-label">
-                    {s.etiqueta} ({s.unidad})
-                  </span>
-                  <input
-                    className="mini-input"
-                    inputMode="decimal"
-                    style={{ width: 70 }}
-                    value={signos[s.campo] ?? ""}
-                    onChange={(e) => setSignos((x) => ({ ...x, [s.campo]: e.target.value }))}
-                  />
-                </div>
-              ))}
-              <div className="field-row">
-                <span className="field-label">
-                  Glucemia (mg/dL)
-                  {ultimaGlucemia && (
-                    <span className="tiny muted" style={{ display: "block" }}>
-                      Última: {num(ultimaGlucemia.valor, 0)} · {fechaHora(ultimaGlucemia.medido_en)} ·{" "}
-                      {ultimaGlucemia.origen === "enfermeria" ? "enfermería" : "laboratorio"}{" "}
-                      <button className="btn btn-sm" style={{ fontSize: 11 }} onClick={() => corregirGlucemia(ultimaGlucemia)}>
-                        Corregir
-                      </button>
-                    </span>
-                  )}
-                </span>
-                <input className="mini-input" inputMode="decimal" style={{ width: 70 }} value={glucemia} onChange={(e) => setGlucemia(e.target.value)} />
-              </div>
-              {glucemia.trim() !== "" && (
-                <div className="field-row">
-                  <span className="field-label">Hora de medición de la glucemia</span>
-                  <input type="datetime-local" className="mini-input" value={glucemiaHora} onChange={(e) => setGlucemiaHora(e.target.value)} />
-                </div>
-              )}
-
-              <div className="section-label" style={{ marginTop: 8 }}>Ingresos (mL)</div>
-              {LIQUIDOS_ENFERMERIA.map((l) => (
-                <div className="field-row" key={l.campo}>
-                  <span className="field-label">
-                    {l.etiqueta}
-                    {liquidos[l.campo].copiado && <span className="tiny muted"> · copiado de la hora anterior</span>}
-                  </span>
-                  <span style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap" }}>
-                    {BOTONES_RAPIDOS_ML.map((ml) => (
-                      <button key={ml} className="btn btn-sm" onClick={() => sumarLiquido(l.campo, ml)}>
-                        +{ml}
-                      </button>
-                    ))}
-                    <input
-                      className="mini-input"
-                      inputMode="decimal"
-                      style={{ width: 70 }}
-                      value={liquidos[l.campo].texto}
-                      onChange={(e) => cambiarLiquido(l.campo, e.target.value)}
-                    />
-                  </span>
-                </div>
-              ))}
-
-              <div className="section-label" style={{ marginTop: 8 }}>Bombas (mL/h; suman al ingreso de la hora)</div>
-              <BombasDeLaHora
-                form={bombasForm}
-                onChange={setBombasForm}
-                precarga={precarga}
-                infusiones={infusiones}
-                pesoKg={pesoKg}
-                onGuardarPeso={onGuardarPeso}
-              />
-              <div className="field-row" style={{ marginTop: 6 }}>
-                <span className="field-label" style={{ fontWeight: 600 }}>
-                  Total ingresos
-                  <span className="tiny muted" style={{ display: "block" }}>
-                    Líquidos {num(totales.liquidosMl, 0)} + bombas {num(totales.bombasMl, 1)} mL
-                  </span>
-                </span>
-                <span className="field-value">{num(totales.ingresos, 1)} mL</span>
-              </div>
-
-              <div className="section-label" style={{ marginTop: 8 }}>Egresos (mL)</div>
-              <div className="field-row">
-                <span className="field-label">Diuresis</span>
-                <input className="mini-input" inputMode="decimal" style={{ width: 70 }} value={diuresis} onChange={(e) => setDiuresis(e.target.value)} />
-              </div>
-              <div className="field-row">
-                <span className="field-label">SNG / drenajes</span>
-                <input className="mini-input" inputMode="decimal" style={{ width: 70 }} value={sng} onChange={(e) => setSng(e.target.value)} />
-              </div>
-              <div className="field-row">
-                <span className="field-label">
-                  Pérdidas insensibles
-                  {perdidasManual !== null && <span className="chip chip-amber" style={{ marginLeft: 6 }}>editado</span>}
-                  <span className="tiny muted" style={{ display: "block" }}>
-                    {perdidasManual !== null
-                      ? "Editado a mano."
-                      : perdidas?.faltaPeso
-                        ? "Falta peso: balance sin pérdidas insensibles."
-                        : `Calculado: ${num(perdidas?.valor, 1)} mL/h${
-                            perdidas?.temperatura
-                              ? ` (T ${num(perdidas.temperatura.valor, 1)} °C${perdidas.temperatura.propia ? "" : `, de las ${hora(perdidas.temperatura.registrado_en!)}`})`
-                              : " (sin temperatura: base 37 °C)"
-                          }. Editable.`}
-                  </span>
-                </span>
-                <span style={{ display: "flex", gap: 4, alignItems: "center" }}>
-                  <input
-                    className="mini-input"
-                    inputMode="decimal"
-                    style={{ width: 70 }}
-                    value={perdidasManual ?? aTexto(perdidas?.valor === null || perdidas?.valor === undefined ? null : Number(perdidas.valor.toFixed(1)))}
-                    onChange={(e) => setPerdidasManual(e.target.value)}
-                  />
-                  {perdidasManual !== null && (
-                    <button className="btn btn-sm" onClick={() => setPerdidasManual(null)}>
-                      Usar cálculo
-                    </button>
-                  )}
-                </span>
-              </div>
-              {perdidas?.faltaPeso && perdidasManual === null && <PedirPeso onGuardar={onGuardarPeso} />}
-              <div className="field-row">
-                <span className="field-label" style={{ fontWeight: 600 }}>Total egresos</span>
-                <span className="field-value">{num(totales.egresos, 1)} mL</span>
-              </div>
-
-              <div className="field-row" style={{ marginTop: 6 }}>
-                <span className="field-label" style={{ fontWeight: 600 }}>Balance de la hora</span>
-                <span className="field-value">{num(totales.parcial, 1)} mL</span>
-              </div>
-              <div className="field-row">
-                <span className="field-label" style={{ fontWeight: 600 }}>Balance acumulado</span>
-                <span className="field-value">{num(acumuladoPrevio + totales.parcial, 0)} mL</span>
-              </div>
-
-              <div className="field-row" style={{ marginTop: 8 }}>
-                <span className="field-label">Cargado por</span>
-                <input className="mini-input" style={{ width: 160 }} value={cargadoPor} onChange={(e) => setCargadoPor(e.target.value)} placeholder="Nombre" />
-              </div>
-              <div className="field-row">
-                <span className="field-label">Aviso al médico</span>
-                <input className="mini-input" style={{ width: 200 }} value={aviso} onChange={(e) => setAviso(e.target.value)} placeholder="Nota corta" />
-              </div>
-
-              {pendiente ? (
-                <Confirmacion texto={pendiente} textoSi="Sí, guardar" ocupado={guardando} onSi={() => guardar(true)} onNo={() => setPendiente(null)} />
-              ) : (
-                <div className="btn-row" style={{ marginTop: 10 }}>
-                  <button className="btn btn-accent" disabled={guardando} onClick={() => guardar()}>
-                    {guardando ? "Guardando…" : `Guardar hora ${textoHora(horaSel)}`}
-                  </button>
-                  <button className="btn btn-sm" disabled={guardando} onClick={() => setHoraSel(null)}>
-                    Cancelar
-                  </button>
-                </div>
-              )}
-            </div>
+        <div className="btn-row" style={{ marginTop: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <button className="btn btn-accent" style={{ fontSize: 16, padding: "10px 18px" }} disabled={guardando} onClick={() => guardar()}>
+            {guardando ? "Guardando…" : `Guardar hora ${textoHora(inicio)}`}
+          </button>
+          {esProxima && !reg && (
+            <button className="btn btn-sm" style={{ fontSize: 11 }} disabled={guardando} onClick={onSaltar}>
+              Saltar esta hora (sin datos)
+            </button>
           )}
-
-          {/* ------------------------------------------------ horas */}
-          <div className="section-label">Horas</div>
-          {balance.horas.length === 0 ? (
-            <div className="tiny muted">Todavía no hay horas cargadas.</div>
-          ) : (
-            <div style={{ overflowX: "auto" }}>
-              <table className="tiny" style={{ width: "100%", borderCollapse: "collapse" }}>
-                <thead>
-                  <tr style={{ textAlign: "right" }}>
-                    <th style={{ textAlign: "left" }}>Hora</th>
-                    <th>Ingresos</th>
-                    <th>Egresos</th>
-                    <th>Parcial</th>
-                    <th>Acumulado</th>
-                    <th style={{ textAlign: "left" }}>Cargó / aviso</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {[...balance.horas].reverse().map((b) => {
-                    if (b.estado !== "cargada") {
-                      return (
-                        <tr key={b.inicio} style={{ cursor: "pointer", color: b.estado === "faltante" ? "var(--red)" : undefined }} onClick={() => abrirHora(b.inicio)}>
-                          <td>{textoHora(b.inicio)}</td>
-                          <td colSpan={5} className="muted">
-                            {b.estado === "faltante" ? "sin dato (hora sin cargar)" : "en curso"}
-                          </td>
-                        </tr>
-                      );
-                    }
-                    const r = registros.find((x) => x.id === b.registroId);
-                    return (
-                      <tr key={b.inicio} style={{ textAlign: "right", cursor: "pointer" }} onClick={() => abrirHora(b.inicio)}>
-                        <td style={{ textAlign: "left" }}>{hora(b.registrado_en)}</td>
-                        <td>{num(b.ingresos, 0)}</td>
-                        <td>
-                          {num(b.egresos, 0)}
-                          {b.perdidas.valor === null ? "*" : ""}
-                        </td>
-                        <td>{num(b.parcial, 0)}</td>
-                        <td>{num(b.acumulado, 0)}</td>
-                        <td style={{ textAlign: "left" }}>
-                          {r?.cargado_por ?? ""}
-                          {r?.aviso_medico ? ` · ⚠ ${r.aviso_medico}` : ""}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-              {balance.horasSinPerdidas > 0 && <div className="tiny muted">* sin pérdidas insensibles (falta peso).</div>}
-            </div>
+          {reg && (
+            <button className="btn btn-sm" style={{ fontSize: 11 }} disabled={guardando} onClick={() => setAnulando(true)}>
+              Anular esta hora
+            </button>
           )}
-        </>
+        </div>
       )}
     </div>
   );

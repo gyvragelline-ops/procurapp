@@ -722,14 +722,47 @@ export function horasDelCaso(registros: { id: string; registrado_en: string; anu
   return horas;
 }
 
-// Alarmas del enfermero: horas sin cargar (salvaguarda principal).
-export function alarmasEnfermeria(horas: HoraGrilla[]): { inicio: number; texto: string }[] {
+// Alarmas del enfermero: horas sin cargar (salvaguarda principal). Las
+// horas salteadas a propósito ("sin datos") no alarman: siguen contando
+// en "faltan N horas".
+export function alarmasEnfermeria(horas: HoraGrilla[], salteadas: number[] = []): { inicio: number; texto: string }[] {
   return horas
-    .filter((h) => h.estado === "faltante")
+    .filter((h) => h.estado === "faltante" && !salteadas.includes(h.inicio))
     .map((h) => {
       const d = new Date(h.inicio);
       return { inicio: h.inicio, texto: `Hora ${String(d.getHours()).padStart(2, "0")} sin cargar` };
     });
+}
+
+// Una hora por vez: la PRÓXIMA SIN CARGAR (la más vieja sin fila y no
+// salteada), hasta la hora actual. null = al día (la próxima carga es la
+// hora siguiente).
+export function proximaHoraSinCargar(horas: HoraGrilla[], salteadas: number[] = []): number | null {
+  return horas.find((h) => h.registroId === null && !salteadas.includes(h.inicio))?.inicio ?? null;
+}
+
+// ---------------------------------------------------------------------
+// Seteo de una bomba: "¿Ampollas?" [cantidad] de [contenido] y "¿En
+// cuánto la diluiste?" [mL]. La cantidad es obligatoria (sin valor por
+// defecto).
+// ---------------------------------------------------------------------
+export function seteoDesdeCampos(
+  droga: DrogaInfusion,
+  campos: { cantidad: number | null; contenidoPorAmpolla: number | null; volumenMl: number | null }
+): { ok: true; dilucion: Dilucion; concentracion: number; unidad: UnidadConcentracion } | { ok: false; error: string } {
+  const valido = (n: number | null) => n !== null && !Number.isNaN(n) && n > 0;
+  if (!valido(campos.cantidad)) return { ok: false, error: "Falta la cantidad de ampollas." };
+  if (!valido(campos.contenidoPorAmpolla)) return { ok: false, error: "Falta cuánto trae cada ampolla." };
+  if (!valido(campos.volumenMl)) return { ok: false, error: "Falta en cuánto la diluiste (mL)." };
+  const dilucion: Dilucion = {
+    ampollas: campos.cantidad!,
+    contenidoPorAmpolla: campos.contenidoPorAmpolla!,
+    unidadContenido: unidadesContenidoPara(droga)[0],
+    volumenFinalMl: campos.volumenMl!,
+  };
+  const c = concentracion(droga, dilucion);
+  if (!c.ok) return { ok: false, error: c.error };
+  return { ok: true, dilucion, concentracion: c.valor, unidad: c.unidad };
 }
 
 // ---------------------------------------------------------------------
