@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
+  GRUPOS_LAB,
+  MAX_TEXTO_LAB,
   PARAMETROS_LAB_MANTENIMIENTO,
   anularValorLaboratorio,
   guardarTomaLaboratorio,
@@ -13,24 +15,24 @@ import { Confirmacion, ErrorVisible, aInputLocal, aNumero, esFutura, fechaHora, 
 
 const supabase = createClient();
 
-// Formulario mínimo de laboratorio de Mantenimiento: una extracción
-// (misma hora, mismo toma_id) con Na, K, glucemia, pH, PaO2, FiO2 de la
-// gasometría y Hb. La FiO2 viene precargada del último registro y es
-// editable (la PaFi usa la FiO2 del momento de la gasometría).
+// Laboratorio de Mantenimiento (tipeado): una extracción (misma hora,
+// mismo toma_id) con los valores que se carguen, por grupos. La unidad va
+// siempre con el valor; troponina y CPK-MB la eligen al cargar. El
+// sedimento urinario es texto libre corto, fuera de las reglas. La FiO2
+// de la PaFi sale del respirador (no se pide acá).
 export default function MantenimientoLaboratorio({
   donanteId,
   valores,
-  fio2Ultima,
   onValoresChange,
 }: {
   donanteId: string;
   valores: ValorLaboratorio[];
-  fio2Ultima: number | null;
   onValoresChange: (v: ValorLaboratorio[]) => void;
 }) {
   const [abierto, setAbierto] = useState(false);
   const [horaTexto, setHoraTexto] = useState("");
   const [textos, setTextos] = useState<Record<string, string>>({});
+  const [unidades, setUnidades] = useState<Record<string, string>>({});
   const [pendiente, setPendiente] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -38,7 +40,8 @@ export default function MantenimientoLaboratorio({
 
   function abrir() {
     setHoraTexto(aInputLocal(new Date().toISOString()));
-    setTextos(fio2Ultima !== null ? { fio2: String(fio2Ultima).replace(".", ",") } : {});
+    setTextos({});
+    setUnidades({});
     setPendiente(null);
     setError(null);
     setAbierto(true);
@@ -50,20 +53,26 @@ export default function MantenimientoLaboratorio({
     const iso = new Date(horaTexto).toISOString();
     if (esFutura(iso)) return setError("La hora no puede ser futura.");
 
-    const items: { parametro: string; valor: number; unidad: string | null }[] = [];
-    for (const p of PARAMETROS_LAB_MANTENIMIENTO) {
-      const n = aNumero(textos[p.parametro] ?? "");
-      if (n === null) continue;
-      if (Number.isNaN(n)) return setError(`Valor inválido en ${p.etiqueta}.`);
-      items.push({ parametro: p.parametro, valor: n, unidad: p.unidad });
+    const items: { parametro: string; valor: number | null; unidad: string | null; valor_texto?: string | null }[] = [];
+    for (const g of GRUPOS_LAB) {
+      for (const p of g.parametros) {
+        const texto = (textos[p.parametro] ?? "").trim();
+        if (texto === "") continue;
+        if (p.texto) {
+          items.push({ parametro: p.parametro, valor: null, unidad: null, valor_texto: texto.slice(0, MAX_TEXTO_LAB) });
+          continue;
+        }
+        const n = aNumero(texto);
+        if (n === null || Number.isNaN(n)) return setError(`Valor inválido en ${p.etiqueta}.`);
+        const unidad = p.unidades ? unidades[p.parametro] ?? null : p.unidad;
+        if (p.unidades && !unidad) return setError(`Elegí la unidad de ${p.etiqueta}.`);
+        items.push({ parametro: p.parametro, valor: n, unidad });
+      }
     }
-    // La FiO2 sola no es un resultado: tiene que acompañar una PaO2.
-    const soloFio2 = items.every((i) => i.parametro === "fio2");
-    if (items.length === 0 || soloFio2) return setError("Cargá al menos un valor de laboratorio.");
+    if (items.length === 0) return setError("Cargá al menos un valor de laboratorio.");
 
-    const fuera = camposFueraDeRango(Object.fromEntries(items.map((i) => [i.parametro, i.valor])));
+    const fuera = camposFueraDeRango(Object.fromEntries(items.filter((i) => i.valor !== null).map((i) => [i.parametro, i.valor])));
     if (fuera.length > 0 && !confirmado) {
-      const etiqueta = (p: string) => PARAMETROS_LAB_MANTENIMIENTO.find((x) => x.parametro === p)?.etiqueta ?? p;
       return setPendiente(
         `¿Seguro? Fuera del rango esperable: ${fuera.map((f) => `${etiqueta(f.campo)} ${num(f.valor)} (${num(f.min)}-${num(f.max)})`).join("; ")}.`
       );
@@ -91,7 +100,8 @@ export default function MantenimientoLaboratorio({
       await anularValorLaboratorio(supabase, v.id);
       onValoresChange(valores.map((x) => (x.id === v.id ? { ...x, anulado: true } : x)));
       setHoraTexto(aInputLocal(v.medido_en));
-      setTextos({ [v.parametro]: String(v.valor).replace(".", ",") });
+      setTextos({ [v.parametro]: String(v.valor ?? "").replace(".", ",") });
+      setUnidades({});
       setPendiente(null);
       setAbierto(true);
     } catch (e) {
@@ -120,7 +130,10 @@ export default function MantenimientoLaboratorio({
   for (const v of [...valores].sort((a, b) => b.medido_en.localeCompare(a.medido_en))) {
     tomas.set(v.toma_id, [...(tomas.get(v.toma_id) ?? []), v]);
   }
-  const etiqueta = (p: string) => PARAMETROS_LAB_MANTENIMIENTO.find((x) => x.parametro === p)?.etiqueta ?? p;
+  function etiqueta(p: string) {
+    return PARAMETROS_LAB_MANTENIMIENTO.find((x) => x.parametro === p)?.etiqueta ?? p;
+  }
+  const textoValor = (v: ValorLaboratorio) => (v.valor === null ? v.valor_texto ?? "" : `${num(v.valor)}${v.unidad ? ` ${v.unidad}` : ""}`);
 
   return (
     <div>
@@ -136,20 +149,45 @@ export default function MantenimientoLaboratorio({
             <span className="field-label">Hora de la extracción</span>
             <input type="datetime-local" className="mini-input" value={horaTexto} onChange={(e) => setHoraTexto(e.target.value)} />
           </div>
-          {PARAMETROS_LAB_MANTENIMIENTO.map((p) => (
-            <div className="field-row" key={p.parametro}>
-              <span className="field-label">
-                {p.etiqueta}
-                {p.unidad ? ` (${p.unidad})` : ""}
-              </span>
-              <input
-                className="mini-input"
-                inputMode="decimal"
-                style={{ width: 110 }}
-                value={textos[p.parametro] ?? ""}
-                onChange={(e) => setTextos((t) => ({ ...t, [p.parametro]: e.target.value }))}
-              />
-            </div>
+          {GRUPOS_LAB.map((g, i) => (
+            <details key={g.grupo} open={i === 0 || g.parametros.some((p) => (textos[p.parametro] ?? "") !== "") || undefined}>
+              <summary className="tiny" style={{ marginTop: 6 }}>
+                {g.grupo}
+              </summary>
+              {g.parametros.map((p) => (
+                <div className="field-row" key={p.parametro}>
+                  <span className="field-label">
+                    {p.etiqueta}
+                    {p.unidad ? ` (${p.unidad})` : ""}
+                  </span>
+                  <span style={{ display: "inline-flex", gap: 4, alignItems: "center", whiteSpace: "nowrap" }}>
+                    <input
+                      className="mini-input"
+                      inputMode={p.texto ? "text" : "decimal"}
+                      maxLength={p.texto ? MAX_TEXTO_LAB : undefined}
+                      style={{ width: p.texto ? 200 : 90 }}
+                      value={textos[p.parametro] ?? ""}
+                      onChange={(e) => setTextos((t) => ({ ...t, [p.parametro]: e.target.value }))}
+                    />
+                    {p.unidades && (
+                      <select
+                        className="mini-input"
+                        value={unidades[p.parametro] ?? ""}
+                        onChange={(e) => setUnidades((u) => ({ ...u, [p.parametro]: e.target.value }))}
+                        aria-label={`Unidad de ${p.etiqueta}`}
+                      >
+                        <option value="">unidad…</option>
+                        {p.unidades.map((u) => (
+                          <option key={u} value={u}>
+                            {u}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </span>
+                </div>
+              ))}
+            </details>
           ))}
           {pendiente ? (
             <Confirmacion texto={pendiente} textoSi="Sí, guardar" ocupado={guardando} onSi={() => guardar(true)} onNo={() => setPendiente(null)} />
@@ -174,7 +212,7 @@ export default function MantenimientoLaboratorio({
             <div key={v.id}>
               <div className="field-row" style={{ opacity: v.anulado ? 0.5 : 1 }}>
                 <span className="field-label" style={{ textDecoration: v.anulado ? "line-through" : undefined }}>
-                  {etiqueta(v.parametro)}: {num(v.valor)} {v.unidad ?? ""}
+                  {etiqueta(v.parametro)}: {textoValor(v)}
                   {v.parametro === "glucemia" && v.origen ? (
                     <span className="muted"> · {v.origen === "enfermeria" ? "enfermería" : "laboratorio"}</span>
                   ) : null}

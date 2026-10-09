@@ -1,7 +1,16 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { guardarConReintento } from "./guardar";
 import type { Donante } from "./types";
-import { columnasSolucion, planGuardadoBombas, type BombaFormulario, type BombaHora, type InfusionFila, type Solucion } from "./mantenimiento-calculos";
+import {
+  columnasSolucion,
+  planGuardadoBombas,
+  type BombaFormulario,
+  type BombaHora,
+  type EventoRespirador,
+  type InfusionFila,
+  type MedicionMedico,
+  type Solucion,
+} from "./mantenimiento-calculos";
 
 // Acceso a datos del panel de Mantenimiento (tablas de
 // handoff/mantenimiento.sql). Escrituras con guardarConReintento: si
@@ -104,6 +113,7 @@ export type ConfigMantenimiento = {
   nutricion_previa: "si" | "no" | null;
   monitoreo_avanzado_activo: boolean;
   corazon_candidato: "si" | "no" | "sin_definir";
+  pulmon_candidato: "si" | "no" | "sin_definir";
 };
 
 export type DatosRegistro = Partial<Omit<RegistroMantenimiento, "id" | "anulado">> & { registrado_en: string };
@@ -113,24 +123,39 @@ const COLS_REGISTRO =
 const COLS_INFUSION =
   "id, registrado_en, droga, tipo, ampollas, contenido_por_ampolla, unidad_contenido, volumen_final_ml, velocidad_ml_h, dosis_calculada, unidad_dosis, motivo, cargado_por, solucion_dilucion, solucion_dilucion_otra, anulado";
 const COLS_BOMBA = "id, registro_id, droga, velocidad_ml_h, dilucion_id, anulado";
-const COLS_CONFIG = "donante_id, nutricion_previa, monitoreo_avanzado_activo, corazon_candidato";
+const COLS_CONFIG = "donante_id, nutricion_previa, monitoreo_avanzado_activo, corazon_candidato, pulmon_candidato";
+const COLS_RESPIRADOR =
+  "id, registrado_en, modo, modo_otro, fio2, peep, volumen_corriente, frecuencia, presion_plateau, presion_pico, anulado";
+const COLS_MEDICO =
+  "id, registrado_en, disfuncion_miocardica, pvc, gc, ic_medido, sat_venosa, delta_pp, delta_vs, delta_co2_espirado, indice_vena_cava, resultado_pasivo_miembros, anulado";
 
 export async function cargarMantenimiento(
   supabase: SupabaseClient,
   donanteId: string
-): Promise<{ registros: RegistroMantenimiento[]; infusiones: InfusionFila[]; bombas: BombaHora[]; config: ConfigMantenimiento | null }> {
-  const [reg, inf, bom, cfg] = await Promise.all([
+): Promise<{
+  registros: RegistroMantenimiento[];
+  infusiones: InfusionFila[];
+  bombas: BombaHora[];
+  respirador: EventoRespirador[];
+  mediciones: MedicionMedico[];
+  config: ConfigMantenimiento | null;
+}> {
+  const [reg, inf, bom, resp, med, cfg] = await Promise.all([
     supabase.from("mantenimiento_registros").select(COLS_REGISTRO).eq("donante_id", donanteId).order("registrado_en"),
     supabase.from("mantenimiento_infusiones").select(COLS_INFUSION).eq("donante_id", donanteId).order("registrado_en"),
     supabase.from("mantenimiento_bombas_hora").select(COLS_BOMBA).eq("donante_id", donanteId),
+    supabase.from("mantenimiento_respirador").select(COLS_RESPIRADOR).eq("donante_id", donanteId).order("registrado_en"),
+    supabase.from("mantenimiento_medico").select(COLS_MEDICO).eq("donante_id", donanteId).order("registrado_en"),
     supabase.from("mantenimiento_config").select(COLS_CONFIG).eq("donante_id", donanteId).maybeSingle(),
   ]);
-  const error = reg.error ?? inf.error ?? bom.error ?? cfg.error;
+  const error = reg.error ?? inf.error ?? bom.error ?? resp.error ?? med.error ?? cfg.error;
   if (error) throw new Error(`No se pudieron cargar los datos de Mantenimiento: ${error.message}`);
   return {
     registros: (reg.data as RegistroMantenimiento[]) ?? [],
     infusiones: (inf.data as InfusionFila[]) ?? [],
     bombas: (bom.data as BombaHora[]) ?? [],
+    respirador: (resp.data as EventoRespirador[]) ?? [],
+    mediciones: (med.data as MedicionMedico[]) ?? [],
     config: (cfg.data as ConfigMantenimiento | null) ?? null,
   };
 }
@@ -277,6 +302,40 @@ export async function guardarBombasDeFila(
   }
   const bombas = await guardarBombasHora(supabase, donanteId, registroId, formulario);
   return { nuevasInfusiones, bombas };
+}
+
+// Respirador: cada cambio es un evento completo con su hora (solo se
+// agregan; un error se anula y se carga el correcto).
+export type NuevoEventoRespirador = Omit<EventoRespirador, "id" | "anulado">;
+
+export async function guardarEventoRespirador(supabase: SupabaseClient, donanteId: string, datos: NuevoEventoRespirador): Promise<EventoRespirador> {
+  const r = await guardarConReintento(() =>
+    supabase.from("mantenimiento_respirador").insert({ ...datos, donante_id: donanteId }).select(COLS_RESPIRADOR).single()
+  );
+  if (!r.ok) throw new Error(r.mensaje);
+  return r.resultado.data as EventoRespirador;
+}
+
+export async function anularEventoRespirador(supabase: SupabaseClient, id: string): Promise<void> {
+  const r = await guardarConReintento(() => supabase.from("mantenimiento_respirador").update({ anulado: true }).eq("id", id));
+  if (!r.ok) throw new Error(r.mensaje);
+}
+
+// Mediciones del médico (disfunción miocárdica, monitoreo avanzado,
+// variables de volemia): una fila por carga, solo con lo completado.
+export type NuevaMedicion = Partial<Omit<MedicionMedico, "id" | "anulado">> & { registrado_en: string };
+
+export async function guardarMedicionMedico(supabase: SupabaseClient, donanteId: string, datos: NuevaMedicion): Promise<MedicionMedico> {
+  const r = await guardarConReintento(() =>
+    supabase.from("mantenimiento_medico").insert({ ...datos, donante_id: donanteId }).select(COLS_MEDICO).single()
+  );
+  if (!r.ok) throw new Error(r.mensaje);
+  return r.resultado.data as MedicionMedico;
+}
+
+export async function anularMedicionMedico(supabase: SupabaseClient, id: string): Promise<void> {
+  const r = await guardarConReintento(() => supabase.from("mantenimiento_medico").update({ anulado: true }).eq("id", id));
+  if (!r.ok) throw new Error(r.mensaje);
 }
 
 export async function guardarConfig(

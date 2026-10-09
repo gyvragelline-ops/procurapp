@@ -58,12 +58,14 @@ export function BombasEnCurso({
   pesoKg,
   infusiones,
   onInfusionesChange,
+  soloLectura = false,
 }: {
   estado: EstadoBombas;
   donanteId: string;
   pesoKg: number | null;
   infusiones: InfusionFila[];
   onInfusionesChange: (f: InfusionFila[]) => void;
+  soloLectura?: boolean; // vista del médico: "cambié la velocidad" es solo de enfermería
 }) {
   const [editando, setEditando] = useState<DrogaInfusion | null>(null);
   const [texto, setTexto] = useState("");
@@ -122,7 +124,7 @@ export function BombasEnCurso({
                 ) : null}
               </span>
             </span>
-            {editando !== b.droga && (
+            {!soloLectura && editando !== b.droga && (
               <button
                 className="btn btn-sm"
                 onClick={() => {
@@ -135,7 +137,7 @@ export function BombasEnCurso({
               </button>
             )}
           </div>
-          {editando === b.droga && (
+          {!soloLectura && editando === b.droga && (
             <div className="field-row">
               <span className="field-label tiny">Velocidad nueva (mL/h), con la hora de ahora. No cambia el balance.</span>
               <span style={{ display: "flex", gap: 4 }}>
@@ -164,10 +166,12 @@ export function Bolos({
   donanteId,
   infusiones,
   onInfusionesChange,
+  soloLectura = false,
 }: {
   donanteId: string;
   infusiones: InfusionFila[];
   onInfusionesChange: (f: InfusionFila[]) => void;
+  soloLectura?: boolean; // vista del médico: cargar y anular bolos es solo de enfermería
 }) {
   const [droga, setDroga] = useState<DrogaBolo | null>(null);
   const [dosisTexto, setDosisTexto] = useState("");
@@ -238,7 +242,7 @@ export function Bolos({
   return (
     <div>
       <ErrorVisible mensaje={error} />
-      <div className="tiny muted" style={{ marginBottom: 6 }}>Los bolos se registran con hora y dosis y no entran al balance.</div>
+      {!soloLectura && (
       <div className="btn-row" style={{ flexWrap: "wrap" }}>
         {DROGAS_BOLO.map((d) => (
           <button key={d} className={`btn btn-sm ${droga === d ? "btn-accent" : ""}`} onClick={() => abrir(d)}>
@@ -246,7 +250,8 @@ export function Bolos({
           </button>
         ))}
       </div>
-      {droga && (
+      )}
+      {!soloLectura && droga && (
         <div style={{ border: "1px solid var(--border)", borderRadius: 8, padding: 10, marginTop: 8 }}>
           <div className="field-row">
             <span className="field-label">
@@ -277,13 +282,13 @@ export function Bolos({
                 {fechaHora(f.registrado_en)} · {etiquetaDroga(f.droga)} · {num(f.dosis_calculada)} {f.unidad_dosis ?? ""}
                 {f.anulado ? " (anulado)" : ""}
               </span>
-              {!f.anulado && (
+              {!soloLectura && !f.anulado && (
                 <button className="btn btn-sm" onClick={() => setAnulandoId(f.id)}>
                   Anular
                 </button>
               )}
             </div>
-            {anulandoId === f.id && (
+            {!soloLectura && anulandoId === f.id && (
               <Confirmacion
                 texto="¿Anular este bolo? Va a quedar tachado. Si fue un error de carga, volvé a registrar el correcto."
                 textoSi="Sí, anular"
@@ -300,23 +305,16 @@ export function Bolos({
 }
 
 // ---------------------------------------------------------------------
-// Vista del médico: bombas en curso, bolos e historial de diluciones
+// Historial de seteos y cambios de velocidad. Anular: solo enfermería.
 // ---------------------------------------------------------------------
-// La velocidad de cada hora se carga en la fila horaria (Registro); las
-// diluciones se confirman ahí con un toque. Acá: gammas en vivo, "cambié
-// la velocidad", bolos y el historial (con anulación).
-export default function MantenimientoInfusiones({
-  pesoKg,
-  donanteId,
+export function HistorialSeteos({
   infusiones,
-  estado,
   onInfusionesChange,
+  soloLectura = false,
 }: {
-  pesoKg: number | null;
-  donanteId: string;
   infusiones: InfusionFila[];
-  estado: EstadoBombas;
   onInfusionesChange: (f: InfusionFila[]) => void;
+  soloLectura?: boolean;
 }) {
   const [anulandoId, setAnulandoId] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
@@ -337,51 +335,67 @@ export default function MantenimientoInfusiones({
   }
 
   const historial = ordenarPorHora(infusiones.filter((f) => f.tipo === "infusion")).reverse().slice(0, 20);
+  return (
+    <details style={{ marginTop: 8 }}>
+      <summary className="tiny">Historial de seteos y cambios de velocidad</summary>
+      <ErrorVisible mensaje={error} />
+      {historial.length === 0 && <div className="tiny muted">Sin seteos cargados.</div>}
+      {historial.map((f) => (
+        <div key={f.id}>
+          <div className="field-row" style={{ opacity: f.anulado ? 0.5 : 1 }}>
+            <span className="field-label" style={{ textDecoration: f.anulado ? "line-through" : undefined }}>
+              {fechaHora(f.registrado_en)} · {etiquetaDroga(f.droga)} · {textoInfusion(f)}
+              {f.anulado ? " (anulado)" : ""}
+            </span>
+            {!soloLectura && !f.anulado && (
+              <button className="btn btn-sm" onClick={() => setAnulandoId(f.id)}>
+                Anular
+              </button>
+            )}
+          </div>
+          {!soloLectura && anulandoId === f.id && (
+            <Confirmacion
+              texto="¿Anular esta fila? Va a quedar tachada y no cuenta. Si fue un error de carga, volvé a cargar la correcta."
+              textoSi="Sí, anular"
+              ocupado={guardando}
+              onSi={() => anular(f.id)}
+              onNo={() => setAnulandoId(null)}
+            />
+          )}
+        </div>
+      ))}
+    </details>
+  );
+}
 
+// ---------------------------------------------------------------------
+// Vista del médico: SOLO LECTURA (bombas en curso, bolos e historial).
+// Cargar, cambiar la velocidad y anular es solo de enfermería.
+// ---------------------------------------------------------------------
+export default function MantenimientoInfusiones({
+  pesoKg,
+  donanteId,
+  infusiones,
+  estado,
+  onInfusionesChange,
+}: {
+  pesoKg: number | null;
+  donanteId: string;
+  infusiones: InfusionFila[];
+  estado: EstadoBombas;
+  onInfusionesChange: (f: InfusionFila[]) => void;
+}) {
   return (
     <div>
-      <ErrorVisible mensaje={error} />
-      <div className="tiny muted" style={{ marginBottom: 6 }}>
-        La velocidad de cada hora se carga en la fila horaria (Registro), igual que en Enfermería.
-      </div>
-      <BombasEnCurso estado={estado} donanteId={donanteId} pesoKg={pesoKg} infusiones={infusiones} onInfusionesChange={onInfusionesChange} />
-
+      <BombasEnCurso estado={estado} donanteId={donanteId} pesoKg={pesoKg} infusiones={infusiones} onInfusionesChange={onInfusionesChange} soloLectura />
       <div className="section-label" style={{ marginTop: 10 }}>Bolos</div>
-      <Bolos donanteId={donanteId} infusiones={infusiones} onInfusionesChange={onInfusionesChange} />
+      <Bolos donanteId={donanteId} infusiones={infusiones} onInfusionesChange={onInfusionesChange} soloLectura />
       {estado.ultimoBoloDesmopresina && (
         <div className="tiny muted" style={{ marginTop: 6 }}>
           Último bolo de desmopresina: {fechaHora(estado.ultimoBoloDesmopresina)} (informativo)
         </div>
       )}
-
-      <details style={{ marginTop: 8 }}>
-        <summary className="tiny">Historial de diluciones y cambios de velocidad</summary>
-        {historial.length === 0 && <div className="tiny muted">Sin diluciones cargadas.</div>}
-        {historial.map((f) => (
-          <div key={f.id}>
-            <div className="field-row" style={{ opacity: f.anulado ? 0.5 : 1 }}>
-              <span className="field-label" style={{ textDecoration: f.anulado ? "line-through" : undefined }}>
-                {fechaHora(f.registrado_en)} · {etiquetaDroga(f.droga)} · {textoInfusion(f)}
-                {f.anulado ? " (anulada)" : ""}
-              </span>
-              {!f.anulado && (
-                <button className="btn btn-sm" onClick={() => setAnulandoId(f.id)}>
-                  Anular
-                </button>
-              )}
-            </div>
-            {anulandoId === f.id && (
-              <Confirmacion
-                texto="¿Anular esta fila? Va a quedar tachada y no cuenta. Si fue un error de carga, volvé a cargar la correcta."
-                textoSi="Sí, anular"
-                ocupado={guardando}
-                onSi={() => anular(f.id)}
-                onNo={() => setAnulandoId(null)}
-              />
-            )}
-          </div>
-        ))}
-      </details>
+      <HistorialSeteos infusiones={infusiones} onInfusionesChange={onInfusionesChange} soloLectura />
     </div>
   );
 }

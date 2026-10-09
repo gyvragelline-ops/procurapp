@@ -30,7 +30,7 @@ import {
 } from "@/lib/procuracion/mantenimiento-calculos";
 import { LIQUIDOS_ENFERMERIA } from "@/lib/procuracion/mantenimiento-metas";
 import { BombasDeLaHora, avisosDosisDeFila, bombasFormDesde, bombasParaGuardar, type BombasForm } from "./mantenimiento-dilucion";
-import { Bolos, BombasEnCurso } from "./mantenimiento-infusiones";
+import { Bolos, BombasEnCurso, HistorialSeteos } from "./mantenimiento-infusiones";
 import { Confirmacion, ErrorVisible, PedirPeso, aInputLocal, aNumero, esFutura, fechaHora, hora, momentoActual, num } from "./mantenimiento-ui";
 
 const supabase = createClient();
@@ -141,6 +141,7 @@ export default function MantenimientoEnfermeria(props: Comunes & { estado: Estad
             <summary className="tiny">Bombas en curso (dosis en vivo){estado.filaDato ? ` · última fila ${hora(estado.filaDato)}` : ""}</summary>
             <BombasEnCurso estado={estado} donanteId={donanteId} pesoKg={pesoKg} infusiones={infusiones} onInfusionesChange={onInfusionesChange} />
           </details>
+          <HistorialSeteos infusiones={infusiones} onInfusionesChange={onInfusionesChange} />
 
           {/* ------------------------------------------------ corregir (solo horas ya cargadas) */}
           {cargadas.length > 0 && (
