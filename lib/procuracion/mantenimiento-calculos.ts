@@ -1329,34 +1329,6 @@ export function ultimoLabConRespaldo(
 // ---------------------------------------------------------------------
 export type Punto = { t: number; valor: number };
 
-// Puntos dentro de la ventana [ahora − horas, ahora].
-export function recortarVentana<T extends Punto>(puntos: T[], ahora: number, horas: number): T[] {
-  const desde = ahora - horas * 3_600_000;
-  return puntos.filter((p) => p.t >= desde && p.t <= ahora);
-}
-
-// Dirección: solo con 3 puntos o más (si no, null). Cambio en la ventana
-// = pendiente de la recta de mínimos cuadrados × tiempo entre el primer y
-// el último punto. Por debajo del mínimo: "estable".
-export function direccionTendencia(puntos: Punto[], cambioMinimo: number): "sube" | "baja" | "estable" | null {
-  if (puntos.length < 3) return null;
-  const n = puntos.length;
-  const mt = puntos.reduce((s, p) => s + p.t, 0) / n;
-  const mv = puntos.reduce((s, p) => s + p.valor, 0) / n;
-  const num = puntos.reduce((s, p) => s + (p.t - mt) * (p.valor - mv), 0);
-  const den = puntos.reduce((s, p) => s + (p.t - mt) ** 2, 0);
-  if (den === 0) return "estable";
-  const cambio = (num / den) * (puntos[n - 1].t - puntos[0].t);
-  if (Math.abs(cambio) < cambioMinimo) return "estable";
-  return cambio > 0 ? "sube" : "baja";
-}
-
-// Minutos desde el último punto (edad del dato); null sin puntos.
-export function edadUltimoDato(puntos: Punto[], ahora: number): number | null {
-  if (puntos.length === 0) return null;
-  return (ahora - Math.max(...puntos.map((p) => p.t))) / 60_000;
-}
-
 // Noradrenalina (o la droga que sea) en su dosis, hora por hora: la
 // velocidad de cada fila horaria × su seteo. Sin seteo o sin peso, esa
 // hora no tiene punto.

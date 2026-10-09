@@ -35,11 +35,29 @@ export type Sugerencia = {
     | "diabetes_insipida";
   titulo: string;
   nivel: "rojo" | "amarillo" | "info";
+  area: AreaSugerencia; // etiqueta de la tarjeta
+  datoDe: "registro" | "sodio" | "evaluacion"; // de qué dato sale "dato de las HH:MM"
   lineas: string[];
   leyenda: string;
   // Dato en que se apoya la sugerencia, con su edad ("Na 152, de hace
   // 7 h"); `destacada` si es más viejo que HORAS_LAB_DESACTUALIZADO.
   notas?: { texto: string; destacada: boolean }[];
+};
+
+export type AreaSugerencia = "Hemodinamia" | "Perfusión" | "Metabólico";
+
+// Área de cada sugerencia y de qué dato sale su hora.
+const AREA: Record<Sugerencia["id"], { area: AreaSugerencia; datoDe: Sugerencia["datoDe"] }> = {
+  hta_taquicardia: { area: "Hemodinamia", datoDe: "registro" },
+  hipotension: { area: "Hemodinamia", datoDe: "registro" },
+  bradicardia: { area: "Hemodinamia", datoDe: "registro" },
+  taquicardia: { area: "Hemodinamia", datoDe: "registro" },
+  deterioro_miocardico: { area: "Hemodinamia", datoDe: "evaluacion" },
+  hipovolemia: { area: "Perfusión", datoDe: "registro" },
+  diabetes_insipida: { area: "Perfusión", datoDe: "registro" },
+  hipernatremia: { area: "Metabólico", datoDe: "sodio" },
+  potasio: { area: "Metabólico", datoDe: "registro" },
+  nutricion: { area: "Metabólico", datoDe: "evaluacion" },
 };
 
 export type EstadoParaSugerencias = {
@@ -64,7 +82,7 @@ export type EstadoParaSugerencias = {
   sodioHaceHoras: number | null;
 };
 
-const s = (sug: Omit<Sugerencia, "leyenda">): Sugerencia => ({ ...sug, leyenda: LEYENDA_VERIFICACION });
+const s = (sug: Omit<Sugerencia, "leyenda" | "area" | "datoDe">): Sugerencia => ({ ...sug, ...AREA[sug.id], leyenda: LEYENDA_VERIFICACION });
 
 // "Na 152, de hace 7 h" -- siempre que una sugerencia se apoya en el sodio.
 function notaSodio(sodio: number | null, horas: number | null): { texto: string; destacada: boolean }[] {

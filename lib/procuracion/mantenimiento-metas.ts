@@ -539,9 +539,9 @@ export const MINUTOS_HORA_SIN_CARGAR = 15;
 export const VENTANAS_TENDENCIA_H = [6, 12, 24] as const;
 export const VENTANA_TENDENCIA_INICIAL_H = 12;
 
-// Flecha de tendencia: solo con 3 puntos o más, y solo si el cambio en la
-// ventana (pendiente de la recta × tiempo con datos) supera este mínimo;
-// por debajo, "estable".
+// Flecha de tendencia: solo con 3 puntos o más, y solo si el cambio entre
+// el primer y el último valor válido de la ventana supera este mínimo; por
+// debajo, "estable". A VALIDAR CON PROTOCOLO CUCAIBA/INCUCAI.
 export const CAMBIO_MINIMO_FLECHA = {
   pam: 5, // mmHg
   fc: 10, // lpm
@@ -550,11 +550,30 @@ export const CAMBIO_MINIMO_FLECHA = {
   glucemia: 20, // mg/dL
   diuresis: 0.3, // mL/kg/h
   balance: 500, // mL (acumulado)
-  noradrenalina: 0.05, // γ
+  noradrenalina: 0.1, // γ
   pvc: 2, // cmH2O
   gc: 0.5, // L/min
 } as const;
 export type ClaveTendencia = keyof typeof CAMBIO_MINIMO_FLECHA;
+
+// Eje Y FIJO por parámetro (no autoescalado), para que la pendiente sea
+// comparable entre visitas. Un valor fuera del eje se dibuja en el borde.
+// A VALIDAR.
+export const EJE_Y: Record<ClaveTendencia, { min: number; max: number }> = {
+  pam: { min: 40, max: 110 },
+  fc: { min: 40, max: 160 },
+  temperatura: { min: 34, max: 40 },
+  sat_o2: { min: 80, max: 100 },
+  glucemia: { min: 40, max: 300 },
+  diuresis: { min: 0, max: 4 },
+  balance: { min: -3000, max: 6000 },
+  noradrenalina: { min: 0, max: 0.6 },
+  pvc: { min: 0, max: 25 },
+  gc: { min: 0, max: 12 },
+};
+// Línea punteada de meta del ritmo diurético (mL/kg/h): el borde del
+// verde de METAS.diuresis.
+export const META_RITMO_DIURETICO = 1.0;
 
 // Respirador: modos (botones) y aviso ámbar si el último evento tiene más
 // de estas horas, solo cuando se está calculando una PaFi.

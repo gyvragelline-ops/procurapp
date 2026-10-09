@@ -2,12 +2,9 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   avisosDeEnfermeria,
-  direccionTendencia,
   disfuncionMiocardica,
   dosisPorFila,
-  edadUltimoDato,
   pafiConRespirador,
-  recortarVentana,
   respiradorVigenteEn,
   serieMedico,
   ultimoLabConRespaldo,
@@ -19,6 +16,7 @@ import {
   type MedicionMedico,
   type ValorLab,
 } from "../mantenimiento-calculos.ts";
+import { direccionTendencia, edadUltimoDato, recortarVentana } from "../mantenimiento-tendencias.ts";
 import { tensionesEntreReglas, type EstadoParaTensiones } from "../mantenimiento-tensiones.ts";
 import { generarSugerencias, type EstadoParaSugerencias } from "../mantenimiento-sugerencias.ts";
 import { CAMBIO_MINIMO_FLECHA, VENTANA_TENDENCIA_INICIAL_H, VENTANAS_TENDENCIA_H } from "../mantenimiento-metas.ts";
@@ -140,7 +138,7 @@ test("ventanas: 6, 12 y 24 h, arranca en 12; recorta bien", () => {
   assert.equal(recortarVentana(puntos, ahora, 24).length, 5);
 });
 
-test("flecha: con 2 puntos no aparece; por debajo del mínimo 'estable'; por encima, sube o baja", () => {
+test("flecha (primer vs último valor válido): con 2 puntos no aparece; por debajo del mínimo 'estable'; por encima, sube o baja", () => {
   const p = (valores: number[]) => valores.map((valor, i) => ({ t: h(8 + i), valor }));
   assert.equal(direccionTendencia(p([60, 80]), CAMBIO_MINIMO_FLECHA.pam), null);
   assert.equal(direccionTendencia(p([70, 72, 73]), CAMBIO_MINIMO_FLECHA.pam), "estable"); // +3 < 5
