@@ -109,7 +109,7 @@ test("sin evaluar la disfunción, la sugerencia no asume que no hay", () => {
   const base: EstadoParaSugerencias = {
     pam: 95, fc: 130, noradrenalinaGamma: null, noradrenalinaSinDosis: null, vasopresinaActiva: false, disfuncionMiocardica: false,
     disfuncionEvaluada: false, ic: null, corazonCandidato: "sin_definir", sodio: 140, volemia: { cargadas: 0, positivas: 0 },
-    estadoDI: "sin_criterios", nutricionPrevia: null, sodioHaceHoras: null,
+    estadoDI: "sin_criterios", sodioHaceHoras: null,
   };
   const texto = generarSugerencias(base).flatMap((s) => s.lineas).join("\n");
   assert.match(texto, /Disfunción miocárdica sin evaluar/);

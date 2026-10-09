@@ -104,6 +104,7 @@ test("dosis de bomba desactualizada (>70 min): visible y sin color de meta", () 
   });
   assert.equal(t.desactualizado, true);
   assert.equal(t.color, "sin_dato");
+  assert.equal(t.enMeta, null); // ni en meta ni fuera
 });
 
 test("score: las cuatro premisas con su chip (glucemia 110-180, Na <155, pH 7,35-7,50, PaFi >330)", () => {
@@ -151,13 +152,13 @@ test("cada sugerencia lleva su área (Hemodinamia, Perfusión, Metabólico) y de
   const base: EstadoParaSugerencias = {
     pam: 50, fc: 90, noradrenalinaGamma: null, noradrenalinaSinDosis: null, vasopresinaActiva: false, disfuncionMiocardica: false,
     disfuncionEvaluada: true, ic: null, corazonCandidato: "sin_definir", sodio: 156, volemia: { cargadas: 1, positivas: 1 },
-    estadoDI: "sin_criterios", nutricionPrevia: "no", sodioHaceHoras: 2,
+    estadoDI: "sin_criterios", sodioHaceHoras: 2,
   };
   const porId = Object.fromEntries(generarSugerencias(base).map((s) => [s.id, [s.area, s.datoDe]]));
   assert.deepEqual(porId.hipotension, ["Hemodinamia", "registro"]);
   assert.deepEqual(porId.hipovolemia, ["Perfusión", "registro"]);
   assert.deepEqual(porId.hipernatremia, ["Metabólico", "sodio"]);
-  assert.deepEqual(porId.nutricion, ["Metabólico", "evaluacion"]);
+  assert.equal(porId.nutricion, undefined); // la nutrición previa salió de la pantalla y de las reglas
 });
 
 // ---------------------------------------------------------------- escenario de 12 h
@@ -211,7 +212,77 @@ test("escenario simulado de 12 h: lo que muestra cada tarjeta", () => {
   const sug = generarSugerencias({
     pam: 62, fc: 90, noradrenalinaGamma: na.ultimo!.valor, noradrenalinaSinDosis: null, vasopresinaActiva: false,
     disfuncionMiocardica: false, disfuncionEvaluada: false, ic: null, corazonCandidato: "sin_definir", sodio: null,
-    volemia: { cargadas: 0, positivas: 0 }, estadoDI: "sin_criterios", nutricionPrevia: null, sodioHaceHoras: null,
+    volemia: { cargadas: 0, positivas: 0 }, estadoDI: "sin_criterios", sodioHaceHoras: null,
   });
   assert.deepEqual(sug.map((s) => s.id), []);
+});
+
+// ---------------------------------------------------------------- formato
+import { alertasFueraDeRango, numFijo } from "../mantenimiento-tendencias.ts";
+
+test("decimales fijos: temperatura 1 ('36,0'), noradrenalina 2 ('0,30'), PAM/FC/Sat/glucemia 0", () => {
+  assert.equal(numFijo(36, 1), "36,0");
+  assert.equal(numFijo(37.46, 1), "37,5");
+  assert.equal(numFijo(0.3, 2), "0,30");
+  assert.equal(numFijo(62, 0), "62");
+  assert.equal(numFijo(1234, 0), "1234"); // sin separador de miles
+});
+
+// ---------------------------------------------------------------- tarjeta de alertas
+const tarj = (
+  clave: "pam" | "fc" | "sat_o2" | "glucemia" | "noradrenalina",
+  nombre: string,
+  unidad: string,
+  dec: number,
+  valores: number[],
+  extra: { desactualizado?: boolean } = {}
+) => {
+  const t = tarjetaTendencia({
+    clave, meta: clave, puntos: valores.map((v, i) => pt(9 + i, v)), ahora: h(11, 30), horas: 12,
+    cambioMinimo: CAMBIO_MINIMO_FLECHA[clave], decimales: dec, ...extra,
+  });
+  return { ...t, nombre, unidad, dec };
+};
+const ahoraAl = h(11, 30);
+
+test("alertas: solo lo fuera de rango, una línea por ítem: '✕ Saturación 92 % · meta >94 · ↓ bajando'", () => {
+  const sat = tarj("sat_o2", "Saturación", "%", 0, [98, 96, 92]);
+  const pam = tarj("pam", "PAM", "mmHg", 0, [70, 72, 71]); // en meta: no aparece
+  const r = alertasFueraDeRango([sat, pam], [], ahoraAl);
+  assert.deepEqual(r.alertas.map((a) => [a.nivel, a.texto, a.destino]), [["amarillo", "✕ Saturación 92 % · meta >94 · ↓ bajando", "tarjeta-sat_o2"]]);
+});
+
+test("alertas ordenadas de más a menos grave (rojas primero)", () => {
+  const sat = tarj("sat_o2", "Saturación", "%", 0, [93, 93, 93]); // ámbar
+  const pam = tarj("pam", "PAM", "mmHg", 0, [60, 55, 50]); // roja (<55)
+  const r = alertasFueraDeRango([sat, pam], [], ahoraAl);
+  assert.deepEqual(r.alertas.map((a) => a.id), ["pam", "sat_o2"]);
+  assert.equal(r.alertas[0].texto, "✕ PAM 50 mmHg · meta 60–80 · ↓ bajando");
+});
+
+test("alertas: nada fuera de rango -> lista vacía (la pantalla dice 'Todo en meta')", () => {
+  const r = alertasFueraDeRango([tarj("pam", "PAM", "mmHg", 0, [70, 72, 71])], [], ahoraAl);
+  assert.deepEqual(r, { alertas: [], vencidos: [] });
+});
+
+test("alertas de laboratorio: reciente fuera de rango -> alerta; vencido (>6 h) -> línea gris aparte", () => {
+  const na = { meta: "sodio" as const, etiqueta: "Na", unidad: "mEq/L", dec: 0 };
+  const reciente = alertasFueraDeRango([], [{ ...na, dato: { valor: 158, medido_en: iso(10), desactualizado: false } }], ahoraAl);
+  assert.deepEqual(reciente.alertas.map((a) => [a.nivel, a.texto, a.destino]), [["rojo", "✕ Na 158 mEq/L · meta 135–150", "laboratorio"]]);
+  const vencido = alertasFueraDeRango([], [{ ...na, dato: { valor: 158, medido_en: iso(4), desactualizado: true } }], ahoraAl);
+  assert.deepEqual(vencido.alertas, []);
+  assert.deepEqual(vencido.vencidos.map((v) => v.texto), ["Na sin actualizar hace 7 h"]);
+  const ph = alertasFueraDeRango([], [{ meta: "ph", etiqueta: "pH", unidad: "", dec: 2, dato: { valor: 7.2, medido_en: iso(10), desactualizado: false } }], ahoraAl);
+  assert.equal(ph.alertas[0].texto, "✕ pH 7,20 · meta 7,35–7,5");
+});
+
+test("alertas: la glucemia no se duplica (tarjeta + laboratorio) y una dosis desactualizada no alerta", () => {
+  const glu = tarj("glucemia", "Glucemia", "mg/dL", 0, [150, 190, 230]);
+  const na = tarj("noradrenalina", "Noradrenalina", "γ", 2, [0.2, 0.4, 0.5], { desactualizado: true });
+  const r = alertasFueraDeRango(
+    [glu, na],
+    [{ meta: "glucemia", etiqueta: "Glucemia", unidad: "mg/dL", dec: 0, dato: { valor: 230, medido_en: iso(11), desactualizado: false } }],
+    ahoraAl
+  );
+  assert.deepEqual(r.alertas.map((a) => a.id), ["glucemia"]);
 });

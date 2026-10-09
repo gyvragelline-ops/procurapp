@@ -18,11 +18,17 @@ export const COLOR_GRAFICO: Record<Color, string> = {
 // Ancho de referencia del viewBox: ~el ancho real de la tarjeta en un
 // celular de 390 px (160 en la grilla de 2 columnas, 340 en las anchas),
 // para que los puntos no se deformen.
+// Eje X = TIEMPO de la ventana elegida [desde, hasta] (no la cantidad de
+// puntos): cada valor va en su hora real. El SVG ocupa todo el ancho de la
+// tarjeta (width 100% + viewBox + preserveAspectRatio none; la línea con
+// non-scaling-stroke). 1 dato: un punto, sin línea.
 export function Sparkline({
   valores,
   clave,
   banda,
   color,
+  desde,
+  hasta,
   alto = 44,
   ancho: W = 160,
   etiqueta,
@@ -31,14 +37,16 @@ export function Sparkline({
   clave: ClaveTendencia;
   banda: { desde: number; hasta: number } | null;
   color: string;
+  desde: number;
+  hasta: number;
   alto?: number;
   ancho?: number;
   etiqueta: string;
 }) {
   const eje = EJE_Y[clave];
   const pad = 4;
-  const n = valores.length;
-  const x = (i: number) => (n <= 1 ? W / 2 : pad + (i / (n - 1)) * (W - 2 * pad));
+  const tiempo = (i: number) => valores[i].t ?? valores[i].inicio;
+  const x = (i: number) => pad + Math.min(1, Math.max(0, (tiempo(i) - desde) / Math.max(1, hasta - desde))) * (W - 2 * pad);
   const y = (v: number) => alto - pad - ((enEje(v, clave).valor - eje.min) / (eje.max - eje.min)) * (alto - 2 * pad);
 
   // Tramos consecutivos con dato (un hueco corta la curva).
@@ -54,11 +62,19 @@ export function Sparkline({
   const ultimo = [...valores.entries()].reverse().find(([, p]) => p.valor !== null);
 
   return (
-    <svg viewBox={`0 0 ${W} ${alto}`} width="100%" height={alto} preserveAspectRatio="none" role="img" aria-label={`Tendencia de ${etiqueta}`}>
+    <svg
+      viewBox={`0 0 ${W} ${alto}`}
+      width="100%"
+      height={alto}
+      preserveAspectRatio="none"
+      role="img"
+      aria-label={`Tendencia de ${etiqueta}`}
+      style={{ display: "block", width: "100%" }}
+    >
       {banda && <rect x={0} y={y(banda.hasta)} width={W} height={Math.max(0, y(banda.desde) - y(banda.hasta))} fill="var(--m-ok)" opacity={0.16} />}
       {tramos.map((t, k) =>
         t.length === 1 ? (
-          <circle key={k} cx={x(t[0].i)} cy={y(t[0].v)} r={1.6} fill={color} />
+          <circle key={k} cx={x(t[0].i)} cy={y(t[0].v)} r={2} fill={color} />
         ) : (
           <polyline
             key={k}
@@ -95,7 +111,15 @@ export function BarrasHora({
   const ancho = n ? W / n : W;
   const y = (v: number) => alto - ((enEje(v, clave).valor - eje.min) / (eje.max - eje.min)) * alto;
   return (
-    <svg viewBox={`0 0 ${W} ${alto}`} width="100%" height={alto} preserveAspectRatio="none" role="img" aria-label="Ritmo diurético por hora">
+    <svg
+      viewBox={`0 0 ${W} ${alto}`}
+      width="100%"
+      height={alto}
+      preserveAspectRatio="none"
+      role="img"
+      aria-label="Ritmo diurético por hora"
+      style={{ display: "block", width: "100%" }}
+    >
       {barras.map((b, i) =>
         b.valor === null ? (
           <rect key={i} x={i * ancho + hueco / 2} y={alto - 1} width={Math.max(0.5, ancho - hueco)} height={1} fill="var(--m-borde)" />

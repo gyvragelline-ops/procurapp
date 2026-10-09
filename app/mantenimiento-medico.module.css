@@ -2,6 +2,9 @@
    Las variables globales se redefinen adentro para que los componentes
    reutilizados (formularios, confirmaciones) tomen la misma paleta. */
 .medico {
+  box-sizing: border-box;
+  max-width: 100%;
+  overflow-x: hidden;
   --m-fondo: #0c181b;
   --m-tarjeta: #14262a;
   --m-texto: #e6eeee;
@@ -52,6 +55,10 @@
 }
 
 .tarjeta {
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
   background: var(--m-tarjeta);
   border: 1px solid var(--m-borde);
   border-radius: 12px;
@@ -76,8 +83,41 @@
 
 .grilla {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
+}
+.grilla > * {
+  min-width: 0;
+}
+
+/* Número y unidad pegados (4 px), en una sola pieza. */
+.valorUnidad {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.alerta {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  text-align: left;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--m-borde);
+  padding: 8px 0;
+  font: inherit;
+  color: var(--m-texto);
+  cursor: pointer;
+}
+.alerta:last-child {
+  border-bottom: none;
+}
+
+.grafico {
+  display: block;
+  width: 100%;
 }
 
 .valorGrande {
@@ -92,28 +132,37 @@
   line-height: 1;
 }
 
-.ok {
+.ok,
+.alerta.ok {
   color: var(--m-ok);
 }
-.fuera {
+.fuera,
+.alerta.fuera {
   color: var(--m-fuera);
 }
-.critico {
+.critico,
+.alerta.critico {
   color: var(--m-critico);
 }
 .sinDato {
   color: var(--m-apagado);
 }
+.alerta.apagado {
+  color: var(--m-apagado);
+}
 
 .chip {
   display: inline-flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 4px;
+  max-width: 100%;
+  box-sizing: border-box;
   border: 1px solid var(--m-borde);
-  border-radius: 999px;
+  border-radius: 12px;
   padding: 2px 8px;
   font-size: 12px;
-  white-space: nowrap;
+  white-space: normal;
 }
 
 .selector {

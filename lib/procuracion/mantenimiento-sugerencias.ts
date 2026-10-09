@@ -30,7 +30,6 @@ export type Sugerencia = {
     | "taquicardia"
     | "deterioro_miocardico"
     | "hipernatremia"
-    | "nutricion"
     | "potasio"
     | "diabetes_insipida";
   titulo: string;
@@ -57,7 +56,6 @@ const AREA: Record<Sugerencia["id"], { area: AreaSugerencia; datoDe: Sugerencia[
   diabetes_insipida: { area: "Perfusión", datoDe: "registro" },
   hipernatremia: { area: "Metabólico", datoDe: "sodio" },
   potasio: { area: "Metabólico", datoDe: "registro" },
-  nutricion: { area: "Metabólico", datoDe: "evaluacion" },
 };
 
 export type EstadoParaSugerencias = {
@@ -77,7 +75,6 @@ export type EstadoParaSugerencias = {
   sodio: number | null;
   volemia: { cargadas: number; positivas: number };
   estadoDI: EstadoDI;
-  nutricionPrevia: "si" | "no" | null;
   // Horas desde que se midió el sodio usado (null = sin dato de hora).
   sodioHaceHoras: number | null;
 };
@@ -223,21 +220,6 @@ export function generarSugerencias(e: EstadoParaSugerencias): Sugerencia[] {
         titulo: "Potasio",
         nivel: "info",
         lineas: ["Vigilar el potasio: cae mientras haya diabetes insípida."],
-      })
-    );
-  }
-
-  // Nutrición
-  if (e.nutricionPrevia !== null) {
-    out.push(
-      s({
-        id: "nutricion",
-        titulo: "Nutrición",
-        nivel: "info",
-        lineas: [
-          e.nutricionPrevia === "si" ? "Recibía nutrición: dejarla a dosis mínima." : "No recibía nutrición: suspender.",
-          "No dejarla a dosis plena. Queda a criterio médico.",
-        ],
       })
     );
   }

@@ -8,6 +8,11 @@ import { CAMBIO_MINIMO_FLECHA, EJE_Y, METAS, type ClaveMeta, type ClaveTendencia
 const HORA = 3_600_000;
 const fmt = (n: number, dec = 2) => Number(n.toFixed(dec)).toLocaleString("es-AR", { maximumFractionDigits: dec });
 
+// Número con decimales FIJOS y coma: 36 -> "36,0" (1), 0,3 -> "0,30" (2), 62 -> "62" (0).
+export function numFijo(n: number, dec: number): string {
+  return n.toLocaleString("es-AR", { minimumFractionDigits: dec, maximumFractionDigits: dec, useGrouping: false });
+}
+
 // ---------------------------------------------------------------------
 // Ventana y serie por hora
 // ---------------------------------------------------------------------
@@ -23,7 +28,8 @@ export function edadUltimoDato(puntos: Punto[], ahora: number): number | null {
   return (ahora - Math.max(...puntos.map((p) => p.t))) / 60_000;
 }
 
-export type ValorHora = { inicio: number; valor: number | null };
+// t = hora real del punto elegido (para el eje X de tiempo); null en huecos.
+export type ValorHora = { inicio: number; valor: number | null; t?: number | null };
 
 // Una casilla por hora de reloj de la ventana (la última es la hora en
 // curso). Valor = el último punto de esa hora; sin punto = null (HUECO:
@@ -35,7 +41,7 @@ export function serieHoraria(puntos: Punto[], ahora: number, horas: number): Val
     const inicio = actual - i * HORA;
     const deLaHora = puntos.filter((p) => p.t >= inicio && p.t < inicio + HORA && p.t <= ahora);
     const u = deLaHora.reduce<Punto | null>((a, b) => (!a || b.t >= a.t ? b : a), null);
-    out.push({ inicio, valor: u ? u.valor : null });
+    out.push({ inicio, valor: u ? u.valor : null, t: u ? u.t : null });
   }
   return out;
 }
@@ -104,11 +110,11 @@ export function bandaMeta(clave: ClaveMeta, eje: { min: number; max: number }): 
   return { desde: Math.max(v.desde ?? eje.min, eje.min), hasta: Math.min(v.hasta ?? eje.max, eje.max) };
 }
 
-// "60–80 mmHg", ">94 %", "≤0,3 γ"
-export function textoRangoMeta(clave: ClaveMeta): string {
+// "60–80 mmHg", ">94 %", "≤0,3 γ" (sin unidad: "60–80", ">94")
+export function textoRangoMeta(clave: ClaveMeta, conUnidad = true): string {
   const m = METAS[clave];
   const v = m.verde[0];
-  const u = m.unidad ? ` ${m.unidad}` : "";
+  const u = m.unidad && conUnidad ? ` ${m.unidad}` : "";
   if (!v) return "";
   if (v.desde !== undefined && v.hasta !== undefined) return `${fmt(v.desde)}–${fmt(v.hasta)}${u}`;
   if (v.desde !== undefined) return `${v.desdeExcluido ? ">" : "≥"}${fmt(v.desde)}${u}`;
@@ -151,7 +157,9 @@ export function tarjetaTendencia(datos: {
   const ultimo = d.ultimo;
   const desactualizado = datos.desactualizado ?? false;
   const color: Color = !ultimo || desactualizado ? "sin_dato" : colorDe(datos.meta, ultimo.valor);
-  const enMeta = !ultimo ? null : colorDe(datos.meta, ultimo.valor) === "verde";
+  // Desactualizado (dosis de bomba >70 min, laboratorio >6 h): no se
+  // clasifica en meta ni fuera.
+  const enMeta = !ultimo || desactualizado ? null : colorDe(datos.meta, ultimo.valor) === "verde";
   const rango = textoRangoMeta(datos.meta);
   return {
     clave: datos.clave,
@@ -219,4 +227,65 @@ export function heroeRitmoDiuretico(
     textoPie: `${ultimaMl !== null ? `Última hora: ${fmt(ultimaMl, 0)} mL` : "Última hora: sin dato"}${tramo}`,
     vacio: null,
   };
+}
+
+// ---------------------------------------------------------------------
+// Tarjeta de ALERTAS (arriba): SOLO lo que está fuera de rango, una línea
+// por ítem, de más a menos grave. Laboratorio vencido (>6 h): línea gris
+// aparte, no alerta. Sin nada fuera de rango, la UI muestra "Todo en meta".
+// ---------------------------------------------------------------------
+export type ItemAlerta = { id: string; nivel: "rojo" | "amarillo"; texto: string; destino: string };
+export type LineaVencida = { id: string; texto: string; destino: string };
+
+const textoDir = (d: Direccion["dir"]) => (d === "sube" ? " · ↑ subiendo" : d === "baja" ? " · ↓ bajando" : d === "estable" ? " · → estable" : "");
+
+export function alertasFueraDeRango(
+  tarjetas: {
+    clave: ClaveTendencia;
+    meta: ClaveMeta;
+    nombre: string;
+    unidad: string;
+    dec: number;
+    ultimo: { valor: number } | null;
+    direccion: Direccion;
+    desactualizado: boolean;
+  }[],
+  labs: { meta: ClaveMeta; etiqueta: string; unidad: string; dec: number; dato: { valor: number; medido_en: string; desactualizado: boolean } | null }[],
+  ahora: number
+): { alertas: ItemAlerta[]; vencidos: LineaVencida[] } {
+  const rojas: ItemAlerta[] = [];
+  const ambar: ItemAlerta[] = [];
+  const poner = (a: ItemAlerta) => (a.nivel === "rojo" ? rojas : ambar).push(a);
+  const metasEnTarjetas = new Set<ClaveMeta>();
+  for (const t of tarjetas) {
+    metasEnTarjetas.add(t.meta);
+    if (!t.ultimo || t.desactualizado) continue;
+    const color = colorDe(t.meta, t.ultimo.valor);
+    if (color !== "rojo" && color !== "amarillo") continue;
+    poner({
+      id: t.clave,
+      nivel: color,
+      texto: `✕ ${t.nombre} ${numFijo(t.ultimo.valor, t.dec)} ${t.unidad} · meta ${textoRangoMeta(t.meta, false)}${textoDir(t.direccion.dir)}`,
+      destino: `tarjeta-${t.clave}`,
+    });
+  }
+  const vencidos: LineaVencida[] = [];
+  for (const l of labs) {
+    if (!l.dato) continue;
+    if (l.dato.desactualizado) {
+      const horas = Math.floor((ahora - new Date(l.dato.medido_en).getTime()) / HORA);
+      vencidos.push({ id: l.meta, texto: `${l.etiqueta} sin actualizar hace ${horas} h`, destino: "laboratorio" });
+      continue;
+    }
+    if (metasEnTarjetas.has(l.meta)) continue; // ya tiene tarjeta (glucemia): sin duplicar
+    const color = colorDe(l.meta, l.dato.valor);
+    if (color !== "rojo" && color !== "amarillo") continue;
+    poner({
+      id: l.meta,
+      nivel: color,
+      texto: `✕ ${l.etiqueta} ${numFijo(l.dato.valor, l.dec)}${l.unidad ? ` ${l.unidad}` : ""} · meta ${textoRangoMeta(l.meta, false)}`,
+      destino: "laboratorio",
+    });
+  }
+  return { alertas: [...rojas, ...ambar], vencidos };
 }

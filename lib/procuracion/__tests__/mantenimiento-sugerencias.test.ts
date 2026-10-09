@@ -16,7 +16,6 @@ const base: EstadoParaSugerencias = {
   sodio: 140,
   volemia: { cargadas: 0, positivas: 0 },
   estadoDI: "sin_criterios",
-  nutricionPrevia: null,
   sodioHaceHoras: null,
 };
 const texto = (e: Partial<EstadoParaSugerencias>) =>
@@ -38,7 +37,7 @@ test("la palabra 'atropina' no aparece en ninguna sugerencia (bradicardia y toda
               const t = texto({
                 pam, fc, disfuncionMiocardica, ic, estadoDI, noradrenalinaGamma,
                 vasopresinaActiva: true, corazonCandidato: "si", sodio: 160,
-                volemia: { cargadas: 3, positivas: 2 }, nutricionPrevia: "si",
+                volemia: { cargadas: 3, positivas: 2 },
               });
               assert.doesNotMatch(t, /atropina/i);
             }
@@ -58,7 +57,7 @@ test("bradicardia: isoproterenol o dopamina; refractaria -> marcapasos transitor
 test("toda sugerencia lleva la leyenda de verificación", () => {
   const todas = generarSugerencias({
     ...base, pam: 50, fc: 40, disfuncionMiocardica: true, sodio: 160, estadoDI: "probable",
-    volemia: { cargadas: 2, positivas: 1 }, nutricionPrevia: "no",
+    volemia: { cargadas: 2, positivas: 1 },
   });
   assert.ok(todas.length >= 5);
   for (const s of todas) assert.equal(s.leyenda, LEYENDA_VERIFICACION);
@@ -127,15 +126,8 @@ test("diabetes insípida con vasopresina ya corriendo: avisa no duplicar; pide v
   assert.ok(!ids({}).includes("potasio"));
 });
 
-test("nutrición: si -> dosis mínima; no -> suspender; siempre 'no dejar a dosis plena'", () => {
-  assert.match(texto({ nutricionPrevia: "si" }), /dosis mínima/);
-  assert.match(texto({ nutricionPrevia: "no" }), /suspender/);
-  assert.match(texto({ nutricionPrevia: "no" }), /No dejarla a dosis plena/);
-  assert.ok(!ids({ nutricionPrevia: null }).includes("nutricion"));
-});
-
 test("orden: rojas primero", () => {
-  const niveles = generarSugerencias({ ...base, pam: 50, fc: 40, nutricionPrevia: "si", sodio: 152 }).map((s) => s.nivel);
+  const niveles = generarSugerencias({ ...base, pam: 50, fc: 40, sodio: 152, estadoDI: "sospecha" }).map((s) => s.nivel);
   assert.deepEqual(niveles, [...niveles].sort((a, b) => ({ rojo: 0, amarillo: 1, info: 2 })[a] - ({ rojo: 0, amarillo: 1, info: 2 })[b]));
   assert.equal(niveles[0], "rojo");
 });

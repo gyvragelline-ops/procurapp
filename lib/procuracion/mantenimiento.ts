@@ -110,7 +110,6 @@ export const CAMPOS_REGISTRO: { campo: CampoNumericoRegistro; etiqueta: string; 
 
 export type ConfigMantenimiento = {
   donante_id: string;
-  nutricion_previa: "si" | "no" | null;
   monitoreo_avanzado_activo: boolean;
   corazon_candidato: "si" | "no" | "sin_definir";
   pulmon_candidato: "si" | "no" | "sin_definir";
@@ -123,7 +122,7 @@ const COLS_REGISTRO =
 const COLS_INFUSION =
   "id, registrado_en, droga, tipo, ampollas, contenido_por_ampolla, unidad_contenido, volumen_final_ml, velocidad_ml_h, dosis_calculada, unidad_dosis, motivo, cargado_por, solucion_dilucion, solucion_dilucion_otra, anulado";
 const COLS_BOMBA = "id, registro_id, droga, velocidad_ml_h, dilucion_id, anulado";
-const COLS_CONFIG = "donante_id, nutricion_previa, monitoreo_avanzado_activo, corazon_candidato, pulmon_candidato";
+const COLS_CONFIG = "donante_id, monitoreo_avanzado_activo, corazon_candidato, pulmon_candidato";
 const COLS_RESPIRADOR =
   "id, registrado_en, modo, modo_otro, fio2, peep, volumen_corriente, frecuencia, presion_plateau, presion_pico, anulado";
 const COLS_MEDICO =

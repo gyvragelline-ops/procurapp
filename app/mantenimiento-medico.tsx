@@ -6,8 +6,6 @@ import type { Donante } from "@/lib/procuracion/types";
 import type { ConfigMantenimiento, RegistroMantenimiento } from "@/lib/procuracion/mantenimiento";
 import type { ValorLaboratorio } from "@/lib/procuracion/laboratorio-valores";
 import {
-  alarmasDosis,
-  armarAlarmas,
   avisosDeEnfermeria,
   balancePorHora,
   calcularDiuresis,
@@ -20,11 +18,9 @@ import {
   minutosDesdeUltimoRegistro,
   ordenarPorHora,
   pafiConRespirador,
-  scoreCalidad,
   ultimoLabConRespaldo,
   ultimoValorLab,
   ultimoValorMedico,
-  type Alarma,
   type BombaHora,
   type EstadoBombas,
   type EventoRespirador,
@@ -33,10 +29,11 @@ import {
   type Punto,
 } from "@/lib/procuracion/mantenimiento-calculos";
 import {
+  alertasFueraDeRango,
   bandaMeta,
   cambioEnVentana,
-  fueraDeMeta,
   heroeRitmoDiuretico,
+  numFijo,
   serieHoraria,
   tarjetaTendencia,
   textoVacio,
@@ -47,8 +44,6 @@ import { tensionesEntreReglas } from "@/lib/procuracion/mantenimiento-tensiones"
 import {
   CAMBIO_MINIMO_FLECHA,
   EJE_Y,
-  HIPOGLUCEMIA_MENOR_A,
-  HORAS_RESPIRADOR_VIEJO,
   LEYENDA_VERIFICACION,
   META_RITMO_DIURETICO,
   MINUTOS_ALARMA_SIN_REGISTRO,
@@ -66,7 +61,6 @@ import styles from "./mantenimiento-medico.module.css";
 const plexSans = IBM_Plex_Sans({ subsets: ["latin"], weight: ["400", "600"], variable: "--font-plex-sans", display: "swap" });
 
 const CLASE_COLOR = { verde: styles.ok, amarillo: styles.fuera, rojo: styles.critico, sin_dato: styles.sinDato } as const;
-const ETIQUETA_PREMISA = { glucemia: "Glucemia 110–180", sodio: "Na <155", ph: "pH 7,35–7,50", pafi: "PaFi >330" } as const;
 
 // Las 6 tarjetas de tendencia (orden del diseño).
 const TARJETAS: { clave: ClaveTendencia; meta: ClaveMeta; nombre: string; unidad: string; dec: number }[] = [
@@ -158,10 +152,11 @@ export default function MantenimientoMedico({
       horas: ventana,
       cambioMinimo: CAMBIO_MINIMO_FLECHA[t.clave],
       decimales: t.dec,
-      desactualizado: t.clave === "noradrenalina" ? (nora?.desactualizado ?? false) : false,
+      // Dosis de bomba con más de 70 min, o glucemia de laboratorio con más de 6 h.
+      desactualizado: t.clave === "noradrenalina" ? (nora?.desactualizado ?? false) : t.clave === "glucemia" ? (glu?.desactualizado ?? false) : false,
     }),
   }));
-  const nFuera = fueraDeMeta(tarjetas);
+  const desdeVentana = ahora - ventana * 3_600_000;
   const heroe = heroeRitmoDiuretico(diuresis, ahora, ventana);
   const balance = balancePorHora(registros, bombas, peso, ahora);
   const balanceValores = serieHoraria(
@@ -172,12 +167,6 @@ export default function MantenimientoMedico({
   const balanceCambio = cambioEnVentana(balanceValores);
 
   // ------------------------------------------------------------ reglas
-  const score = scoreCalidad({
-    glucemia: glu && !glu.desactualizado ? glu.valor : null,
-    sodio: na && !na.desactualizado ? na.valor : null,
-    ph: ph && !ph.desactualizado ? ph.valor : null,
-    pafi: pafi && !pafi.desactualizado ? pafi.valor : null,
-  });
   const osmU = ultimoLabConRespaldo(lab, "osm_urinaria", registros, "osm_urinaria", ahora);
   const osmS = ultimoLabConRespaldo(lab, "osm_serica", registros, "osm_serica", ahora);
   const dens = ultimoLabConRespaldo(lab, "densidad_urinaria", registros, "densidad_urinaria", ahora);
@@ -219,7 +208,6 @@ export default function MantenimientoMedico({
     sodioHaceHoras: na ? (ahora - new Date(na.medido_en).getTime()) / 3_600_000 : null,
     volemia: { cargadas: volemia.cargadas, positivas: volemia.positivas },
     estadoDI: di.estado,
-    nutricionPrevia: config?.nutricion_previa ?? null,
   });
   const tensiones = tensionesEntreReglas({
     estadoDI: di.estado,
@@ -235,51 +223,51 @@ export default function MantenimientoMedico({
     balanceAcumulado: balance.horas.length ? balance.acumulado : null,
   });
 
-  // Alarmas de la tarjeta de estado (una línea cada una; las de "fuera de
-  // meta" por parámetro ya se ven en las tarjetas). Rojas primero.
+  // Tarjeta de ALERTAS: solo lo fuera de rango (las 6 tarjetas y el
+  // laboratorio reciente: Na, pH, PaFi, glucemia), de más a menos grave.
+  // Laboratorio vencido: línea gris aparte.
   const enfermeria = avisosDeEnfermeria(registros, ahora);
   const minutos = minutosDesdeUltimoRegistro(registros, ahora);
-  const hipoglucemia =
-    glu && !glu.desactualizado && glu.valor < HIPOGLUCEMIA_MENOR_A
-      ? [{ clave: "glucemia" as const, etiqueta: "Glucemia", valor: glu.valor, color: colorDe("glucemia", glu.valor), avanzado: false }]
-      : [];
-  const alarmasTodas: Alarma[] = [
-    ...armarAlarmas({ parametros: hipoglucemia, monitoreoAvanzadoActivo: false, minutosSinRegistro: minutos, estadoDI: di.estado }),
-    ...alarmasDosis(estado),
-    ...(enfermeria.pendiente ? [{ nivel: "amarillo" as const, texto: enfermeria.pendiente.texto }] : []),
-    ...(pafi?.respiradorViejo ? [{ nivel: "amarillo" as const, texto: `Respirador: último ajuste cargado hace más de ${HORAS_RESPIRADOR_VIEJO} h.` }] : []),
-  ];
-  const alarmas = [...alarmasTodas.filter((a) => a.nivel === "rojo"), ...alarmasTodas.filter((a) => a.nivel === "amarillo")];
+  const { alertas, vencidos } = alertasFueraDeRango(
+    tarjetas,
+    [
+      { meta: "sodio", etiqueta: "Na", unidad: "mEq/L", dec: 0, dato: na },
+      { meta: "ph", etiqueta: "pH", unidad: "", dec: 2, dato: ph },
+      { meta: "pafi", etiqueta: "PaFi", unidad: "", dec: 0, dato: pafi },
+      { meta: "glucemia", etiqueta: "Glucemia", unidad: "mg/dL", dec: 0, dato: glu },
+    ],
+    ahora
+  );
+  const irA = (id: string) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (el instanceof HTMLDetailsElement) el.open = true;
+    el.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
 
   const horaDato = (s: Sugerencia): string | null =>
     s.datoDe === "sodio" ? (na?.medido_en ?? null) : s.datoDe === "evaluacion" ? (disfuncion.estado !== "sin_evaluar" ? disfuncion.registrado_en : null) : (ultimo?.registrado_en ?? null);
 
   return (
     <div className={`${styles.medico} ${plexSans.variable}`}>
-      {/* ------------------------------------------------ 2. estado */}
-      <section className={styles.tarjeta} aria-label="Estado">
-        <div style={{ display: "flex", alignItems: "baseline", gap: 14, flexWrap: "wrap" }}>
-          <div>
-            <div className={styles.etiqueta}>Score de premisas</div>
-            <span className={`${styles.num} ${styles.valorHeroe}`}>{score.cumplidos}/4</span>
+      {/* ------------------------------------------------ 2. alertas */}
+      <section className={styles.tarjeta} aria-label="Alertas">
+        <div className={styles.etiqueta}>Alertas</div>
+        {alertas.length === 0 ? (
+          <div className={styles.ok} style={{ padding: "8px 0" }}>
+            ✓ Todo en meta
           </div>
-          <div>
-            <div className={styles.etiqueta}>Tendencias</div>
-            <span className={`${styles.num} ${styles.valorGrande} ${nFuera ? styles.fuera : styles.ok}`}>{nFuera}</span>{" "}
-            <span>fuera de meta</span>
-          </div>
-        </div>
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
-          {score.items.map((i) => (
-            <span key={i.clave} className={`${styles.chip} ${i.cumple === null ? styles.sinDato : i.cumple ? styles.ok : styles.fuera}`}>
-              {i.cumple === null ? "—" : i.cumple ? "✓" : "✕"} {ETIQUETA_PREMISA[i.clave]}
-            </span>
-          ))}
-        </div>
-        {alarmas.map((a, i) => (
-          <div key={i} className={`${styles.chico} ${a.nivel === "rojo" ? styles.critico : styles.fuera}`} style={{ marginTop: 6 }}>
-            {a.nivel === "rojo" ? "✕" : "!"} {a.texto}
-          </div>
+        ) : (
+          alertas.map((a) => (
+            <button key={a.id} className={`${styles.alerta} ${a.nivel === "rojo" ? styles.critico : styles.fuera}`} onClick={() => irA(a.destino)}>
+              <span className={styles.num}>{a.texto}</span>
+            </button>
+          ))
+        )}
+        {vencidos.map((v) => (
+          <button key={v.id} className={`${styles.alerta} ${styles.apagado} ${styles.chico}`} onClick={() => irA(v.destino)}>
+            {v.texto}
+          </button>
         ))}
         {enfermeria.nota && (
           <div className={styles.chico} style={{ marginTop: 6 }}>
@@ -315,10 +303,12 @@ export default function MantenimientoMedico({
         ) : (
           <>
             <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
-              <span className={`${styles.num} ${styles.valorHeroe} ${CLASE_COLOR[colorDe("diuresis", heroe.actual!.valor)]}`}>
-                {num(heroe.actual!.valor, 1)}
+              <span className={styles.valorUnidad}>
+                <span className={`${styles.num} ${styles.valorHeroe} ${CLASE_COLOR[colorDe("diuresis", heroe.actual!.valor)]}`}>
+                  {numFijo(heroe.actual!.valor, 1)}
+                </span>
+                <span className={styles.apagado}>mL/kg/h</span>
               </span>
-              <span className={styles.apagado}>mL/kg/h</span>
               {heroe.textoDireccion && <span style={{ fontWeight: 600 }}>{heroe.textoDireccion}</span>}
               {heroe.textoInicio && <span className={`${styles.num} ${styles.chico} ${styles.apagado}`}>{heroe.textoInicio}</span>}
             </div>
@@ -326,7 +316,7 @@ export default function MantenimientoMedico({
               <BarrasHora barras={heroe.barras} clave="diuresis" meta={META_RITMO_DIURETICO} />
             </div>
             <div className={`${styles.chico} ${styles.apagado}`} style={{ marginTop: 4 }}>
-              {heroe.textoPie} · meta {num(META_RITMO_DIURETICO, 1)} (línea punteada)
+              {heroe.textoPie} · meta {numFijo(META_RITMO_DIURETICO, 1)} (línea punteada)
             </div>
           </>
         )}
@@ -337,7 +327,7 @@ export default function MantenimientoMedico({
         {tarjetas.map((t) => {
           const color = COLOR_GRAFICO[t.color];
           return (
-            <section key={t.clave} className={styles.tarjeta} style={{ marginBottom: 0 }} aria-label={t.nombre}>
+            <section key={t.clave} id={`tarjeta-${t.clave}`} className={styles.tarjeta} style={{ marginBottom: 0 }} aria-label={t.nombre}>
               <div className={styles.etiqueta}>{t.nombre}</div>
               {t.vacio ? (
                 <div className={`${styles.chico} ${styles.apagado}`} style={{ padding: "10px 0" }}>
@@ -345,14 +335,28 @@ export default function MantenimientoMedico({
                 </div>
               ) : (
                 <>
-                  <div className={`${styles.num} ${styles.valorGrande} ${CLASE_COLOR[t.color]}`}>
-                    {num(t.ultimo!.valor, t.dec)} <span className={styles.chico}>{t.unidad}</span>
+                  <div className={`${styles.valorUnidad} ${CLASE_COLOR[t.color]}`}>
+                    <span className={`${styles.num} ${styles.valorGrande}`}>{numFijo(t.ultimo!.valor, t.dec)}</span>
+                    <span className={styles.chico}>{t.unidad}</span>
                   </div>
-                  <div className={`${styles.chico} ${t.enMeta ? styles.ok : styles.fuera}`}>
-                    {t.enMeta ? "✓" : "✕"} {t.estado}
-                  </div>
-                  {t.desactualizado && <div className={`${styles.chico} ${styles.fuera}`}>! dato desactualizado (más de 70 min)</div>}
-                  <Sparkline valores={t.valores} clave={t.clave} banda={bandaMeta(t.meta, EJE_Y[t.clave])} color={color} etiqueta={t.nombre} />
+                  {t.desactualizado ? (
+                    <div className={`${styles.chico} ${styles.apagado}`}>
+                      {t.clave === "noradrenalina" ? "Dato desactualizado (más de 70 min)" : "Dato desactualizado (más de 6 h)"}
+                    </div>
+                  ) : (
+                    <div className={`${styles.chico} ${t.enMeta ? styles.ok : styles.fuera}`}>
+                      {t.enMeta ? "✓" : "✕"} {t.estado}
+                    </div>
+                  )}
+                  <Sparkline
+                    valores={t.valores}
+                    clave={t.clave}
+                    banda={bandaMeta(t.meta, EJE_Y[t.clave])}
+                    color={color}
+                    desde={desdeVentana}
+                    hasta={ahora}
+                    etiqueta={t.nombre}
+                  />
                   {t.chip && <span className={`${styles.chip} ${styles.num}`}>{t.chip}</span>}
                 </>
               )}
@@ -382,7 +386,16 @@ export default function MantenimientoMedico({
                 </span>
               )}
             </div>
-            <Sparkline valores={balanceValores} clave="balance" banda={null} color="var(--m-acento)" ancho={340} etiqueta="Balance acumulado" />
+            <Sparkline
+              valores={balanceValores}
+              clave="balance"
+              banda={null}
+              color="var(--m-acento)"
+              desde={desdeVentana}
+              hasta={ahora}
+              ancho={340}
+              etiqueta="Balance acumulado"
+            />
             {balance.huecos > 0 && (
               <div className={`${styles.chico} ${styles.apagado}`}>
                 {balance.huecos === 1 ? "falta 1 hora intermedia" : `faltan ${balance.huecos} horas intermedias`}

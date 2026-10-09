@@ -505,7 +505,7 @@ export default function DatosDelMedico({
         <Respirador donanteId={donanteId} eventos={respirador} onChange={onRespiradorChange} />
       </details>
 
-      <details className={styles.tarjeta}>
+      <details className={styles.tarjeta} id="laboratorio">
         <summary className={styles.etiqueta}>Laboratorio</summary>
         {LAB_RESUMEN.map((p) => {
           const v = ultimoValorLab(lab, p.parametro, ahora);
@@ -564,24 +564,6 @@ export default function DatosDelMedico({
               Sí
             </button>
             <button className={`btn btn-sm ${disfuncion.estado === "no" ? "btn-accent" : ""}`} disabled={guardando} onClick={() => marcarDisfuncion(false)}>
-              No
-            </button>
-          </span>
-        </div>
-        <div className="field-row">
-          <span className="field-label">
-            Nutrición previa
-            {config?.nutricion_previa == null && (
-              <span className={`${styles.chico} ${styles.apagado}`} style={{ display: "block" }}>
-                sin definir
-              </span>
-            )}
-          </span>
-          <span style={{ display: "flex", gap: 4 }}>
-            <button className={`btn btn-sm ${config?.nutricion_previa === "si" ? "btn-accent" : ""}`} onClick={() => onCambiarConfig({ nutricion_previa: "si" })}>
-              Sí
-            </button>
-            <button className={`btn btn-sm ${config?.nutricion_previa === "no" ? "btn-accent" : ""}`} onClick={() => onCambiarConfig({ nutricion_previa: "no" })}>
               No
             </button>
           </span>
