@@ -7,6 +7,7 @@ import {
   anularRegistro,
   guardarBombasDeFila,
   guardarRegistro,
+  type BombaParaGuardar,
   type CampoNumericoRegistro,
   type DatosRegistro,
   type RegistroMantenimiento,
@@ -164,7 +165,10 @@ export default function MantenimientoRegistros({
       if (n !== null && Number.isNaN(n)) return setError(`Valor inválido en ${c.etiqueta}.`);
       valores[c.campo] = n;
     }
-    const pb = bombasParaGuardar(bombasForm, precarga);
+    // Las bombas se validan (cuatro respuestas) solo si se van a guardar:
+    // fila nueva, o bombas tocadas en una fila que ya existía.
+    const destinoPrevio = editId ?? registroDeLaHora(registros, inicioDeHora(new Date(iso).getTime()))?.id ?? null;
+    const pb = destinoPrevio === null || bombasTocadas ? bombasParaGuardar(bombasForm, precarga) : { ok: true as const, filas: [] as BombaParaGuardar[] };
     if (!pb.ok) return setError(pb.error);
     if (Object.values(valores).every((x) => x === null) && pb.filas.length === 0) return setError("Cargá al menos un valor.");
 

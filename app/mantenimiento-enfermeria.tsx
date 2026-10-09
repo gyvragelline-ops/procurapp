@@ -16,11 +16,11 @@ import {
   bombasDeFila,
   camposFueraDeRango,
   filaPrecargada,
+  horasAnterioresSinCargar,
   horasDelCaso,
   inicioDeHora,
   ordenarPorHora,
   perdidasDeFila,
-  proximaHoraSinCargar,
   registroDeLaHora,
   totalesHora,
   type BombaHora,
@@ -53,10 +53,9 @@ const numeroO = (t: string): number | null => {
 };
 
 // ---------------------------------------------------------------------
-// Recordado en el dispositivo (no viaja a la base). Si el navegador no
-// deja guardar, se sigue funcionando sin recordar.
+// Horas salteadas: por ahora recordadas en el dispositivo (no viajan a la
+// base). Si el navegador no deja guardar, se sigue funcionando.
 // ---------------------------------------------------------------------
-const CLAVE_CARGADO_POR = "procurapp:mantenimiento:cargadoPor";
 const claveSalteadas = (donanteId: string) => `procurapp:mantenimiento:salteadas:${donanteId}`;
 function leerLocal<T>(clave: string, porDefecto: T): T {
   try {
@@ -88,33 +87,31 @@ type Comunes = {
   onGuardarPeso: (pesoKg: number) => Promise<void>;
 };
 
-// Vista de ENFERMERÍA: una sola hora por vez, la PRÓXIMA SIN CARGAR
-// (hasta la hora actual). Al guardar pasa sola a la siguiente; si está
-// todo cargado, "Al día". Una hora se puede saltar (queda sin dato, no
-// cero) y las anteriores se corrigen o anulan desde "Horas anteriores".
+// Vista de ENFERMERÍA: la pantalla muestra la HORA ACTUAL. Las horas
+// anteriores sin cargar se resumen en una línea ("Faltan N horas
+// anteriores") que abre "Horas anteriores", donde se cargan, se saltan
+// (quedan sin dato, no cero), se corrigen o se anulan. La alarma roja es
+// solo para la hora en curso, pasados 15 minutos.
 export default function MantenimientoEnfermeria(props: Comunes & { estado: EstadoBombas; ahora: number }) {
   const { donanteId, pesoKg, registros, infusiones, bombas, estado, ahora, onInfusionesChange } = props;
   const [solapa, setSolapa] = useState<"hora" | "bolos">("hora");
   const [horaElegida, setHoraElegida] = useState<number | null>(null); // hora anterior abierta a mano
   const [salteadas, setSalteadas] = useState<number[]>(() => leerLocal<number[]>(claveSalteadas(donanteId), []));
-  const [cargadoPor, setCargadoPor] = useState<string>(() => leerLocal<string>(CLAVE_CARGADO_POR, ""));
+  const [anterioresAbiertas, setAnterioresAbiertas] = useState(false);
 
   const horaActual = inicioDeHora(ahora);
   const grilla = horasDelCaso(registros, ahora);
   const alarmas = alarmasEnfermeria(grilla, salteadas);
   const balance = balancePorHora(registros, bombas, pesoKg, ahora);
-  const proxima = proximaHoraSinCargar(grilla, salteadas);
-  const abierta = horaElegida ?? proxima;
+  const faltanAnteriores = horasAnterioresSinCargar(grilla);
+  const actualCargada = registroDeLaHora(registros, horaActual) !== null;
+  const abierta = horaElegida ?? (actualCargada ? null : horaActual);
 
   function saltar(inicio: number) {
     const nuevas = [...new Set([...salteadas, inicio])];
     setSalteadas(nuevas);
     escribirLocal(claveSalteadas(donanteId), nuevas);
     setHoraElegida(null);
-  }
-  function recordarCargadoPor(nombre: string) {
-    setCargadoPor(nombre);
-    escribirLocal(CLAVE_CARGADO_POR, nombre);
   }
   const acumuladoAntesDe = (inicio: number) =>
     balance.horas.reduce((acc, h) => (h.estado === "cargada" && h.inicio < inicio ? h.acumulado : acc), 0);
@@ -133,22 +130,22 @@ export default function MantenimientoEnfermeria(props: Comunes & { estado: Estad
         </div>
       </div>
 
-      {alarmas.length > 0 && (
-        <div style={{ marginBottom: 8 }}>
-          {alarmas.map((a) => (
-            <button
-              key={a.inicio}
-              className="btn btn-sm"
-              style={{ color: "var(--red)", marginRight: 6, marginBottom: 4 }}
-              onClick={() => {
-                setSolapa("hora");
-                setHoraElegida(a.inicio);
-              }}
-            >
-              ● {a.texto}
-            </button>
-          ))}
+      {alarmas.map((a) => (
+        <div key={a.inicio} className="tiny" style={{ color: "var(--red)", fontWeight: 600, marginBottom: 6 }}>
+          ● {a.texto}
         </div>
+      ))}
+      {faltanAnteriores > 0 && (
+        <button
+          className="btn btn-sm"
+          style={{ fontSize: 11, marginBottom: 8 }}
+          onClick={() => {
+            setSolapa("hora");
+            setAnterioresAbiertas(true);
+          }}
+        >
+          Faltan {faltanAnteriores} {faltanAnteriores === 1 ? "hora anterior" : "horas anteriores"}
+        </button>
       )}
 
       {solapa === "bolos" ? (
@@ -157,8 +154,13 @@ export default function MantenimientoEnfermeria(props: Comunes & { estado: Estad
         <>
           {abierta === null ? (
             <div style={{ border: "1px solid var(--green)", borderRadius: 10, padding: 12, marginBottom: 12, textAlign: "center" }}>
-              <div style={{ fontWeight: 700 }}>Al día</div>
-              <div className="tiny muted">Próxima carga {textoHora(horaActual + 3_600_000)}</div>
+              <div style={{ fontWeight: 700 }}>Hora {textoHora(horaActual)} cargada ✓</div>
+              <div className="tiny muted">
+                Próxima carga {textoHora(horaActual + 3_600_000)} ·{" "}
+                <button className="btn btn-sm" style={{ fontSize: 11, padding: "0 6px" }} onClick={() => setHoraElegida(horaActual)}>
+                  corregir
+                </button>
+              </div>
               <ResumenBalance acumulado={balance.acumulado} faltan={balance.faltan} />
             </div>
           ) : (
@@ -168,10 +170,9 @@ export default function MantenimientoEnfermeria(props: Comunes & { estado: Estad
               inicio={abierta}
               esHoraActual={abierta === horaActual}
               esProxima={horaElegida === null}
+              puedeSaltar={abierta < horaActual}
               acumuladoPrevio={acumuladoAntesDe(abierta)}
               faltan={balance.faltan}
-              cargadoPor={cargadoPor}
-              onCargadoPor={recordarCargadoPor}
               onFijar={() => setHoraElegida(abierta)}
               onListo={() => setHoraElegida(null)}
               onSaltar={() => saltar(abierta)}
@@ -184,13 +185,13 @@ export default function MantenimientoEnfermeria(props: Comunes & { estado: Estad
           </details>
 
           {/* ------------------------------------------------ horas anteriores */}
-          <details>
-            <summary className="tiny">Horas anteriores (corregir o anular)</summary>
+          <details open={anterioresAbiertas} onToggle={(e) => setAnterioresAbiertas((e.target as HTMLDetailsElement).open)}>
+            <summary className="tiny">Horas anteriores</summary>
             {balance.horas.length === 0 && <div className="tiny muted">Todavía no hay horas.</div>}
             <div style={{ overflowX: "auto" }}>
               <table className="tiny" style={{ width: "100%", borderCollapse: "collapse" }}>
                 <tbody>
-                  {[...balance.horas].reverse().map((b) => {
+                  {[...balance.horas].filter((b) => b.inicio < horaActual).reverse().map((b) => {
                     const salteada = b.estado !== "cargada" && salteadas.includes(b.inicio);
                     const r = b.estado === "cargada" ? registros.find((x) => x.id === b.registroId) : null;
                     return (
@@ -208,14 +209,27 @@ export default function MantenimientoEnfermeria(props: Comunes & { estado: Estad
                               {b.perdidas.valor === null ? "*" : ""}
                             </td>
                             <td style={{ textAlign: "right" }}>= {num(b.parcial, 0)}</td>
-                            <td className="muted">
-                              {r?.cargado_por ?? ""}
-                              {r?.aviso_medico ? ` · ⚠ ${r.aviso_medico}` : ""}
-                            </td>
+                            <td className="muted">{r?.aviso_medico ? `⚠ ${r.aviso_medico}` : ""}</td>
                           </>
                         ) : (
                           <td colSpan={4} className="muted">
-                            {salteada ? "salteada (sin datos)" : b.estado === "faltante" ? "sin cargar" : "en curso"}
+                            {salteada ? (
+                              "salteada (sin datos)"
+                            ) : (
+                              <>
+                                sin cargar ·{" "}
+                                <button
+                                  className="btn btn-sm"
+                                  style={{ fontSize: 11, padding: "0 6px" }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    saltar(b.inicio);
+                                  }}
+                                >
+                                  saltar (sin datos)
+                                </button>
+                              </>
+                            )}
                           </td>
                         )}
                       </tr>
@@ -266,21 +280,19 @@ function FilaHora({
   inicio,
   esHoraActual,
   esProxima,
+  puedeSaltar,
   acumuladoPrevio,
   faltan,
-  cargadoPor,
-  onCargadoPor,
   onFijar,
   onListo,
   onSaltar,
 }: Comunes & {
   inicio: number;
   esHoraActual: boolean;
-  esProxima: boolean; // la próxima sin cargar (se puede saltar); si no, una hora anterior abierta a mano
+  esProxima: boolean; // la hora actual; si no, una hora anterior abierta a mano
+  puedeSaltar: boolean; // hora anterior sin cargar
   acumuladoPrevio: number;
   faltan: number;
-  cargadoPor: string;
-  onCargadoPor: (nombre: string) => void;
   // Mientras se guarda, la hora queda fija: al aparecer su registro, "la
   // próxima sin cargar" cambiaría y el formulario se iría antes de
   // terminar (y un error de las bombas no se vería).
@@ -310,8 +322,6 @@ function FilaHora({
   const [glucemia, setGlucemia] = useState("");
   const [glucemiaHora, setGlucemiaHora] = useState(() => aInputLocal(new Date(momentoActual()).toISOString()));
   const [aviso, setAviso] = useState(reg?.aviso_medico ?? "");
-  const [nombre, setNombre] = useState(cargadoPor);
-  const [editandoNombre, setEditandoNombre] = useState(cargadoPor.trim() === "");
   const [pendiente, setPendiente] = useState<string | null>(null);
   const [anulando, setAnulando] = useState(false);
   const [guardando, setGuardando] = useState(false);
@@ -395,8 +405,6 @@ function FilaHora({
       return setPendiente(`¿Seguro? Fuera del rango esperable: ${textos.join("; ")}.`);
     }
 
-    const quien = nombre.trim();
-    if (quien !== cargadoPor) onCargadoPor(quien);
     onFijar();
     setGuardando(true);
     try {
@@ -409,7 +417,6 @@ function FilaHora({
         diuresis_es_ultima_hora: !anteriorVigente,
         perdidas_insensibles_ml: perdidasEditadas,
         perdidas_insensibles_editadas: perdidasEditadas !== null,
-        cargado_por: quien || null,
         aviso_medico: aviso.trim() || null,
       };
       const guardado = await guardarRegistro(supabase, donanteId, datos, reg?.id ?? null);
@@ -417,7 +424,7 @@ function FilaHora({
 
       // 2) Bombas de la hora (y los seteos confirmados con "Listo").
       const instante = esHoraActual ? new Date(momentoActual()).toISOString() : registradoEn;
-      const { nuevasInfusiones, bombas: deLaFila } = await guardarBombasDeFila(supabase, donanteId, guardado.id, pb.filas, instante, quien || null);
+      const { nuevasInfusiones, bombas: deLaFila } = await guardarBombasDeFila(supabase, donanteId, guardado.id, pb.filas, instante, null);
       if (nuevasInfusiones.length) onInfusionesChange([...infusiones, ...nuevasInfusiones]);
       onBombasChange([...bombas.filter((b) => b.registro_id !== guardado.id), ...deLaFila]);
 
@@ -426,7 +433,7 @@ function FilaHora({
         const v = await guardarGlucemia(supabase, donanteId, glu, gluIso, "enfermeria");
         onLabChange([v, ...lab]);
       }
-      onListo(); // pasa sola a la próxima sin cargar (o "Al día")
+      onListo(); // vuelve a la hora actual
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo guardar la hora.");
     } finally {
@@ -482,7 +489,7 @@ function FilaHora({
         </div>
         {!esProxima && !guardando && (
           <button className="btn btn-sm" onClick={onListo}>
-            Volver a la próxima
+            Volver a la hora actual
           </button>
         )}
       </div>
@@ -529,7 +536,7 @@ function FilaHora({
       {LIQUIDOS_ENFERMERIA.map((l) => campoMl(l.etiqueta, liquidos[l.campo], (x) => setLiquidos((v) => ({ ...v, [l.campo]: x }))))}
 
       <div className="section-label" style={{ marginTop: 8 }}>Bombas</div>
-      <BombasDeLaHora form={bombasForm} onChange={setBombasForm} precarga={precarga} infusiones={infusiones} pesoKg={pesoKg} onGuardarPeso={onGuardarPeso} />
+      <BombasDeLaHora form={bombasForm} onChange={setBombasForm} infusiones={infusiones} pesoKg={pesoKg} onGuardarPeso={onGuardarPeso} />
 
       <div className="section-label" style={{ marginTop: 8 }}>Egresos</div>
       {campoMl("Diuresis", diuresis, setDiuresis)}
@@ -542,9 +549,11 @@ function FilaHora({
               editado
             </span>
           )}
-          <span className="tiny muted" style={{ display: "block" }}>
-            {perdidasManual !== null ? "Editado a mano." : perdidas.faltaPeso ? "Falta peso: balance sin pérdidas insensibles." : "Calculado por peso y temperatura. Editable."}
-          </span>
+          {perdidasManual === null && perdidas.faltaPeso && (
+            <span className="tiny" style={{ display: "block", color: "var(--amber)" }}>
+              Falta peso: balance sin pérdidas insensibles.
+            </span>
+          )}
         </span>
         <span style={{ display: "flex", gap: 4, alignItems: "center" }}>
           <input
@@ -599,21 +608,8 @@ function FilaHora({
         )}
       </div>
 
-      {/* ------------------------------------------------ quién y aviso */}
-      <div className="field-row" style={{ marginTop: 10 }}>
-        <span className="field-label">Cargado por</span>
-        {editandoNombre ? (
-          <input className="mini-input" style={{ width: 160 }} value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Tu nombre (se recuerda)" />
-        ) : (
-          <span className="field-value">
-            {nombre}{" "}
-            <button className="btn btn-sm" style={{ fontSize: 11 }} onClick={() => setEditandoNombre(true)}>
-              cambiar
-            </button>
-          </span>
-        )}
-      </div>
-      <details open={aviso.trim() !== "" || undefined}>
+      {/* ------------------------------------------------ aviso */}
+      <details style={{ marginTop: 10 }} open={aviso.trim() !== "" || undefined}>
         <summary className="tiny">Aviso al médico (opcional)</summary>
         <input className="mini-input" style={{ width: "100%", maxWidth: 320, marginTop: 4 }} value={aviso} onChange={(e) => setAviso(e.target.value)} placeholder="Nota corta" />
       </details>
@@ -633,7 +629,7 @@ function FilaHora({
           <button className="btn btn-accent" style={{ fontSize: 16, padding: "10px 18px" }} disabled={guardando} onClick={() => guardar()}>
             {guardando ? "Guardando…" : `Guardar hora ${textoHora(inicio)}`}
           </button>
-          {esProxima && !reg && (
+          {puedeSaltar && !reg && (
             <button className="btn btn-sm" style={{ fontSize: 11 }} disabled={guardando} onClick={onSaltar}>
               Saltar esta hora (sin datos)
             </button>

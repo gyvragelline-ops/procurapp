@@ -722,16 +722,20 @@ export function horasDelCaso(registros: { id: string; registrado_en: string; anu
   return horas;
 }
 
-// Alarmas del enfermero: horas sin cargar (salvaguarda principal). Las
-// horas salteadas a propósito ("sin datos") no alarman: siguen contando
-// en "faltan N horas".
+// Alarma roja del enfermero: SOLO la hora en curso, pasados 15 minutos
+// sin cargar (salvaguarda principal). Las horas anteriores sin cargar no
+// alarman una por una: se resumen en "Faltan N horas anteriores". Una
+// hora salteada ("sin datos") no alarma.
 export function alarmasEnfermeria(horas: HoraGrilla[], salteadas: number[] = []): { inicio: number; texto: string }[] {
-  return horas
-    .filter((h) => h.estado === "faltante" && !salteadas.includes(h.inicio))
-    .map((h) => {
-      const d = new Date(h.inicio);
-      return { inicio: h.inicio, texto: `Hora ${String(d.getHours()).padStart(2, "0")} sin cargar` };
-    });
+  const actual = horas[horas.length - 1];
+  if (!actual || actual.estado !== "faltante" || salteadas.includes(actual.inicio)) return [];
+  const d = new Date(actual.inicio);
+  return [{ inicio: actual.inicio, texto: `Hora ${String(d.getHours()).padStart(2, "0")} sin cargar` }];
+}
+
+// Horas ANTERIORES a la actual sin fila (salteadas incluidas: siguen sin dato).
+export function horasAnterioresSinCargar(horas: HoraGrilla[]): number {
+  return horas.slice(0, -1).filter((h) => h.registroId === null).length;
 }
 
 // Una hora por vez: la PRÓXIMA SIN CARGAR (la más vieja sin fila y no
@@ -742,10 +746,44 @@ export function proximaHoraSinCargar(horas: HoraGrilla[], salteadas: number[] = 
 }
 
 // ---------------------------------------------------------------------
-// Seteo de una bomba: "¿Ampollas?" [cantidad] de [contenido] y "¿En
-// cuánto la diluiste?" [mL]. La cantidad es obligatoria (sin valor por
-// defecto).
+// Tarjeta de cada bomba: cuatro preguntas, todas OBLIGATORIAS y vacías al
+// arrancar (los ejemplos son solo placeholder):
+//   1. ¿Cuántas ampollas usaste?     2. ¿De cuántos mg es cada ampolla?
+//   3. ¿En cuántos mL la diluiste?   4. ¿A cuánto tenés la bomba?
 // ---------------------------------------------------------------------
+export const SETEO_VACIO = { cantidad: "", contenido: "", volumen: "", velocidad: "" } as const;
+
+// Preguntas sin responder (1 a 4). Vacío = completa.
+export function preguntasFaltantes(r: {
+  cantidad: number | null;
+  contenidoPorAmpolla: number | null;
+  volumenMl: number | null;
+  velocidadMlH: number | null;
+}): (1 | 2 | 3 | 4)[] {
+  const ok = (n: number | null, permiteCero = false) => n !== null && !Number.isNaN(n) && (permiteCero ? n >= 0 : n > 0);
+  const out: (1 | 2 | 3 | 4)[] = [];
+  if (!ok(r.cantidad)) out.push(1);
+  if (!ok(r.contenidoPorAmpolla)) out.push(2);
+  if (!ok(r.volumenMl)) out.push(3);
+  if (!ok(r.velocidadMlH, true)) out.push(4); // 0 = suspendida
+  return out;
+}
+
+// Frase en lenguaje común, sin cuentas: "2 ampollas de 4 mg en 100 mL".
+// Solo con los tres datos del seteo completos; si no, null.
+export function fraseSeteo(c: { cantidad: number | null; contenidoPorAmpolla: number | null; volumenMl: number | null }, unidad: string): string | null {
+  if (preguntasFaltantes({ ...c, velocidadMlH: 0 }).length > 0) return null;
+  return `${fmt(c.cantidad!)} ${c.cantidad === 1 ? "ampolla" : "ampollas"} de ${fmt(c.contenidoPorAmpolla!)} ${unidad} en ${fmt(c.volumenMl!)} mL`;
+}
+
+// Orden fijo de las tarjetas (vasoactivas: noradrenalina, vasopresina,
+// adrenalina, dobutamina, dopamina, isoproterenol; después las otras).
+export function ordenarBombas(drogas: DrogaInfusion[]): DrogaInfusion[] {
+  return [...new Set(drogas)].sort((a, b) => ordenBomba(a) - ordenBomba(b));
+}
+
+// Seteo -> dilución (la cantidad de ampollas es obligatoria, sin valor
+// por defecto).
 export function seteoDesdeCampos(
   droga: DrogaInfusion,
   campos: { cantidad: number | null; contenidoPorAmpolla: number | null; volumenMl: number | null }

@@ -453,6 +453,25 @@ export const BOMBAS_ENFERMERIA: DrogaInfusion[] = [...BOMBAS_VASOACTIVAS, ...OTR
 // Paso de los botones +/− de las bombas (mL/h) -- PROPUESTO, A VALIDAR.
 export const PASO_BOMBA_ML_H = 1;
 
+// Texto de ejemplo (placeholder gris, NUNCA un valor precargado) de la
+// pregunta "¿De cuántos mg es cada ampolla?" de cada droga.
+export const EJEMPLO_AMPOLLA: Record<DrogaInfusion, string> = {
+  noradrenalina: "ej. 4",
+  vasopresina: "ej. 20",
+  adrenalina: "ej. 1",
+  dobutamina: "ej. 250",
+  dopamina: "ej. 200",
+  isoproterenol: "ej. 0,2",
+  potasio: "ej. 30",
+  insulina: "ej. 100",
+  hidrocortisona: "ej. 100",
+  dexametasona: "ej. 8",
+  amiodarona: "ej. 150",
+  esmolol: "ej. 100",
+  furosemida: "ej. 20",
+  bicarbonato: "ej. 50",
+};
+
 // Solución de la dilución (botones del seteo de cada bomba).
 export const SOLUCIONES_DILUCION = [
   { valor: "dextrosa_5", etiqueta: "Dextrosa 5 %" },

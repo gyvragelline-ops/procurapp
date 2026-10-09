@@ -158,9 +158,10 @@ test("alarma 'hora sin cargar' a los 15 minutos (salvaguarda principal)", () => 
   ];
   let grilla = horasDelCaso(regs, h(11, 10));
   assert.deepEqual(grilla.map((x) => x.estado), ["cargada", "faltante", "cargada", "en_curso"]);
-  assert.deepEqual(alarmasEnfermeria(grilla).map((a) => a.texto), ["Hora 09 sin cargar"]);
+  // la 09 (anterior) no alarma; la 11 (en curso) todavía no pasó :15
+  assert.deepEqual(alarmasEnfermeria(grilla), []);
   grilla = horasDelCaso(regs, h(11, 15));
-  assert.deepEqual(alarmasEnfermeria(grilla).map((a) => a.texto), ["Hora 09 sin cargar", "Hora 11 sin cargar"]);
+  assert.deepEqual(alarmasEnfermeria(grilla).map((a) => a.texto), ["Hora 11 sin cargar"]);
   assert.equal(horasDelCaso([], h(11, 20)).length, 1);
 });
 
@@ -431,7 +432,7 @@ test("solución: el texto solo va con 'otra', recortado a 40 caracteres; vacío 
 });
 
 // ---------------------------------------------------------------- una hora por vez
-import { proximaHoraSinCargar, seteoDesdeCampos } from "../mantenimiento-calculos.ts";
+import { fraseSeteo, horasAnterioresSinCargar, ordenarBombas, preguntasFaltantes, proximaHoraSinCargar, SETEO_VACIO, seteoDesdeCampos } from "../mantenimiento-calculos.ts";
 
 test("orden de horas: la próxima sin cargar es la más vieja sin fila, hasta la hora actual", () => {
   const regs = [
@@ -455,8 +456,12 @@ test("saltar una hora: queda sin dato (no cero), cuenta en 'faltan N horas' y no
   assert.equal(b.faltan, 1); // la 09, salteada o no
   assert.equal(b.acumulado, 200); // la 09 no suma cero ni nada
   const grilla = horasDelCaso(regs, h(10, 30));
-  assert.deepEqual(alarmasEnfermeria(grilla).map((a) => a.inicio), [h(9)]);
-  assert.deepEqual(alarmasEnfermeria(grilla, [h(9)]), []);
+  assert.deepEqual(alarmasEnfermeria(grilla), []); // la 09 es anterior: no alarma
+  assert.equal(horasAnterioresSinCargar(grilla), 1);
+  // hora en curso salteada: tampoco alarma
+  const enCurso = horasDelCaso(regs, h(11, 30));
+  assert.equal(alarmasEnfermeria(enCurso).length, 1);
+  assert.deepEqual(alarmasEnfermeria(enCurso, [h(11)]), []);
 });
 
 test("seteo: la cantidad de ampollas es obligatoria (sin valor por defecto)", () => {
@@ -485,4 +490,44 @@ test("seteo: 4 mg en 100 mL con 1 ampolla = 40 mcg/mL; con 2 ampollas = 80 mcg/m
   // vasopresina en U; potasio en mEq
   const vaso = seteoDesdeCampos("vasopresina", { cantidad: 1, contenidoPorAmpolla: 20, volumenMl: 100 });
   assert.ok(vaso.ok && vaso.dilucion.unidadContenido === "U" && vaso.unidad === "U/mL");
+});
+
+// ---------------------------------------------------------------- pantalla: una alarma, no una por hora
+test("con N horas anteriores sin cargar no hay una alarma por hora: solo 'faltan N' y, a lo sumo, la hora en curso", () => {
+  const regs = [{ id: "a", registrado_en: iso(4), anulado: false }];
+  const grilla = horasDelCaso(regs, h(10, 30)); // 05 a 09 sin cargar, 10 en curso pasado :15
+  assert.equal(horasAnterioresSinCargar(grilla), 5);
+  const alarmas = alarmasEnfermeria(grilla);
+  assert.equal(alarmas.length, 1);
+  assert.equal(alarmas[0].inicio, h(10));
+  assert.deepEqual(alarmasEnfermeria(horasDelCaso(regs, h(10, 5))), []); // antes de :15, ninguna
+});
+
+// ---------------------------------------------------------------- tarjeta de cada bomba
+test("orden fijo de las tarjetas: noradrenalina, vasopresina, adrenalina, dobutamina, dopamina, isoproterenol", () => {
+  assert.deepEqual(ordenarBombas(["isoproterenol", "dopamina", "noradrenalina", "adrenalina", "vasopresina", "dobutamina"]), [
+    "noradrenalina", "vasopresina", "adrenalina", "dobutamina", "dopamina", "isoproterenol",
+  ]);
+  // las otras infusiones van después, y sin repetidos
+  assert.deepEqual(ordenarBombas(["potasio", "noradrenalina", "potasio"]), ["noradrenalina", "potasio"]);
+});
+
+test("los cuatro campos arrancan vacíos y son obligatorios (sin ellos no hay dosis ni se guarda)", () => {
+  assert.deepEqual(SETEO_VACIO, { cantidad: "", contenido: "", volumen: "", velocidad: "" });
+  const vacio = { cantidad: null, contenidoPorAmpolla: null, volumenMl: null, velocidadMlH: null };
+  assert.deepEqual(preguntasFaltantes(vacio), [1, 2, 3, 4]);
+  assert.deepEqual(preguntasFaltantes({ cantidad: 2, contenidoPorAmpolla: 4, volumenMl: 100, velocidadMlH: null }), [4]);
+  assert.deepEqual(preguntasFaltantes({ cantidad: 2, contenidoPorAmpolla: null, volumenMl: 100, velocidadMlH: 10 }), [2]);
+  assert.deepEqual(preguntasFaltantes({ cantidad: 2, contenidoPorAmpolla: 4, volumenMl: 100, velocidadMlH: 0 }), []); // 0 = suspendida
+  // sin cualquiera de los tres datos del seteo no se calcula nada
+  assert.equal(seteoDesdeCampos("noradrenalina", { cantidad: 2, contenidoPorAmpolla: 4, volumenMl: null }).ok, false);
+  assert.equal(seteoDesdeCampos("noradrenalina", { cantidad: 2, contenidoPorAmpolla: null, volumenMl: 100 }).ok, false);
+});
+
+test("frase de resumen: solo con los tres datos del seteo completos, en lenguaje común", () => {
+  assert.equal(fraseSeteo({ cantidad: 2, contenidoPorAmpolla: 4, volumenMl: 100 }, "mg"), "2 ampollas de 4 mg en 100 mL");
+  assert.equal(fraseSeteo({ cantidad: 1, contenidoPorAmpolla: 20, volumenMl: 100 }, "UI"), "1 ampolla de 20 UI en 100 mL");
+  assert.equal(fraseSeteo({ cantidad: 2, contenidoPorAmpolla: 4, volumenMl: null }, "mg"), null);
+  assert.equal(fraseSeteo({ cantidad: null, contenidoPorAmpolla: 4, volumenMl: 100 }, "mg"), null);
+  assert.equal(fraseSeteo({ cantidad: 2, contenidoPorAmpolla: null, volumenMl: 100 }, "mg"), null);
 });

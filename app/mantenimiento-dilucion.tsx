@@ -8,9 +8,10 @@ import {
   concentracion,
   dilucionPorId,
   dosisDesdeVelocidad,
+  fraseSeteo,
+  ordenarBombas,
   seteoDesdeCampos,
   solucionPorId,
-  ultimaDilucion,
   unidadCorta,
   unidadesContenidoPara,
   type BombaFormulario,
@@ -23,9 +24,9 @@ import {
   BOMBAS_ENFERMERIA,
   BOMBAS_VASOACTIVAS,
   DROGAS_INFUSION,
+  EJEMPLO_AMPOLLA,
   OTRAS_INFUSIONES,
   PASO_BOMBA_ML_H,
-  PRESET_NORADRENALINA,
   SOLUCIONES_DILUCION,
   type DrogaInfusion,
 } from "@/lib/procuracion/mantenimiento-metas";
@@ -35,6 +36,11 @@ export type { DrogaInfusion, Solucion };
 export type EstadoDilucion = { dilucion: Dilucion; concentracion: number; unidad: string } | null;
 
 const aTexto = (n: number | null | undefined) => (n === null || n === undefined ? "" : String(n).replace(".", ","));
+// Unidad del contenido de la ampolla, como se muestra (U -> UI).
+const unidadVisible = (droga: DrogaInfusion) => {
+  const u = unidadesContenidoPara(droga)[0];
+  return u === "U" ? "UI" : u;
+};
 
 export function textoSolucion(s: Solucion): string | null {
   if (!s) return null;
@@ -42,76 +48,99 @@ export function textoSolucion(s: Solucion): string | null {
   return SOLUCIONES_DILUCION.find((x) => x.valor === s.tipo)?.etiqueta ?? null;
 }
 
-// "Noradrenalina · 4 mg × 2 en 100 mL · Dextrosa 5 %"
+// "Noradrenalina · 2 ampollas de 4 mg en 100 mL · Dextrosa 5 %"
 export function lineaSeteo(droga: DrogaInfusion, d: Dilucion, solucion: Solucion): string {
+  const frase = fraseSeteo({ cantidad: d.ampollas, contenidoPorAmpolla: d.contenidoPorAmpolla, volumenMl: d.volumenFinalMl }, unidadVisible(droga));
   const sol = textoSolucion(solucion);
-  return `${DROGAS_INFUSION[droga].etiqueta} · ${num(d.contenidoPorAmpolla)} ${d.unidadContenido} × ${num(d.ampollas)} en ${num(d.volumenFinalMl)} mL${sol ? ` · ${sol}` : ""}`;
+  return `${DROGAS_INFUSION[droga].etiqueta} · ${frase}${sol ? ` · ${sol}` : ""}`;
 }
 
-// Seteo de una bomba, en orden:
-//   a) "¿Ampollas?" [cantidad] de [mg] mg (U para vasopresina e insulina,
-//      mEq para potasio). La cantidad es OBLIGATORIA, sin valor por
-//      defecto (al cambiar un seteo existente se muestra la actual).
-//   b) "¿En cuánto la diluiste?" [mL]
-// La solución es una opción chica plegada. Se confirma con "Listo"; sin
-// fórmulas a la vista. Fuera de rango plausible: "¿seguro?" (no bloquea).
+// Pregunta numerada con su campo debajo, centrado y sin partirse en dos
+// renglones (el campo y su unidad van juntos).
+function Pregunta({ n, texto, children }: { n: number; texto: string; children: React.ReactNode }) {
+  return (
+    <div style={{ textAlign: "center", margin: "8px 0" }}>
+      <div className="tiny" style={{ marginBottom: 4 }}>
+        {n}. {texto}
+      </div>
+      <div style={{ display: "inline-flex", alignItems: "center", gap: 6, whiteSpace: "nowrap" }}>{children}</div>
+    </div>
+  );
+}
+
+// Preguntas 1 a 3 (el seteo). Arrancan vacías (los ejemplos son solo
+// placeholder); al reabrir con "cambiar" muestran el seteo actual. Con los
+// tres datos, una frase en lenguaje común. "Listo" lo confirma; fuera de
+// rango, "¿seguro?" (no bloquea).
 export function SeteoBomba({
   droga,
-  inicial,
-  nuevo,
+  actual,
   solucionInicial,
   onListo,
   onCancelar,
 }: {
   droga: DrogaInfusion;
-  inicial: Dilucion | null; // seteo actual, o el último del caso como guía del contenido por ampolla
-  nuevo: boolean; // arranque o reinicio: la cantidad arranca vacía
+  actual: Dilucion | null; // seteo vigente (al "cambiar"); null = nuevo, todo vacío
   solucionInicial: Solucion;
   onListo: (estado: NonNullable<EstadoDilucion>, solucion: Solucion) => void;
   onCancelar?: () => void;
 }) {
-  const unidad = unidadesContenidoPara(droga)[0];
-  const base: Dilucion | null = inicial ?? (droga === "noradrenalina" ? PRESET_NORADRENALINA : null);
-  const [cantidad, setCantidad] = useState(nuevo ? "" : aTexto(base?.ampollas));
-  const [ampolla, setAmpolla] = useState(aTexto(base?.contenidoPorAmpolla));
-  const [volumen, setVolumen] = useState(nuevo ? "" : aTexto(base?.volumenFinalMl));
+  const unidad = unidadVisible(droga);
+  const [cantidad, setCantidad] = useState(aTexto(actual?.ampollas));
+  const [contenido, setContenido] = useState(aTexto(actual?.contenidoPorAmpolla));
+  const [volumen, setVolumen] = useState(aTexto(actual?.volumenFinalMl));
   const [solucion, setSolucion] = useState<Solucion>(solucionInicial);
   const [seguro, setSeguro] = useState<string[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const campos = { cantidad: aNumero(cantidad), contenidoPorAmpolla: aNumero(contenido), volumenMl: aNumero(volumen) };
+  const frase = fraseSeteo(campos, unidad);
 
   function listo(confirmado = false) {
     setError(null);
-    const r = seteoDesdeCampos(droga, { cantidad: aNumero(cantidad), contenidoPorAmpolla: aNumero(ampolla), volumenMl: aNumero(volumen) });
+    const r = seteoDesdeCampos(droga, campos);
     if (!r.ok) return setError(r.error);
     const avisos = avisosSeteoBomba(droga, r.dilucion);
     if (avisos.length > 0 && !confirmado) return setSeguro(avisos);
     setSeguro(null);
     onListo({ dilucion: r.dilucion, concentracion: r.concentracion, unidad: r.unidad }, solucion);
   }
-
-  const cambio = (set: (x: string) => void) => (e: React.ChangeEvent<HTMLInputElement>) => {
-    set(e.target.value);
-    setSeguro(null);
-  };
+  const input = (valor: string, set: (x: string) => void, placeholder: string, etiqueta: string, ancho = 64) => (
+    <input
+      className="mini-input"
+      inputMode="decimal"
+      placeholder={placeholder}
+      aria-label={etiqueta}
+      style={{ width: ancho, textAlign: "center" }}
+      value={valor}
+      onChange={(e) => {
+        set(e.target.value);
+        setSeguro(null);
+      }}
+    />
+  );
 
   return (
-    <div style={{ padding: "6px 0" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 6 }}>
-        <span className="tiny" style={{ minWidth: 150 }}>¿Ampollas?</span>
-        <input className="mini-input" inputMode="decimal" style={{ width: 52 }} value={cantidad} onChange={cambio(setCantidad)} aria-label="Cantidad de ampollas" />
-        <span className="tiny">de</span>
-        <input className="mini-input" inputMode="decimal" style={{ width: 60 }} value={ampolla} onChange={cambio(setAmpolla)} aria-label={`${unidad} por ampolla`} />
-        <span className="tiny">{unidad === "U" ? "UI" : unidad}</span>
-      </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-        <span className="tiny" style={{ minWidth: 150 }}>¿En cuánto la diluiste?</span>
-        <input className="mini-input" inputMode="decimal" style={{ width: 70 }} value={volumen} onChange={cambio(setVolumen)} aria-label="Volumen de dilución en mL" />
+    <div>
+      <Pregunta n={1} texto="¿Cuántas ampollas usaste?">
+        {input(cantidad, setCantidad, "ej. 2", "Cantidad de ampollas")}
+        <span className="tiny">ampollas</span>
+      </Pregunta>
+      <Pregunta n={2} texto={`¿De cuántos ${unidad} es cada ampolla?`}>
+        {input(contenido, setContenido, EJEMPLO_AMPOLLA[droga], `${unidad} por ampolla`)}
+        <span className="tiny">{unidad}</span>
+      </Pregunta>
+      <Pregunta n={3} texto="¿En cuántos mL la diluiste?">
+        {input(volumen, setVolumen, "ej. 100", "Volumen de dilución", 72)}
         <span className="tiny">mL</span>
-      </div>
-      {droga === "noradrenalina" && <div className="tiny muted">{PRESET_NORADRENALINA.aviso}</div>}
-      <details style={{ marginTop: 4 }}>
-        <summary className="tiny muted">Solución{textoSolucion(solucion) ? `: ${textoSolucion(solucion)}` : " (opcional)"}</summary>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 4, alignItems: "center", marginTop: 4 }}>
+      </Pregunta>
+      {frase && (
+        <div className="tiny" style={{ textAlign: "center", fontWeight: 600 }}>
+          {frase}
+        </div>
+      )}
+      <details style={{ textAlign: "center", marginTop: 4 }}>
+        <summary className="tiny muted">Solución{textoSolucion(solucion) ? `: ${textoSolucion(solucion)}` : ""}</summary>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 4, justifyContent: "center", marginTop: 4 }}>
           {SOLUCIONES_DILUCION.map((s) => (
             <button
               key={s.valor}
@@ -137,7 +166,7 @@ export function SeteoBomba({
       {seguro ? (
         <Confirmacion texto={`¿Seguro? Fuera de lo esperable: ${seguro.join("; ")}.`} textoSi="Sí, está bien" onSi={() => listo(true)} onNo={() => setSeguro(null)} />
       ) : (
-        <div className="btn-row" style={{ marginTop: 6 }}>
+        <div style={{ display: "flex", justifyContent: "center", gap: 6, marginTop: 6 }}>
           <button className="btn btn-sm btn-accent" onClick={() => listo()}>
             Listo
           </button>
@@ -155,14 +184,13 @@ export function SeteoBomba({
 // =====================================================================
 // Bombas de la fila horaria (médico y enfermería: la misma fuente)
 // =====================================================================
-// La droga se marca una sola vez y se setea; en las horas siguientes
-// queda marcada con su seteo guardado y solo se anota la velocidad
-// (precargada con la de la hora anterior, "copiado"). Esa velocidad es
-// el ingreso de la hora.
+// La droga se elige una sola vez y se setea; en las horas siguientes
+// queda con su seteo guardado (línea corta) y la velocidad precargada de
+// la hora anterior. Esa velocidad es el ingreso de la hora.
 export type FilaBombaForm = {
   velocidadTexto: string;
   dilucionId: string | null; // seteo ya guardado que usa esta bomba
-  dilucionNueva: EstadoDilucion; // seteo confirmado en este formulario (se guarda con la fila)
+  dilucionNueva: EstadoDilucion; // seteo confirmado con "Listo" en este formulario
   solucion?: Solucion; // la elegida en este formulario; si no, la guardada con el seteo
   copiado: boolean;
 };
@@ -174,8 +202,9 @@ export function bombasFormDesde(filas: BombaFormulario[], copiado: boolean): Bom
   return form;
 }
 
-// Formulario -> lo que se guarda. Una bomba con la velocidad vacía se
-// saca de la fila; 0 = suspendida (queda anotado, no se precarga después).
+// Formulario -> lo que se guarda. Cada bomba elegida necesita las cuatro
+// respuestas: el seteo (confirmado con "Listo") y la velocidad. 0 =
+// suspendida (queda anotada, no se precarga después).
 export function bombasParaGuardar(
   form: BombasForm,
   precarga: BombaFormulario[]
@@ -183,9 +212,12 @@ export function bombasParaGuardar(
   const filas: BombaParaGuardar[] = [];
   for (const d of BOMBAS_ENFERMERIA) {
     const f = form[d];
-    if (!f || f.velocidadTexto.trim() === "") continue;
+    if (!f) continue;
+    const etiqueta = DROGAS_INFUSION[d].etiqueta;
+    if (!f.dilucionNueva && !f.dilucionId) return { ok: false, error: `${etiqueta}: completá las preguntas 1 a 3 y tocá "Listo".` };
     const v = aNumero(f.velocidadTexto);
-    if (v === null || Number.isNaN(v) || v < 0) return { ok: false, error: `Velocidad inválida en ${DROGAS_INFUSION[d].etiqueta} (mL/h).` };
+    if (v === null) return { ok: false, error: `${etiqueta}: falta "¿A cuánto tenés la bomba?".` };
+    if (Number.isNaN(v) || v < 0) return { ok: false, error: `${etiqueta}: velocidad inválida (mL/h).` };
     const arranca = bombasQueArrancan(precarga, [{ droga: d, velocidad_ml_h: v, dilucion_id: f.dilucionId }]).length > 0;
     filas.push({
       droga: d,
@@ -227,14 +259,13 @@ export function avisosDosisDeFila(form: BombasForm, infusiones: InfusionFila[], 
 export function BombasDeLaHora({
   form,
   onChange,
-  precarga,
   infusiones,
   pesoKg,
   onGuardarPeso,
 }: {
   form: BombasForm;
   onChange: (f: BombasForm) => void;
-  precarga: BombaFormulario[]; // bombas de la hora anterior (para saber cuáles arrancan)
+  precarga?: BombaFormulario[];
   infusiones: InfusionFila[];
   pesoKg: number | null;
   onGuardarPeso: (pesoKg: number) => Promise<void>;
@@ -247,76 +278,70 @@ export function BombasDeLaHora({
     delete resto[d];
     onChange(resto);
   };
-  const marcar = (d: DrogaInfusion) => cambiar(d, { velocidadTexto: "", dilucionId: null, dilucionNueva: null });
+  const elegir = (d: DrogaInfusion) => cambiar(d, { velocidadTexto: "", dilucionId: null, dilucionNueva: null });
 
-  const filaDe = (d: DrogaInfusion) => {
+  const elegidas = ordenarBombas(BOMBAS_ENFERMERIA.filter((d) => form[d]));
+  const datos = elegidas.map((d) => {
     const f = form[d]!;
     const { velocidad, dil, dosis } = dosisDeFila(d, f, infusiones, pesoKg);
     const solucion = f.solucion !== undefined ? f.solucion : solucionPorId(infusiones, f.dilucionId);
-    // Arranca o se reinicia (no venía corriendo en la hora anterior) y no
-    // tiene seteo: se abre el seteo solo.
-    const arranca = velocidad !== 0 && !precarga.some((p) => p.droga === d && p.velocidad_ml_h > 0);
-    return { d, f, velocidad, dil, dosis, solucion, pideSeteo: arranca && !f.dilucionNueva && !f.dilucionId };
-  };
-  const marcadas = BOMBAS_ENFERMERIA.filter((d) => form[d]).map(filaDe);
-  const faltaPeso = marcadas.some((x) => x.dosis && !x.dosis.ok && x.dosis.motivo === "sin_peso");
+    return { d, f, velocidad, dil, dosis, solucion };
+  });
+  const faltaPeso = datos.some((x) => x.dosis && !x.dosis.ok && x.dosis.motivo === "sin_peso");
+  const hayCopiadas = datos.some((x) => x.f.copiado);
 
-  const resultado = (velocidad: number | null, dil: Dilucion | null, dosis: DosisFila) => {
+  const resultado = (velocidad: number | null, dosis: DosisFila) => {
     if (velocidad === 0) return "suspendida";
-    if (velocidad === null || !dil || !dosis) return "";
+    if (!dosis) return "";
     if (!dosis.ok) return dosis.motivo === "sin_peso" ? "falta peso" : "";
     const u = unidadCorta(dosis.unidad);
     return `${num(dosis.dosis, u === "U/min" ? 3 : u === "γ" ? 2 : 1)} ${u}`;
   };
 
-  const bloque = (d: DrogaInfusion) => {
-    const { f, velocidad, dil, dosis, solucion, pideSeteo } = filaDe(d);
-    const abierto = pideSeteo || seteando === d;
+  const tarjeta = ({ d, f, velocidad, dil, dosis, solucion }: (typeof datos)[number]) => {
+    // Sin seteo (recién elegida o reiniciada): las preguntas 1 a 3 abiertas.
+    const sinSeteo = !f.dilucionNueva && !f.dilucionId;
+    const abierto = sinSeteo || seteando === d;
     return (
-      <div key={d} style={{ borderBottom: "1px solid var(--border-soft)", padding: "6px 0" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
-          <span style={{ fontWeight: 600, fontSize: 13 }}>{DROGAS_INFUSION[d].etiqueta}</span>
-          <button className="btn btn-sm" title="Desmarcar (sacar de esta hora)" onClick={() => quitar(d)}>
-            ×
-          </button>
-        </div>
+      <div
+        key={d}
+        style={{ border: "1px solid var(--border)", borderRadius: 10, padding: "8px 10px", margin: "8px auto", maxWidth: 380, position: "relative" }}
+      >
+        <div style={{ textAlign: "center", fontWeight: 700 }}>{DROGAS_INFUSION[d].etiqueta}</div>
+        <button
+          className="btn btn-sm"
+          title="Sacar esta bomba de la hora"
+          aria-label={`Sacar ${DROGAS_INFUSION[d].etiqueta}`}
+          style={{ position: "absolute", top: 6, right: 6 }}
+          onClick={() => quitar(d)}
+        >
+          ×
+        </button>
 
         {abierto ? (
-          <div style={{ paddingLeft: 8, borderLeft: `2px solid ${pideSeteo ? "var(--amber)" : "var(--border)"}` }}>
-            <SeteoBomba
-              key={`${d}-${pideSeteo ? "nuevo" : "cambio"}`}
-              droga={d}
-              inicial={dil ?? ultimaDilucion(infusiones, d)}
-              nuevo={pideSeteo}
-              solucionInicial={solucion}
-              onListo={(estado, sol) => {
-                cambiar(d, { dilucionNueva: estado, solucion: sol });
-                setSeteando(null);
-              }}
-              onCancelar={pideSeteo ? undefined : () => setSeteando(null)}
-            />
-          </div>
-        ) : dil ? (
-          <div className="tiny muted">
-            {lineaSeteo(d, dil, solucion)}{" "}
-            <button className="btn btn-sm" style={{ fontSize: 11, padding: "0 6px" }} onClick={() => setSeteando(d)}>
-              cambiar
-            </button>
-          </div>
+          <SeteoBomba
+            key={`${d}-${sinSeteo ? "nuevo" : "cambio"}`}
+            droga={d}
+            actual={sinSeteo ? null : dil}
+            solucionInicial={solucion}
+            onListo={(estado, sol) => {
+              cambiar(d, { dilucionNueva: estado, solucion: sol });
+              setSeteando(null);
+            }}
+            onCancelar={sinSeteo ? undefined : () => setSeteando(null)}
+          />
         ) : (
-          <div className="tiny" style={{ color: "var(--amber)" }}>
-            Sin seteo: suma al balance, sin dosis ni alarmas de dosis.{" "}
-            <button className="btn btn-sm" style={{ fontSize: 11, padding: "0 6px" }} onClick={() => setSeteando(d)}>
-              setear
-            </button>
-          </div>
+          dil && (
+            <div className="tiny muted" style={{ textAlign: "center", marginTop: 2 }}>
+              {lineaSeteo(d, dil, solucion)}{" "}
+              <button className="btn btn-sm" style={{ fontSize: 11, padding: "0 6px" }} onClick={() => setSeteando(d)}>
+                cambiar
+              </button>
+            </div>
+          )
         )}
 
-        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
-          <span className="tiny" style={{ minWidth: 150 }}>
-            ¿A cuánto tenés la bomba?
-            {f.copiado && <span className="muted" style={{ display: "block" }}>copiado de la hora anterior</span>}
-          </span>
+        <Pregunta n={4} texto="¿A cuánto tenés la bomba?">
           <button
             className="btn"
             style={{ minWidth: 40, fontSize: 18 }}
@@ -328,7 +353,8 @@ export function BombasDeLaHora({
           <input
             className="mini-input"
             inputMode="decimal"
-            style={{ width: 76, fontSize: 20, fontWeight: 700, textAlign: "center", border: "2px solid var(--accent)" }}
+            placeholder="ej. 10"
+            style={{ width: 80, fontSize: 20, fontWeight: 700, textAlign: "center", border: "2px solid var(--accent)" }}
             value={f.velocidadTexto}
             onChange={(e) => cambiar(d, { velocidadTexto: e.target.value })}
             aria-label={`${DROGAS_INFUSION[d].etiqueta} mL/h`}
@@ -341,41 +367,45 @@ export function BombasDeLaHora({
           >
             +
           </button>
-          <span className="tiny">
-            mL/h
-            <span className="muted" style={{ display: "block" }}>
-              {resultado(velocidad, dil, dosis)}
-            </span>
-          </span>
-        </div>
+          <span className="tiny">mL/h</span>
+        </Pregunta>
+        {resultado(velocidad, dosis) && (
+          <div className="tiny muted" style={{ textAlign: "center" }}>
+            {resultado(velocidad, dosis)}
+          </div>
+        )}
       </div>
     );
   };
 
-  const botonesMarcar = (lista: DrogaInfusion[]) => {
+  const botones = (lista: DrogaInfusion[]) => {
     const libres = lista.filter((d) => !form[d]);
     if (libres.length === 0) return null;
     return (
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 6 }}>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, justifyContent: "center", margin: "6px 0" }}>
         {libres.map((d) => (
-          <button key={d} className="btn btn-sm" onClick={() => marcar(d)}>
-            + {DROGAS_INFUSION[d].etiqueta}
+          <button key={d} className="btn btn-sm" onClick={() => elegir(d)}>
+            {DROGAS_INFUSION[d].etiqueta}
           </button>
         ))}
       </div>
     );
   };
 
-  const otrasMarcadas = OTRAS_INFUSIONES.filter((d) => form[d]);
-
+  const otrasElegidas = datos.filter((x) => OTRAS_INFUSIONES.includes(x.d));
   return (
     <div>
-      {BOMBAS_VASOACTIVAS.filter((d) => form[d]).map(bloque)}
-      {botonesMarcar(BOMBAS_VASOACTIVAS)}
-      <details open={otrasMarcadas.length > 0 || undefined} style={{ marginTop: 8 }}>
-        <summary className="tiny">Otras infusiones{otrasMarcadas.length ? ` (${otrasMarcadas.length})` : ""}</summary>
-        {otrasMarcadas.map(bloque)}
-        {botonesMarcar(OTRAS_INFUSIONES)}
+      {hayCopiadas && (
+        <div className="tiny muted" style={{ textAlign: "center" }}>
+          Velocidades copiadas de la hora anterior.
+        </div>
+      )}
+      {botones(BOMBAS_VASOACTIVAS)}
+      {datos.filter((x) => BOMBAS_VASOACTIVAS.includes(x.d)).map(tarjeta)}
+      <details open={otrasElegidas.length > 0 || undefined} style={{ marginTop: 8 }}>
+        <summary className="tiny">Otras infusiones{otrasElegidas.length ? ` (${otrasElegidas.length})` : ""}</summary>
+        {botones(OTRAS_INFUSIONES)}
+        {otrasElegidas.map(tarjeta)}
       </details>
       {faltaPeso && <PedirPeso onGuardar={onGuardarPeso} />}
     </div>
