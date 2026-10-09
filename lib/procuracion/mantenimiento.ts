@@ -377,5 +377,15 @@ export async function marcarMantenimientoCompleto(supabase: SupabaseClient, dona
         { onConflict: "donante_id,categoria,item_key" }
       )
   );
-  if (!r.ok) throw new Error(r.mensaje);
+  if (!r.ok) {
+    // La categoría "mantenimiento" tiene que estar habilitada en
+    // documentacion_estado_categoria_check; si no, el error no es de
+    // conexión: se dice qué pasa en lugar del texto técnico.
+    if (r.mensaje.includes("documentacion_estado_categoria_check")) {
+      throw new Error(
+        `No se pudo marcar Mantenimiento como ${completo ? "completo" : "pendiente"}: falta habilitar la categoría "mantenimiento" en la base. Avisá al administrador.`
+      );
+    }
+    throw new Error(r.mensaje);
+  }
 }
