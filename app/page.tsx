@@ -47,6 +47,8 @@ import DocumentosPanel from "./documentos-panel";
 import DocumentacionFotosPanel from "./documentacion-fotos-panel";
 import MedidasPanel from "./medidas-panel";
 import MantenimientoPanel from "./mantenimiento-panel";
+import CultivosPanel from "./cultivos-panel";
+import { estadoEtapaCultivos, textoPositivos, type Cultivo } from "@/lib/procuracion/cultivos-calculos";
 import NuevoDonante from "./nuevo-donante";
 
 const EMPTY_ME_CAMPOS: MeCampos = Object.fromEntries(ME_CAMPO_KEYS.map((k) => [k, null]));
@@ -76,6 +78,7 @@ export default function Home() {
   const [medidasCompleto, setMedidasCompleto] = useState(false);
   const [mantenimientoCompleto, setMantenimientoCompleto] = useState(false);
   const [muestras, setMuestras] = useState<MuestraRow[]>([]);
+  const [cultivos, setCultivos] = useState<Cultivo[]>([]);
   const [planillasGeneradas, setPlanillasGeneradas] = useState<Record<string, PlanillaGeneradaRow>>({});
   const [generandoPdfs, setGenerandoPdfs] = useState(false);
   const [combinandoPdfs, setCombinandoPdfs] = useState(false);
@@ -190,7 +193,12 @@ export default function Home() {
         .eq("donante_id", selectedId)
         .order("generado_en", { ascending: false }),
       supabase.from("muestras").select("paquete_key, nombre, tubos, obtenida, retirada").eq("donante_id", selectedId),
-    ]).then(([donanteRes, familiarRes, etapasRes, judicialRes, meRes, certificadoCierreRes, dopplerRes, certAuxRes, comMuerteRes, comDonacionRes, labImagenesRes, medidasRes, mantenimientoRes, planillasRes, muestrasRes]) => {
+      supabase
+        .from("cultivos")
+        .select("id, tipo, tipo_otro, tomado_en, estado, germen, sensibilidad, resultado_en, modificado_en, anulado")
+        .eq("donante_id", selectedId)
+        .order("tomado_en", { ascending: false }),
+    ]).then(([donanteRes, familiarRes, etapasRes, judicialRes, meRes, certificadoCierreRes, dopplerRes, certAuxRes, comMuerteRes, comDonacionRes, labImagenesRes, medidasRes, mantenimientoRes, planillasRes, muestrasRes, cultivosRes]) => {
       const donanteData = (donanteRes.data as Donante) ?? null;
       setDonante(donanteData);
       setFamiliar((familiarRes.data as Familiar) ?? null);
@@ -232,6 +240,7 @@ export default function Home() {
       });
       setPlanillasGeneradas(planillasMap);
       setMuestras((muestrasRes.data as MuestraRow[]) ?? []);
+      setCultivos((cultivosRes.data as Cultivo[]) ?? []);
       setLoadingDetail(false);
     });
   }, [selectedId]);
@@ -338,6 +347,7 @@ export default function Home() {
     if (key === "medidas") return computeMedidasEstado(medidasCompleto);
     if (key === "mantenimiento") return computeMantenimientoEstado(mantenimientoCompleto);
     if (key === "muestras") return computeMuestrasEstado(muestras);
+    if (key === "cultivos") return estadoEtapaCultivos(cultivos).estado;
     return etapas[key];
   }
 
@@ -352,6 +362,11 @@ export default function Home() {
     withJudicial.splice(withJudicial.length - 1, 0, judicialStage);
     return withJudicial;
   }, [judicialAplica, donante?.tipo_procuracion]);
+
+  function irAEtapa(key: string) {
+    setOpenStage(key);
+    requestAnimationFrame(() => document.getElementById(`etapa-${key}`)?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  }
 
   async function handleOpenStage(key: string) {
     if (openStage === key) {
@@ -368,6 +383,7 @@ export default function Home() {
       key === "muestras" ||
       key === "medidas" ||
       key === "labImagenes" ||
+      key === "cultivos" ||
       key === "mantenimiento" ||
       stageData[key] ||
       !donante
@@ -512,7 +528,7 @@ export default function Home() {
                 const num = idx + 1 < 10 ? "0" + (idx + 1) : String(idx + 1);
                 const data = stageData[s.key];
                 return (
-                  <div key={s.key}>
+                  <div key={s.key} id={`etapa-${s.key}`}>
                     <div
                       className={`stage-item ${st === "green" ? "done" : ""} ${
                         st === "amber" || st === "red" ? "attn" : ""
@@ -520,7 +536,14 @@ export default function Home() {
                       onClick={() => handleOpenStage(s.key)}
                     >
                       <div className="stage-num">{num}</div>
-                      <div className="stage-name">{s.label}</div>
+                      <div className="stage-name">
+                        {s.label}
+                        {s.key === "cultivos" && textoPositivos(estadoEtapaCultivos(cultivos).positivos) && (
+                          <span className="tiny" style={{ color: "var(--red)", marginLeft: 6 }}>
+                            ✕ {textoPositivos(estadoEtapaCultivos(cultivos).positivos)}
+                          </span>
+                        )}
+                      </div>
                       <span className={`chip ${chipClass(st)}`}>{stageLabel(st)}</span>
                     </div>
 
@@ -725,8 +748,12 @@ export default function Home() {
                             onDonanteChange={setDonante}
                             completo={mantenimientoCompleto}
                             onCompletoChange={setMantenimientoCompleto}
+                            cultivos={cultivos}
+                            onIrACultivos={() => irAEtapa("cultivos")}
                           />
                         )}
+
+                        {s.key === "cultivos" && donante && <CultivosPanel donanteId={donante.id} cultivos={cultivos} onChange={setCultivos} />}
 
                         {s.key === "labImagenes" && donante && (
                           <>

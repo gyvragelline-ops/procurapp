@@ -40,6 +40,7 @@ import {
   type Tarjeta,
 } from "@/lib/procuracion/mantenimiento-tendencias";
 import { generarSugerencias, type Sugerencia } from "@/lib/procuracion/mantenimiento-sugerencias";
+import { lineasCultivosMedico, type Cultivo } from "@/lib/procuracion/cultivos-calculos";
 import { tensionesEntreReglas } from "@/lib/procuracion/mantenimiento-tensiones";
 import {
   CAMBIO_MINIMO_FLECHA,
@@ -88,6 +89,8 @@ export default function MantenimientoMedico({
   estado,
   ahora,
   completo,
+  cultivos = [],
+  onIrACultivos,
   onInfusionesChange,
   onLabChange,
   onRespiradorChange,
@@ -107,6 +110,8 @@ export default function MantenimientoMedico({
   estado: EstadoBombas;
   ahora: number;
   completo: boolean;
+  cultivos?: Cultivo[];
+  onIrACultivos?: () => void;
   onInfusionesChange: (f: InfusionFila[]) => void;
   onLabChange: (v: ValorLaboratorio[]) => void;
   onRespiradorChange: (e: EventoRespirador[]) => void;
@@ -238,6 +243,9 @@ export default function MantenimientoMedico({
     ],
     ahora
   );
+  // Cultivos: positivo = línea en ALERTAS; pendiente = línea gris con las
+  // horas sin resultado. Tocarlas lleva a la etapa Cultivos.
+  const lineasCultivos = lineasCultivosMedico(cultivos, ahora);
   const irA = (id: string) => {
     const el = document.getElementById(id);
     if (!el) return;
@@ -253,7 +261,7 @@ export default function MantenimientoMedico({
       {/* ------------------------------------------------ 2. alertas */}
       <section className={styles.tarjeta} aria-label="Alertas">
         <div className={styles.etiqueta}>Alertas</div>
-        {alertas.length === 0 ? (
+        {alertas.length === 0 && lineasCultivos.alertas.length === 0 ? (
           <div className={styles.ok} style={{ padding: "8px 0" }}>
             ✓ Todo en meta
           </div>
@@ -264,6 +272,16 @@ export default function MantenimientoMedico({
             </button>
           ))
         )}
+        {lineasCultivos.alertas.map((c) => (
+          <button key={`cult-${c.id}`} className={`${styles.alerta} ${styles.fuera}`} onClick={onIrACultivos}>
+            <span className={styles.num}>{c.texto}</span>
+          </button>
+        ))}
+        {lineasCultivos.pendientes.map((c) => (
+          <button key={`cultp-${c.id}`} className={`${styles.alerta} ${styles.apagado} ${styles.chico}`} onClick={onIrACultivos}>
+            {c.texto}
+          </button>
+        ))}
         {vencidos.map((v) => (
           <button key={v.id} className={`${styles.alerta} ${styles.apagado} ${styles.chico}`} onClick={() => irA(v.destino)}>
             {v.texto}

@@ -19,6 +19,7 @@ import {
   type InfusionFila,
   type MedicionMedico,
 } from "@/lib/procuracion/mantenimiento-calculos";
+import type { Cultivo } from "@/lib/procuracion/cultivos-calculos";
 import MantenimientoMedico from "./mantenimiento-medico";
 import MantenimientoEnfermeria from "./mantenimiento-enfermeria";
 import { ErrorVisible, hora, num } from "./mantenimiento-ui";
@@ -35,11 +36,15 @@ export default function MantenimientoPanel({
   onDonanteChange,
   completo,
   onCompletoChange,
+  cultivos = [],
+  onIrACultivos,
 }: {
   donante: Donante;
   onDonanteChange: (d: Donante) => void;
   completo: boolean;
   onCompletoChange: (v: boolean) => void;
+  cultivos?: Cultivo[]; // de la etapa Cultivos (los carga la ficha)
+  onIrACultivos?: () => void;
 }) {
   const [registros, setRegistros] = useState<RegistroMantenimiento[]>([]);
   const [infusiones, setInfusiones] = useState<InfusionFila[]>([]);
@@ -172,6 +177,8 @@ export default function MantenimientoPanel({
           estado={estado}
           ahora={ahora}
           completo={completo}
+          cultivos={cultivos}
+          onIrACultivos={onIrACultivos}
           onInfusionesChange={setInfusiones}
           onLabChange={setLab}
           onRespiradorChange={setRespirador}
