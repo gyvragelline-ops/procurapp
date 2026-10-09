@@ -12,17 +12,20 @@ import {
   type RegistroMantenimiento,
 } from "@/lib/procuracion/mantenimiento";
 import type { ValorLaboratorio } from "@/lib/procuracion/laboratorio-valores";
+import styles from "./mantenimiento-medico.module.css";
 import {
   camposFueraDeRango,
   disfuncionMiocardica,
   ordenarPorHora,
   respiradorVigenteEn,
+  ultimoValorLab,
   ultimoValorMedico,
   type CampoMedico,
+  type PafiCalculada,
   type EventoRespirador,
   type MedicionMedico,
 } from "@/lib/procuracion/mantenimiento-calculos";
-import { MODOS_RESPIRADOR, type ModoRespirador } from "@/lib/procuracion/mantenimiento-metas";
+import { HORAS_LAB_DESACTUALIZADO, MODOS_RESPIRADOR, type ModoRespirador } from "@/lib/procuracion/mantenimiento-metas";
 import MantenimientoLaboratorio from "./mantenimiento-laboratorio";
 import { Confirmacion, ErrorVisible, aInputLocal, aNumero, esFutura, fechaHora, hora, momentoActual, num } from "./mantenimiento-ui";
 
@@ -149,10 +152,17 @@ function Respirador({
     <div>
       <ErrorVisible mensaje={error} />
       <div className="field-row">
-        <span className="field-label">{vigente ? `${textoRespirador(vigente)} · desde las ${hora(vigente.registrado_en)}` : "Sin respirador cargado."}</span>
+        <span className="field-label">
+          {vigente ? textoRespirador(vigente) : "Sin respirador cargado."}
+          {vigente && (
+            <span className={`${styles.apagado} ${styles.chico}`} style={{ display: "block" }}>
+              seteado <span className={styles.num}>{hora(vigente.registrado_en)}</span>
+            </span>
+          )}
+        </span>
         {!abierto && (
           <button className="btn btn-sm btn-accent" onClick={abrir}>
-            {vigente ? "Cambió el respirador" : "Setear respirador"}
+            {vigente ? "Cambiar ajuste del respirador" : "Setear respirador"}
           </button>
         )}
       </div>
@@ -411,9 +421,22 @@ function MonitoreoAvanzado({
 }
 
 // ---------------------------------------------------------------------
-// Datos del médico (plegados): respirador, evaluación clínica, monitoreo
-// avanzado, configuración y laboratorio.
+// Datos del médico: tarjetas plegadas (respirador, laboratorio,
+// evaluación clínica, monitoreo avanzado).
 // ---------------------------------------------------------------------
+const LAB_RESUMEN: { parametro: string; etiqueta: string; unidad: string; dec: number }[] = [
+  { parametro: "na", etiqueta: "Na", unidad: "mEq/L", dec: 0 },
+  { parametro: "k", etiqueta: "K", unidad: "mEq/L", dec: 1 },
+  { parametro: "ph", etiqueta: "pH", unidad: "", dec: 2 },
+  { parametro: "pao2", etiqueta: "PaO₂", unidad: "mmHg", dec: 0 },
+  { parametro: "hb", etiqueta: "Hb", unidad: "g/dL", dec: 1 },
+];
+
+function edad(iso: string, ahora: number): string {
+  const h = (ahora - new Date(iso).getTime()) / 3_600_000;
+  return h < 1 ? `hace ${Math.max(0, Math.round(h * 60))} min` : `hace ${num(h, h < 10 ? 1 : 0)} h`;
+}
+
 export default function DatosDelMedico({
   donanteId,
   respirador,
@@ -421,6 +444,8 @@ export default function DatosDelMedico({
   registros,
   config,
   lab,
+  pafi,
+  ahora,
   onRespiradorChange,
   onMedicionesChange,
   onCambiarConfig,
@@ -432,6 +457,8 @@ export default function DatosDelMedico({
   registros: RegistroMantenimiento[];
   config: ConfigMantenimiento | null;
   lab: ValorLaboratorio[];
+  pafi: PafiCalculada | null;
+  ahora: number;
   onRespiradorChange: (e: EventoRespirador[]) => void;
   onMedicionesChange: (m: MedicionMedico[]) => void;
   onCambiarConfig: (c: Partial<Omit<ConfigMantenimiento, "donante_id">>) => void;
@@ -459,35 +486,77 @@ export default function DatosDelMedico({
   }
 
   const tresEstados = (valor: "si" | "no" | "sin_definir", onCambio: (v: "si" | "no" | "sin_definir") => void) => (
-    <select className="mini-input" value={valor} onChange={(e) => onCambio(e.target.value as "si" | "no" | "sin_definir")}>
-      <option value="sin_definir">Sin definir</option>
-      <option value="si">Sí</option>
-      <option value="no">No</option>
-    </select>
+    <span style={{ display: "flex", gap: 4 }}>
+      {(["si", "no", "sin_definir"] as const).map((v) => (
+        <button key={v} className={`btn btn-sm ${valor === v ? "btn-accent" : ""}`} onClick={() => onCambio(v)}>
+          {v === "si" ? "Sí" : v === "no" ? "No" : "Sin definir"}
+        </button>
+      ))}
+    </span>
   );
+  const vencido = (iso: string) => (ahora - new Date(iso).getTime()) / 3_600_000 > HORAS_LAB_DESACTUALIZADO;
 
   return (
     <div>
       <ErrorVisible mensaje={error} />
-      <details open>
-        <summary className="section-label">Respirador</summary>
+
+      <details className={styles.tarjeta}>
+        <summary className={styles.etiqueta}>Respirador</summary>
         <Respirador donanteId={donanteId} eventos={respirador} onChange={onRespiradorChange} />
       </details>
 
-      <details style={{ marginTop: 8 }}>
-        <summary className="section-label">Laboratorio</summary>
+      <details className={styles.tarjeta}>
+        <summary className={styles.etiqueta}>Laboratorio</summary>
+        {LAB_RESUMEN.map((p) => {
+          const v = ultimoValorLab(lab, p.parametro, ahora);
+          return (
+            <div className="field-row" key={p.parametro}>
+              <span className="field-label">{p.etiqueta}</span>
+              <span className="field-value">
+                {v ? (
+                  <>
+                    <span className={styles.num}>
+                      {num(v.valor, p.dec)}
+                      {p.unidad ? ` ${p.unidad}` : ""}
+                    </span>{" "}
+                    <span className={`${styles.chico} ${vencido(v.medido_en) ? styles.fuera : styles.apagado}`}>
+                      {edad(v.medido_en, ahora)}
+                      {vencido(v.medido_en) ? " · vencido" : ""}
+                    </span>
+                  </>
+                ) : (
+                  <span className={styles.apagado}>sin dato</span>
+                )}
+              </span>
+            </div>
+          );
+        })}
+        <div className="field-row">
+          <span className="field-label">PaFi</span>
+          <span className="field-value">
+            {pafi ? (
+              <>
+                <span className={styles.num}>{num(pafi.valor, 0)}</span>{" "}
+                <span className={`${styles.chico} ${pafi.desactualizado ? styles.fuera : styles.apagado}`}>
+                  {edad(pafi.medido_en, ahora)}
+                  {pafi.desactualizado ? " · vencido" : ""} · FiO₂ {num(pafi.fio2, 0)} % de las {hora(pafi.fio2Desde)}
+                </span>
+              </>
+            ) : (
+              <span className={styles.apagado}>sin dato</span>
+            )}
+          </span>
+        </div>
         <MantenimientoLaboratorio donanteId={donanteId} valores={lab} onValoresChange={onLabChange} />
       </details>
 
-      <details style={{ marginTop: 8 }}>
-        <summary className="section-label">Evaluación clínica</summary>
+      <details className={styles.tarjeta}>
+        <summary className={styles.etiqueta}>Evaluación clínica</summary>
         <div className="field-row">
           <span className="field-label">
-            Disfunción miocárdica (clínica o ecocardiograma)
-            <span className="tiny muted" style={{ display: "block" }}>
-              {disfuncion.estado === "sin_evaluar"
-                ? "Sin evaluar."
-                : `${disfuncion.estado === "si" ? "Sí" : "No"} · ${fechaHora(disfuncion.registrado_en)}`}
+            Disfunción miocárdica
+            <span className={`${styles.chico} ${styles.apagado}`} style={{ display: "block" }}>
+              {disfuncion.estado === "sin_evaluar" ? "sin evaluar" : `${disfuncion.estado === "si" ? "Sí" : "No"} · ${fechaHora(disfuncion.registrado_en)}`}
             </span>
           </span>
           <span style={{ display: "flex", gap: 4 }}>
@@ -500,7 +569,14 @@ export default function DatosDelMedico({
           </span>
         </div>
         <div className="field-row">
-          <span className="field-label">¿Recibía nutrición antes?</span>
+          <span className="field-label">
+            Nutrición previa
+            {config?.nutricion_previa == null && (
+              <span className={`${styles.chico} ${styles.apagado}`} style={{ display: "block" }}>
+                sin definir
+              </span>
+            )}
+          </span>
           <span style={{ display: "flex", gap: 4 }}>
             <button className={`btn btn-sm ${config?.nutricion_previa === "si" ? "btn-accent" : ""}`} onClick={() => onCambiarConfig({ nutricion_previa: "si" })}>
               Sí
@@ -510,19 +586,6 @@ export default function DatosDelMedico({
             </button>
           </span>
         </div>
-      </details>
-
-      <details style={{ marginTop: 8 }}>
-        <summary className="section-label">Monitoreo avanzado</summary>
-        <label className="check-row" style={{ cursor: "pointer" }}>
-          <input type="checkbox" checked={avanzado} onChange={(e) => onCambiarConfig({ monitoreo_avanzado_activo: e.target.checked })} /> Monitoreo
-          avanzado activo (PVC, GC, IC, RVS, saturación venosa, variables dinámicas)
-        </label>
-        {avanzado && <MonitoreoAvanzado donanteId={donanteId} mediciones={mediciones} registros={registros} onChange={onMedicionesChange} />}
-      </details>
-
-      <details style={{ marginTop: 8 }}>
-        <summary className="section-label">Configuración del caso</summary>
         <div className="field-row">
           <span className="field-label">Corazón candidato</span>
           {tresEstados(config?.corazon_candidato ?? "sin_definir", (v) => onCambiarConfig({ corazon_candidato: v }))}
@@ -531,6 +594,15 @@ export default function DatosDelMedico({
           <span className="field-label">Pulmón candidato</span>
           {tresEstados(config?.pulmon_candidato ?? "sin_definir", (v) => onCambiarConfig({ pulmon_candidato: v }))}
         </div>
+      </details>
+
+      <details className={styles.tarjeta}>
+        <summary className={styles.etiqueta}>Monitoreo avanzado (opcional)</summary>
+        <label className="check-row" style={{ cursor: "pointer", minHeight: 44, display: "flex", alignItems: "center", gap: 8 }}>
+          <input type="checkbox" checked={avanzado} onChange={(e) => onCambiarConfig({ monitoreo_avanzado_activo: e.target.checked })} /> Activo (PVC, GC,
+          IC, RVS, saturación venosa, variables de volemia)
+        </label>
+        {avanzado && <MonitoreoAvanzado donanteId={donanteId} mediciones={mediciones} registros={registros} onChange={onMedicionesChange} />}
       </details>
     </div>
   );

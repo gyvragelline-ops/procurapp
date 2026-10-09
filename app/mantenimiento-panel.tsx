@@ -21,7 +21,7 @@ import {
 } from "@/lib/procuracion/mantenimiento-calculos";
 import MantenimientoMedico from "./mantenimiento-medico";
 import MantenimientoEnfermeria from "./mantenimiento-enfermeria";
-import { ErrorVisible } from "./mantenimiento-ui";
+import { ErrorVisible, hora, num } from "./mantenimiento-ui";
 
 const supabase = createClient();
 
@@ -117,11 +117,28 @@ export default function MantenimientoPanel({
   return (
     <div>
       <ErrorVisible mensaje={error} />
+      {/* Encabezado: "Mantenimiento", hora actual y peso; pestañas. */}
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+        <div style={{ fontSize: 18, fontWeight: 700 }}>Mantenimiento</div>
+        <div className="tiny" style={{ fontFamily: "var(--font-mono)", fontVariantNumeric: "tabular-nums" }}>
+          {hora(new Date(ahora).toISOString())} · {donante.peso ? `${num(donante.peso, 1)} kg` : "sin peso"}
+        </div>
+      </div>
       <div className="btn-row" style={{ marginBottom: 12 }}>
-        <button className={`btn btn-sm ${vista === "medico" ? "btn-accent" : ""}`} onClick={() => setVista("medico")}>
+        <button
+          className={`btn ${vista === "medico" ? "btn-accent" : ""}`}
+          style={{ minHeight: 44, flex: 1 }}
+          aria-pressed={vista === "medico"}
+          onClick={() => setVista("medico")}
+        >
           Médico
         </button>
-        <button className={`btn btn-sm ${vista === "enfermeria" ? "btn-accent" : ""}`} onClick={() => setVista("enfermeria")}>
+        <button
+          className={`btn ${vista === "enfermeria" ? "btn-accent" : ""}`}
+          style={{ minHeight: 44, flex: 1 }}
+          aria-pressed={vista === "enfermeria"}
+          onClick={() => setVista("enfermeria")}
+        >
           Enfermería
         </button>
       </div>

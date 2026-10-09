@@ -1,0 +1,147 @@
+/* Vista del médico de Mantenimiento: tema oscuro propio (solo esta vista).
+   Las variables globales se redefinen adentro para que los componentes
+   reutilizados (formularios, confirmaciones) tomen la misma paleta. */
+.medico {
+  --m-fondo: #0c181b;
+  --m-tarjeta: #14262a;
+  --m-texto: #e6eeee;
+  --m-apagado: #9db3b5;
+  --m-borde: #28403f;
+  --m-acento: #5ccfbf;
+  --m-ok: #43b58c;
+  --m-fuera: #e8a93b;
+  --m-critico: #e5604d;
+
+  --bg: var(--m-fondo);
+  --bg-elev: var(--m-tarjeta);
+  --bg-elev-2: var(--m-tarjeta);
+  --border: var(--m-borde);
+  --border-soft: var(--m-borde);
+  --text: var(--m-texto);
+  --text-dim: var(--m-apagado);
+  --text-faint: var(--m-apagado);
+  --accent: var(--m-acento);
+  --green: var(--m-ok);
+  --amber: var(--m-fuera);
+  --red: var(--m-critico);
+
+  background: var(--m-fondo);
+  color: var(--m-texto);
+  font-family: var(--font-plex-sans), system-ui, sans-serif;
+  padding: 12px;
+  border-radius: 14px;
+}
+
+.medico :global(.btn) {
+  min-height: 44px;
+  min-width: 44px;
+}
+.medico :global(.mini-input) {
+  min-height: 40px;
+}
+.medico summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+.num {
+  font-family: var(--font-ibm-plex-mono), ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.tarjeta {
+  background: var(--m-tarjeta);
+  border: 1px solid var(--m-borde);
+  border-radius: 12px;
+  padding: 12px;
+  margin-bottom: 10px;
+}
+
+.etiqueta {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--m-apagado);
+}
+
+.apagado {
+  color: var(--m-apagado);
+}
+
+.chico {
+  font-size: 12px;
+}
+
+.grilla {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.valorGrande {
+  font-size: 26px;
+  font-weight: 600;
+  line-height: 1.1;
+}
+
+.valorHeroe {
+  font-size: 40px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.ok {
+  color: var(--m-ok);
+}
+.fuera {
+  color: var(--m-fuera);
+}
+.critico {
+  color: var(--m-critico);
+}
+.sinDato {
+  color: var(--m-apagado);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--m-borde);
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.selector {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.selector button {
+  min-height: 44px;
+  min-width: 56px;
+  border-radius: 10px;
+  border: 1px solid var(--m-borde);
+  background: var(--m-tarjeta);
+  color: var(--m-texto);
+  font-family: var(--font-ibm-plex-mono), ui-monospace, monospace;
+}
+.selector button[aria-pressed="true"] {
+  border-color: var(--m-acento);
+  color: var(--m-acento);
+}
+
+.tension {
+  background: transparent;
+  border: 1px dashed var(--m-apagado);
+  color: var(--m-apagado);
+}
+
+.pestana {
+  min-height: 44px;
+}

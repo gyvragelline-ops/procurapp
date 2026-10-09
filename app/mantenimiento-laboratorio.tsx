@@ -140,7 +140,7 @@ export default function MantenimientoLaboratorio({
       <ErrorVisible mensaje={error} />
       {!abierto && (
         <button className="btn btn-sm btn-accent" onClick={abrir}>
-          + Cargar laboratorio
+          Cargar laboratorio
         </button>
       )}
       {abierto && (
