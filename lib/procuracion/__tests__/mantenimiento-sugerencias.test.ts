@@ -10,6 +10,7 @@ const base: EstadoParaSugerencias = {
   noradrenalinaSinDosis: null,
   vasopresinaActiva: false,
   disfuncionMiocardica: false,
+  disfuncionEvaluada: true,
   ic: null,
   corazonCandidato: "sin_definir",
   sodio: 140,

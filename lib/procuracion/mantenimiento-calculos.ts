@@ -16,6 +16,7 @@ import {
   BOMBAS_ENFERMERIA,
   HIPOGLUCEMIA_MENOR_A,
   HORAS_LAB_DESACTUALIZADO,
+  HORAS_RESPIRADOR_VIEJO,
   LIQUIDOS_ENFERMERIA,
   METAS,
   MINUTOS_ALARMA_SIN_REGISTRO,
@@ -41,6 +42,7 @@ import {
   type Droga,
   type DrogaInfusion,
   type Intervalo,
+  type ModoRespirador,
   type SolucionDilucion,
   type UnidadDosis,
 } from "./mantenimiento-metas.ts";
@@ -362,18 +364,19 @@ export function tendencia<T extends { registrado_en: string; anulado: boolean }>
 // =====================================================================
 // Laboratorio: último valor por parámetro
 // =====================================================================
-export type ValorLab = { parametro: string; valor: number; medido_en: string; anulado: boolean; toma_id: string };
+// valor null = valor en texto (sedimento urinario): fuera de las reglas.
+export type ValorLab = { parametro: string; valor: number | null; medido_en: string; anulado: boolean; toma_id: string };
 
 export function ultimoValorLab(
   valores: ValorLab[],
   parametro: string,
   ahora: number
 ): { valor: number; medido_en: string; desactualizado: boolean; toma_id: string } | null {
-  const candidatos = valores.filter((v) => v.parametro === parametro && !v.anulado);
+  const candidatos = valores.filter((v) => v.parametro === parametro && !v.anulado && v.valor !== null);
   if (candidatos.length === 0) return null;
   const ultimo = candidatos.reduce((a, b) => (b.medido_en > a.medido_en ? b : a));
   const horas = (ahora - new Date(ultimo.medido_en).getTime()) / 3_600_000;
-  return { valor: ultimo.valor, medido_en: ultimo.medido_en, desactualizado: horas > HORAS_LAB_DESACTUALIZADO, toma_id: ultimo.toma_id };
+  return { valor: ultimo.valor!, medido_en: ultimo.medido_en, desactualizado: horas > HORAS_LAB_DESACTUALIZADO, toma_id: ultimo.toma_id };
 }
 
 // PaFi de la última PaO2: con la FiO2 de LA MISMA extracción (toma_id).
@@ -1150,4 +1153,253 @@ export function alarmasDosis(e: EstadoBombas): Alarma[] {
   }
   if (activas.some((b) => b.estado === "falta_peso")) out.push({ nivel: "amarillo", texto: "Falta peso: dosis por kg sin calcular." });
   return out;
+}
+
+// =====================================================================
+// Vista del MÉDICO: respirador, PaFi, datos del médico y tendencias
+// =====================================================================
+
+// ---------------------------------------------------------------------
+// Respirador: se setea una vez; cada cambio es un evento completo con su
+// hora (tabla mantenimiento_respirador). Solo se agregan y se anulan.
+// ---------------------------------------------------------------------
+export type EventoRespirador = {
+  id: string;
+  registrado_en: string;
+  modo: ModoRespirador | null;
+  modo_otro: string | null;
+  fio2: number | null;
+  peep: number | null;
+  volumen_corriente: number | null;
+  frecuencia: number | null;
+  presion_plateau: number | null;
+  presion_pico: number | null;
+  anulado: boolean;
+};
+
+// Último evento no anulado hasta ese momento (Infinity = el vigente hoy).
+export function respiradorVigenteEn(eventos: EventoRespirador[], momentoMs: number): EventoRespirador | null {
+  const previos = ordenarPorHora(eventos).filter((e) => !e.anulado && new Date(e.registrado_en).getTime() <= momentoMs);
+  return previos[previos.length - 1] ?? null;
+}
+
+export type PafiCalculada = {
+  valor: number;
+  medido_en: string; // hora de la gasometría (PaO2)
+  desactualizado: boolean; // gasometría de más de HORAS_LAB_DESACTUALIZADO
+  fio2: number;
+  peep: number | null;
+  fio2Desde: string; // "FiO2 de las HH:MM"
+  origen: "respirador" | "registro" | "toma";
+  respiradorViejo: boolean; // último evento del respirador de más de HORAS_RESPIRADOR_VIEJO
+};
+
+// PaFi = PaO2 de la última gasometría / FiO2 vigente EN ESE MOMENTO, con
+// la PEEP vigente. FiO2: el respirador; si no había evento antes de la
+// gasometría, la de las filas horarias viejas; si tampoco, la cargada con
+// esa toma. Sin ninguna, no se calcula.
+export function pafiConRespirador(
+  lab: ValorLab[],
+  eventos: EventoRespirador[],
+  registrosViejos: { registrado_en: string; anulado: boolean; fio2?: number | null; peep?: number | null }[],
+  ahora: number
+): PafiCalculada | null {
+  const pao2 = ultimoValorLab(lab, "pao2", ahora);
+  if (!pao2) return null;
+  const t = new Date(pao2.medido_en).getTime();
+  const ultimoEvento = respiradorVigenteEn(eventos, Infinity);
+  const respiradorViejo = ultimoEvento !== null && ahora - new Date(ultimoEvento.registrado_en).getTime() > HORAS_RESPIRADOR_VIEJO * 3_600_000;
+  const base = { medido_en: pao2.medido_en, desactualizado: pao2.desactualizado, respiradorViejo };
+
+  const ev = respiradorVigenteEn(
+    eventos.filter((e) => e.fio2 !== null),
+    t
+  );
+  if (ev) {
+    const valor = pafi(pao2.valor, ev.fio2);
+    if (valor !== null) return { ...base, valor, fio2: ev.fio2!, peep: ev.peep, fio2Desde: ev.registrado_en, origen: "respirador" };
+  }
+  const viejos = ordenarPorHora(registrosViejos).filter(
+    (r) => !r.anulado && r.fio2 !== null && r.fio2 !== undefined && new Date(r.registrado_en).getTime() <= t
+  );
+  const rv = viejos[viejos.length - 1];
+  if (rv) {
+    const valor = pafi(pao2.valor, rv.fio2 ?? null);
+    if (valor !== null) return { ...base, valor, fio2: rv.fio2!, peep: rv.peep ?? null, fio2Desde: rv.registrado_en, origen: "registro" };
+  }
+  const toma = lab.find((v) => v.parametro === "fio2" && !v.anulado && v.toma_id === pao2.toma_id && v.valor !== null);
+  if (toma) {
+    const valor = pafi(pao2.valor, toma.valor);
+    if (valor !== null) return { ...base, valor, fio2: toma.valor!, peep: null, fio2Desde: pao2.medido_en, origen: "toma" };
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------
+// Datos del médico (tabla mantenimiento_medico): una fila por carga, solo
+// con los campos completados. Último valor por campo; las columnas viejas
+// de las filas horarias quedan como respaldo (menos la disfunción).
+// ---------------------------------------------------------------------
+export const CAMPOS_MEDICO = [
+  "pvc",
+  "gc",
+  "ic_medido",
+  "sat_venosa",
+  "delta_pp",
+  "delta_vs",
+  "delta_co2_espirado",
+  "indice_vena_cava",
+  "resultado_pasivo_miembros",
+] as const;
+export type CampoMedico = (typeof CAMPOS_MEDICO)[number];
+
+export type MedicionMedico = {
+  id: string;
+  registrado_en: string;
+  disfuncion_miocardica: boolean | null;
+  anulado: boolean;
+} & Record<CampoMedico, number | null>;
+
+export type DatoConHora = { valor: number; registrado_en: string; origen: "medico" | "registro" };
+
+// Último valor de un campo: el más reciente entre las mediciones del
+// médico y las filas horarias viejas (no anuladas, con dato).
+export function ultimoValorMedico(
+  campo: CampoMedico,
+  mediciones: MedicionMedico[],
+  registrosViejos: ({ registrado_en: string; anulado: boolean } & Partial<Record<CampoMedico, number | null>>)[]
+): DatoConHora | null {
+  const puntos = serieMedico(campo, mediciones, registrosViejos);
+  const u = puntos[puntos.length - 1];
+  return u ? { valor: u.valor, registrado_en: new Date(u.t).toISOString(), origen: u.origen } : null;
+}
+
+// Todos los valores de un campo, en orden (para las tendencias: puntos
+// sueltos con su hora).
+export function serieMedico(
+  campo: CampoMedico,
+  mediciones: MedicionMedico[],
+  registrosViejos: ({ registrado_en: string; anulado: boolean } & Partial<Record<CampoMedico, number | null>>)[]
+): (Punto & { origen: "medico" | "registro" })[] {
+  const out: (Punto & { origen: "medico" | "registro" })[] = [];
+  for (const m of mediciones) {
+    const v = m[campo];
+    if (!m.anulado && v !== null && v !== undefined) out.push({ t: new Date(m.registrado_en).getTime(), valor: v, origen: "medico" });
+  }
+  for (const r of registrosViejos) {
+    const v = r[campo];
+    if (!r.anulado && v !== null && v !== undefined) out.push({ t: new Date(r.registrado_en).getTime(), valor: v, origen: "registro" });
+  }
+  return out.sort((a, b) => a.t - b.t);
+}
+
+// Disfunción miocárdica: SOLO la que confirmó el médico (las filas
+// horarias tienen false por defecto y no sirven de respaldo). Hasta que
+// la confirme: "sin evaluar".
+export function disfuncionMiocardica(
+  mediciones: MedicionMedico[]
+): { estado: "sin_evaluar" } | { estado: "si" | "no"; registrado_en: string } {
+  const conDato = ordenarPorHora(mediciones).filter((m) => !m.anulado && m.disfuncion_miocardica !== null);
+  const u = conDato[conDato.length - 1];
+  if (!u) return { estado: "sin_evaluar" };
+  return { estado: u.disfuncion_miocardica ? "si" : "no", registrado_en: u.registrado_en };
+}
+
+// Último valor de laboratorio con respaldo en las filas horarias viejas
+// (osmolaridades y densidad de diabetes insípida).
+export function ultimoLabConRespaldo(
+  lab: ValorLab[],
+  parametro: string,
+  registrosViejos: { registrado_en: string; anulado: boolean; [campo: string]: unknown }[],
+  campoViejo: string,
+  ahora: number
+): { valor: number; medido_en: string; desactualizado: boolean } | null {
+  const l = ultimoValorLab(lab, parametro, ahora);
+  const viejos = ordenarPorHora(registrosViejos).filter((r) => !r.anulado && typeof r[campoViejo] === "number");
+  const rv = viejos[viejos.length - 1];
+  if (rv && (!l || rv.registrado_en > l.medido_en)) {
+    const horas = (ahora - new Date(rv.registrado_en).getTime()) / 3_600_000;
+    return { valor: rv[campoViejo] as number, medido_en: rv.registrado_en, desactualizado: horas > HORAS_LAB_DESACTUALIZADO };
+  }
+  return l ? { valor: l.valor, medido_en: l.medido_en, desactualizado: l.desactualizado } : null;
+}
+
+// ---------------------------------------------------------------------
+// Tendencias
+// ---------------------------------------------------------------------
+export type Punto = { t: number; valor: number };
+
+// Puntos dentro de la ventana [ahora − horas, ahora].
+export function recortarVentana<T extends Punto>(puntos: T[], ahora: number, horas: number): T[] {
+  const desde = ahora - horas * 3_600_000;
+  return puntos.filter((p) => p.t >= desde && p.t <= ahora);
+}
+
+// Dirección: solo con 3 puntos o más (si no, null). Cambio en la ventana
+// = pendiente de la recta de mínimos cuadrados × tiempo entre el primer y
+// el último punto. Por debajo del mínimo: "estable".
+export function direccionTendencia(puntos: Punto[], cambioMinimo: number): "sube" | "baja" | "estable" | null {
+  if (puntos.length < 3) return null;
+  const n = puntos.length;
+  const mt = puntos.reduce((s, p) => s + p.t, 0) / n;
+  const mv = puntos.reduce((s, p) => s + p.valor, 0) / n;
+  const num = puntos.reduce((s, p) => s + (p.t - mt) * (p.valor - mv), 0);
+  const den = puntos.reduce((s, p) => s + (p.t - mt) ** 2, 0);
+  if (den === 0) return "estable";
+  const cambio = (num / den) * (puntos[n - 1].t - puntos[0].t);
+  if (Math.abs(cambio) < cambioMinimo) return "estable";
+  return cambio > 0 ? "sube" : "baja";
+}
+
+// Minutos desde el último punto (edad del dato); null sin puntos.
+export function edadUltimoDato(puntos: Punto[], ahora: number): number | null {
+  if (puntos.length === 0) return null;
+  return (ahora - Math.max(...puntos.map((p) => p.t))) / 60_000;
+}
+
+// Noradrenalina (o la droga que sea) en su dosis, hora por hora: la
+// velocidad de cada fila horaria × su seteo. Sin seteo o sin peso, esa
+// hora no tiene punto.
+export function dosisPorFila(
+  droga: DrogaInfusion,
+  registros: { id: string; registrado_en: string; anulado: boolean }[],
+  bombas: BombaHora[],
+  infusiones: InfusionFila[],
+  pesoKg: number | null
+): Punto[] {
+  const out: Punto[] = [];
+  for (const r of ordenarPorHora(registros)) {
+    if (r.anulado) continue;
+    const b = bombasDeFila(bombas, r.id).find((x) => x.droga === droga);
+    if (!b) continue;
+    if (b.velocidad_ml_h === 0) {
+      out.push({ t: new Date(r.registrado_en).getTime(), valor: 0 });
+      continue;
+    }
+    const dil = dilucionPorId(infusiones, b.dilucion_id);
+    const c = dil ? concentracion(droga, dil) : null;
+    const d = c?.ok ? dosisDesdeVelocidad(droga, b.velocidad_ml_h, c.valor, pesoKg) : null;
+    if (d?.ok) out.push({ t: new Date(r.registrado_en).getTime(), valor: d.dosis });
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------
+// Franja de estado: avisos de enfermería (uno de cada uno, nunca lista)
+// ---------------------------------------------------------------------
+// - La hora pendiente de enfermería pasados 15 minutos (ámbar).
+// - La nota "Aviso al médico" de la ÚLTIMA hora cargada (si tiene).
+export function avisosDeEnfermeria(
+  registros: { registrado_en: string; anulado: boolean; aviso_medico?: string | null }[],
+  ahora: number
+): { pendiente: { inicio: number; texto: string } | null; nota: { texto: string; registrado_en: string } | null } {
+  const p = horaPendiente(registros, ahora);
+  const pendiente =
+    p.estado === "pendiente" && p.alarma
+      ? { inicio: p.inicio, texto: `Hora ${String(new Date(p.inicio).getHours()).padStart(2, "0")} pendiente (enfermería)` }
+      : null;
+  const vigentes = ordenarPorHora(registros.filter((r) => !r.anulado));
+  const ultima = vigentes[vigentes.length - 1];
+  const nota = ultima?.aviso_medico?.trim() ? { texto: ultima.aviso_medico.trim(), registrado_en: ultima.registrado_en } : null;
+  return { pendiente, nota };
 }

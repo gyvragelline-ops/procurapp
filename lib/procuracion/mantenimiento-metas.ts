@@ -408,6 +408,28 @@ export const RANGOS_PLAUSIBLES: Record<string, { min: number; max: number }> = {
   gc: { min: 0.5, max: 20 },
   ic_medido: { min: 0.3, max: 10 },
   sat_venosa: { min: 10, max: 100 },
+  // Respirador -- PROPUESTO, A VALIDAR
+  frecuencia: { min: 5, max: 60 },
+  presion_plateau: { min: 5, max: 50 },
+  presion_pico: { min: 5, max: 60 },
+  // Laboratorios de la vista del médico -- PROPUESTO, A VALIDAR
+  // (troponina y CPK-MB no tienen rango: la unidad se elige al cargar)
+  hto: { min: 10, max: 70 },
+  gb: { min: 500, max: 100000 },
+  plaquetas: { min: 5000, max: 1500000 },
+  tgo: { min: 1, max: 20000 },
+  tgp: { min: 1, max: 20000 },
+  bili_total: { min: 0.1, max: 50 },
+  bili_directa: { min: 0, max: 40 },
+  fal: { min: 10, max: 5000 },
+  ggt: { min: 1, max: 5000 },
+  tp: { min: 5, max: 150 },
+  rin: { min: 0.5, max: 15 },
+  kptt: { min: 10, max: 200 },
+  fibrinogeno: { min: 20, max: 1500 },
+  amilasa: { min: 1, max: 5000 },
+  urea: { min: 2, max: 500 },
+  creatinina: { min: 0.1, max: 20 },
   // Planilla de enfermería -- PROPUESTO, A VALIDAR
   ing_sol_medio_ml: { min: 0, max: 3000 },
   ing_sol_09_ml: { min: 0, max: 3000 },
@@ -509,3 +531,46 @@ export const RANGOS_SETEO_BOMBA: Record<DrogaInfusion, { ampolla: { min: number;
 // Alarma "hora sin cargar": una hora sin fila pasados estos minutos de su
 // inicio (la hora en curso cuenta desde hh:15).
 export const MINUTOS_HORA_SIN_CARGAR = 15;
+
+// =====================================================================
+// Vista del MÉDICO (pantalla de análisis) -- A VALIDAR
+// =====================================================================
+// Tendencias: ventana inicial 12 h, con selector de 6 y 24 h.
+export const VENTANAS_TENDENCIA_H = [6, 12, 24] as const;
+export const VENTANA_TENDENCIA_INICIAL_H = 12;
+
+// Flecha de tendencia: solo con 3 puntos o más, y solo si el cambio en la
+// ventana (pendiente de la recta × tiempo con datos) supera este mínimo;
+// por debajo, "estable".
+export const CAMBIO_MINIMO_FLECHA = {
+  pam: 5, // mmHg
+  fc: 10, // lpm
+  temperatura: 0.5, // °C
+  sat_o2: 2, // %
+  glucemia: 20, // mg/dL
+  diuresis: 0.3, // mL/kg/h
+  balance: 500, // mL (acumulado)
+  noradrenalina: 0.05, // γ
+  pvc: 2, // cmH2O
+  gc: 0.5, // L/min
+} as const;
+export type ClaveTendencia = keyof typeof CAMBIO_MINIMO_FLECHA;
+
+// Respirador: modos (botones) y aviso ámbar si el último evento tiene más
+// de estas horas, solo cuando se está calculando una PaFi.
+export const MODOS_RESPIRADOR = [
+  { valor: "VCV", etiqueta: "VCV" },
+  { valor: "PCV", etiqueta: "PCV" },
+  { valor: "PSV", etiqueta: "PSV" },
+  { valor: "CPAP", etiqueta: "CPAP" },
+  { valor: "otro", etiqueta: "Otro" },
+] as const;
+export type ModoRespirador = (typeof MODOS_RESPIRADOR)[number]["valor"];
+export const HORAS_RESPIRADOR_VIEJO = 12;
+
+// Tensiones entre reglas (se muestran "a criterio médico", sin resolverse):
+// PaFi bajo la cual el pulmón pesa contra el volumen; glucemia sobre la
+// cual el agua libre con dextrosa choca; balance acumulado "muy positivo".
+export const TENSION_PAFI_MENOR_A = 300;
+export const TENSION_GLUCEMIA_MAYOR_A = 180;
+export const BALANCE_MUY_POSITIVO_ML = 2000;

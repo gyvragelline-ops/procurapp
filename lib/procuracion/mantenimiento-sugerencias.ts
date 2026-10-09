@@ -51,6 +51,9 @@ export type EstadoParaSugerencias = {
   noradrenalinaSinDosis: string | null;
   vasopresinaActiva: boolean; // bomba > 0 mL/h en la última fila (los bolos no cuentan)
   disfuncionMiocardica: boolean;
+  // false = el médico todavía no la evaluó ("sin evaluar"): no se asume
+  // que no hay disfunción.
+  disfuncionEvaluada: boolean;
   ic: number | null; // medido o calculado
   corazonCandidato: "si" | "no" | "sin_definir";
   sodio: number | null;
@@ -86,6 +89,8 @@ export function generarSugerencias(e: EstadoParaSugerencias): Sugerencia[] {
     const lineas = ["Es esperable (reflejo de Cushing / tormenta adrenérgica) y NO se trata."];
     if (icBajo) {
       lineas.push(`IC <${n(IC_NO_BETABLOQUEAR_MENOR_A)}: ecocardiograma antes de tratar.`);
+    } else if (!e.disfuncionEvaluada) {
+      lineas.push("Disfunción miocárdica sin evaluar: evaluarla (clínica o ecocardiograma) antes de decidir.");
     } else if (e.disfuncionMiocardica) {
       // Única sugerencia en la tormenta adrenérgica con disfunción.
       lineas.push(`Con disfunción miocárdica: ${DOSIS.esmolol}.`);
@@ -147,7 +152,7 @@ export function generarSugerencias(e: EstadoParaSugerencias): Sugerencia[] {
   }
 
   // Deterioro miocárdico
-  if (e.disfuncionMiocardica || icBajo) {
+  if ((e.disfuncionEvaluada && e.disfuncionMiocardica) || icBajo) {
     out.push(
       s({
         id: "deterioro_miocardico",
