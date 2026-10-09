@@ -114,21 +114,25 @@ button {
 /* ---------- status strip (signature element) ---------- */
 .status-strip {
   display: flex;
+  flex-wrap: wrap; /* en celulares angostos pasa a 2 filas en vez de cortar las últimas etapas */
   gap: 0;
   border-radius: 12px;
   overflow: hidden;
   border: 1px solid var(--border-soft);
 }
 .status-cell {
-  flex: 1;
-  padding: 9px 6px 8px;
+  flex: 1 1 46px;
+  min-width: 0;
+  padding: 9px 4px 8px;
   text-align: center;
+  /* bordes derecho e inferior; el margen negativo esconde los del borde
+     exterior (la barra los recorta), también al pasar a 2 filas */
   border-right: 1px solid var(--border-soft);
+  border-bottom: 1px solid var(--border-soft);
+  margin-right: -1px;
+  margin-bottom: -1px;
   background: var(--bg-elev);
   position: relative;
-}
-.status-cell:last-child {
-  border-right: none;
 }
 .status-dot {
   width: 8px;
@@ -137,6 +141,7 @@ button {
   margin: 0 auto 5px;
 }
 .status-cell .lbl {
+  overflow-wrap: anywhere;
   font-size: 8.5px;
   color: var(--text-faint);
   letter-spacing: 0.3px;

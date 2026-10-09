@@ -124,7 +124,8 @@ export default function CultivosPanel({
 
   return (
     <div>
-      <ErrorVisible mensaje={error} />
+      {/* Con un formulario abierto, el error se muestra adentro (cerca de donde se tocó). */}
+      <ErrorVisible mensaje={!alta && resultadoDe === null ? error : null} />
 
       {!alta ? (
         <button className="btn btn-accent" style={{ minHeight: 44 }} onClick={abrirAlta}>
@@ -149,6 +150,7 @@ export default function CultivosPanel({
             <span className="field-label">Fecha y hora de toma</span>
             <input type="datetime-local" className="mini-input" value={tomaTexto} onChange={(e) => setTomaTexto(e.target.value)} />
           </div>
+          <ErrorVisible mensaje={error} />
           <div className="btn-row" style={{ marginTop: 6 }}>
             <button className="btn btn-sm btn-accent" disabled={guardando} onClick={guardarAlta}>
               {guardando ? "Guardando…" : "Guardar (pendiente)"}
@@ -226,6 +228,7 @@ export default function CultivosPanel({
                 <span className="field-label">Fecha y hora del resultado</span>
                 <input type="datetime-local" className="mini-input" value={resultadoTexto} onChange={(e) => setResultadoTexto(e.target.value)} />
               </div>
+              <ErrorVisible mensaje={error} />
               <div className="btn-row" style={{ marginTop: 6 }}>
                 <button className="btn btn-sm btn-accent" disabled={guardando} onClick={() => guardarResultado(c)}>
                   {guardando ? "Guardando…" : "Guardar resultado"}
