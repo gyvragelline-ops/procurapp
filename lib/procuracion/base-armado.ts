@@ -83,6 +83,7 @@ export function armarInsumos(donante: DonanteTablero & { servicio: string | null
 }
 
 // ------------------------------------------------------- fuente de datos
+export type RegistroComunicacion = { estado: string | null; updated_at: string | null; meta?: unknown };
 export type EstudioExpediente = { id: string; tipo_estudio: string; descripcion: string | null; archivo_url: string | null; archivo_tipo?: "image" | "video" | null; created_at: string };
 export type FotoJudicial = { tipo: string; created_at: string; cargado_por_rol: string | null; archivo_url?: string | null };
 export type EventoLinea = { id: string; ocurrido_en: string; texto: string };
@@ -106,6 +107,8 @@ export type ExpedienteDatos = {
   analisisComunicacion: AnalisisComunicacion[];
   fotosDocumentacion: { tipo: string; created_at: string; cargado_por_rol: string | null; archivo_url: string | null }[];
   antibioticos: Antibiotico[] | null; // null: la tabla todavía no existe (SQL sin aplicar)
+  // Registro real de "Realizada" de las comunicaciones (con la hora en que se registró)
+  comunicaciones: { comMuerte: RegistroComunicacion | null; comDonacion: RegistroComunicacion | null };
   // Marcas de la Base (null: la tabla todavía no existe)
   revisiones: Revision[] | null;
   autorizacionJudicial: MarcaJudicial[] | null;

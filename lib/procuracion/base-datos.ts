@@ -145,7 +145,7 @@ export function fuenteSupabase(supabase: SupabaseClient): FuenteBase {
       const { donantes } = await cargarDonantes(supabase, { id: donanteId });
       const donante = donantes[0];
       if (!donante) throw new Error("No se encontró el donante.");
-      const [{ filas }, mant, lab, cultivos, equipos, estudios, fotos, linea, mensajes, muestras, planillas, certAux, familiar, analisis, config, antibioticos, revisiones, autorizacion, organosAcept] = await Promise.all([
+      const [{ filas }, mant, lab, cultivos, equipos, estudios, fotos, linea, mensajes, muestras, planillas, certAux, familiar, analisis, config, antibioticos, revisiones, autorizacion, organosAcept, comunicaciones] = await Promise.all([
         cargarFilas(supabase, [donanteId]),
         cargarMantenimiento(supabase, donanteId),
         cargarLaboratorioValores(supabase, donanteId),
@@ -167,8 +167,10 @@ export function fuenteSupabase(supabase: SupabaseClient): FuenteBase {
         supabase.from("base_revisiones").select("id, seccion, revisado_por, revisado_en, anulado").eq("donante_id", donanteId),
         supabase.from("autorizacion_judicial").select("id, autorizado, marcado_por, marcado_en, anulado").eq("donante_id", donanteId),
         supabase.from("organos_aceptados").select("id, organo, aceptado, equipo_id, marcado_por, marcado_en, anulado").eq("donante_id", donanteId),
+        supabase.from("documentacion_estado").select("categoria, estado, updated_at, meta").eq("donante_id", donanteId).in("categoria", ["comMuerte", "comDonacion"]).eq("item_key", "realizada"),
       ]);
-      falla([fotos, linea, muestras, planillas, certAux, familiar, analisis, config], "el expediente");
+      falla([fotos, linea, muestras, planillas, certAux, familiar, analisis, config, comunicaciones], "el expediente");
+      const regCom = (c: string) => (((comunicaciones.data as { categoria: string; estado: string | null; updated_at: string | null; meta: unknown }[]) ?? []).find((r) => r.categoria === c) ?? null);
       const porPlanilla = (k: string) =>
         Object.fromEntries(((planillas.data as { planilla_key: string; campo_pdf: string; valor: string | null }[]) ?? []).filter((r) => r.planilla_key === k).map((r) => [r.campo_pdf, r.valor]));
       const todasLasFotos = (fotos.data as (ExpedienteDatos["fotosDocumentacion"][number])[]) ?? [];
@@ -203,6 +205,7 @@ export function fuenteSupabase(supabase: SupabaseClient): FuenteBase {
         revisiones: revisiones.error ? null : ((revisiones.data as ExpedienteDatos["revisiones"]) ?? []),
         autorizacionJudicial: autorizacion.error ? null : ((autorizacion.data as ExpedienteDatos["autorizacionJudicial"]) ?? []),
         organosAceptados: organosAcept.error ? null : ((organosAcept.data as ExpedienteDatos["organosAceptados"]) ?? []),
+        comunicaciones: { comMuerte: regCom("comMuerte"), comDonacion: regCom("comDonacion") },
       };
       return datos;
     },

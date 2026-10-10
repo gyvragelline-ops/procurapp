@@ -70,15 +70,31 @@ test("02 y 03: solo lo completado y solo el método elegido", () => {
   assert.ok(m.grupos[0].filas.some((f) => f.etiqueta === "Informe"));
 });
 
-test("04 y 05: solo 'Hecha'; la familia se ve en la Base pero no entra en el texto", () => {
+test("04 y 05: 'Hecha: Sí' solo con registro real (con fecha y hora); marca manual sola no alcanza", () => {
   const e = exp("sim-a");
+  // sim-a: 04 y 05 marcadas completas a mano, sin el registro "Realizada"
+  e.comunicaciones = { comMuerte: null, comDonacion: null };
   const s = seccionComunicacion(e, "05", "comDonacion");
-  // sim-a: etapa 05 marcada completa por el procurador -> "Hecha: Sí"; sim-e: no hecha
-  assert.deepEqual(s.grupos, [{ titulo: null, filas: [{ etiqueta: "Hecha", valor: "Sí" }] }]);
-  assert.deepEqual(seccionComunicacion(exp("sim-e"), "05", "comDonacion").grupos[0].filas, [{ etiqueta: "Hecha", valor: "No" }]);
+  assert.deepEqual(s.grupos[0].filas, [{ etiqueta: "Hecha", valor: "Marcada completa por el procurador (sin datos cargados)", detalle: null }]);
+  assert.ok(textoWhatsApp(s, "PD 000101", AHORA).includes("*Hecha:* Marcada completa por el procurador (sin datos cargados)"));
+  // con el registro real: Sí, con la fecha y hora en que se registró
+  e.comunicaciones = {
+    comMuerte: { estado: "si", updated_at: new Date(2026, 9, 10, 9, 30).toISOString(), meta: { comunicada_en: new Date(2026, 9, 10, 9, 5).toISOString() } },
+    comDonacion: { estado: "no", updated_at: new Date(2026, 9, 10, 9, 0).toISOString() },
+  };
+  const m = seccionComunicacion(e, "04", "comMuerte");
+  assert.deepEqual(m.grupos[0].filas, [{ etiqueta: "Hecha", valor: "Sí", detalle: "comunicada 10/10 09:05" }]);
+  assert.ok(textoWhatsApp(m, "PD 000101", AHORA).includes("*Hecha:* Sí (comunicada 10/10 09:05)"));
+  // registro viejo, sin la hora de la comunicación: se dice
+  e.comunicaciones.comMuerte = { estado: "si", updated_at: new Date(2026, 9, 10, 9, 30).toISOString() };
+  assert.equal(seccionComunicacion(e, "04", "comMuerte").grupos[0].filas[0].detalle, "registrada 10/10 09:30 (sin hora de la comunicación)");
+  // registro "No realizada" + marca manual: sigue sin datos reales
+  assert.equal(seccionComunicacion(e, "05", "comDonacion").grupos[0].filas[0].valor, "Marcada completa por el procurador (sin datos cargados)");
+  // sin nada: No
+  assert.deepEqual(seccionComunicacion(exp("sim-e"), "05", "comDonacion").grupos[0].filas, [{ etiqueta: "Hecha", valor: "No", detalle: null }]);
+  // la familia se ve en la Base pero no entra en el texto
   assert.equal(s.soloBase[0].titulo, "Familiar de contacto");
   assert.equal(textoWhatsApp(s, "PD 000101", AHORA).includes("Familiar"), false);
-  assert.deepEqual(seccionComunicacion(e, "04", "comMuerte").grupos[0].filas, [{ etiqueta: "Hecha", valor: "Sí" }]);
 });
 
 test("08 laboratorios por sistema con unidad y hora; 08 imágenes ordenadas y compartibles", () => {

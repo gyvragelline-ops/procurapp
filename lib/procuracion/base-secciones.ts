@@ -18,7 +18,7 @@ import { TIPOS_CULTIVO } from "./cultivos-calculos.ts";
 import { antibioticosVigentes } from "./antibioticos-calculos.ts";
 import { ORGANOS_EQUIPO, horaVigente, ANESTESISTA } from "./quirofano-calculos.ts";
 import { TIPOS_ESTUDIO_INFO } from "./estudios-imagenes-tipos.ts";
-import { estadoEtapa } from "./estado-etapas.ts";
+import { comunicadaEn } from "./comunicacion-hora.ts";
 
 // ------------------------------------------------------------- tipos
 export type FilaSeccion = { etiqueta: string; valor: string; detalle?: string | null };
@@ -189,13 +189,25 @@ export function seccionMetodos(d: ExpedienteDatos, numero: string): ContenidoSec
   return base("certificacion", numero, "Certificación de muerte: método auxiliar", { grupos, vacio: m.length ? null : "Sin método auxiliar completo." });
 }
 
-// 04 y 05: solo "Hecha / No hecha"
+// 04 y 05: "Hecha: Sí" SOLO con un registro real ("Realizada", con su fecha y
+// hora). Si la etapa está marcada completa a mano sin ese registro, se dice.
+export const SIN_DATOS_COMUNICACION = "Marcada completa por el procurador (sin datos cargados)";
+export function hechaComunicacion(d: Pick<ExpedienteDatos, "comunicaciones" | "insumos">, cual: "comMuerte" | "comDonacion"): FilaSeccion {
+  const reg = d.comunicaciones?.[cual] ?? null;
+  if (reg?.estado === "si") {
+    const c = comunicadaEn(reg.meta);
+    if (c) return { etiqueta: "Hecha", valor: "Sí", detalle: `comunicada ${fechaHora(c)}` };
+    // registros anteriores al campo de fecha y hora de la comunicación
+    if (reg.updated_at) return { etiqueta: "Hecha", valor: "Sí", detalle: `registrada ${fechaHora(reg.updated_at)} (sin hora de la comunicación)` };
+  }
+  if (d.insumos.etapas.marcas[cual]?.marca === "completo") return { etiqueta: "Hecha", valor: SIN_DATOS_COMUNICACION, detalle: null };
+  return { etiqueta: "Hecha", valor: "No", detalle: null };
+}
+
 export function seccionComunicacion(d: ExpedienteDatos, numero: string, cual: "comMuerte" | "comDonacion"): ContenidoSeccion {
-  // Hecha = la etapa está completa (registrada como realizada o marcada completa por el procurador).
-  const hecha = estadoEtapa(cual, d.insumos.etapas) === "green";
   const titulo = cual === "comMuerte" ? "Comunicación de muerte" : "Comunicación de donación";
   const familia = cual === "comDonacion" ? [{ titulo: "Familiar de contacto", filas: familiarDeContacto(d.familiar).map((f) => ({ etiqueta: f.etiqueta, valor: f.valor ?? "—" })) }] : [];
-  return base(cual, numero, titulo, { grupos: [{ titulo: null, filas: [{ etiqueta: "Hecha", valor: hecha ? "Sí" : "No" }] }], soloBase: familia });
+  return base(cual, numero, titulo, { grupos: [{ titulo: null, filas: [hechaComunicacion(d, cual)] }], soloBase: familia });
 }
 
 // 06

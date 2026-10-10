@@ -159,6 +159,11 @@ function armar(
     revisiones: extras.revisiones ?? [],
     autorizacionJudicial: extras.autorizacionJudicial ?? [],
     organosAceptados: extras.organosAceptados ?? [],
+    // si la etapa trae "realizada", hay un registro real con su hora
+    comunicaciones: extras.comunicaciones ?? {
+      comMuerte: e.comMuerteRealizada ? { estado: "si", updated_at: donante.created_at } : null,
+      comDonacion: e.comDonacionRealizada ? { estado: "si", updated_at: donante.created_at } : null,
+    },
   };
   return {
     ...insumos,
