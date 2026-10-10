@@ -15,6 +15,8 @@ import type { HorarioQuirofano, EquipoQuirofano } from "./quirofano-calculos.ts"
 import type { MensajeCaso, RolChat } from "./chat-calculos.ts";
 import type { AnalisisComunicacion, Familiar, FilaCertAux } from "./base-expediente-etapas.ts";
 import type { Antibiotico } from "./antibioticos-calculos.ts";
+import type { MarcaJudicial, MarcaOrgano, Revision } from "./base-secciones.ts";
+import type { DatosEquipo } from "./quirofano-calculos.ts";
 
 export type FilasDonante = {
   etapas: { etapa_key: string; estado: EstadoEtapa; marcado_manual?: string | null; marcado_en?: string | null }[];
@@ -81,8 +83,8 @@ export function armarInsumos(donante: DonanteTablero & { servicio: string | null
 }
 
 // ------------------------------------------------------- fuente de datos
-export type EstudioExpediente = { id: string; tipo_estudio: string; descripcion: string | null; archivo_url: string | null; created_at: string };
-export type FotoJudicial = { tipo: string; created_at: string; cargado_por_rol: string | null };
+export type EstudioExpediente = { id: string; tipo_estudio: string; descripcion: string | null; archivo_url: string | null; archivo_tipo?: "image" | "video" | null; created_at: string };
+export type FotoJudicial = { tipo: string; created_at: string; cargado_por_rol: string | null; archivo_url?: string | null };
 export type EventoLinea = { id: string; ocurrido_en: string; texto: string };
 
 export type ExpedienteDatos = {
@@ -104,6 +106,10 @@ export type ExpedienteDatos = {
   analisisComunicacion: AnalisisComunicacion[];
   fotosDocumentacion: { tipo: string; created_at: string; cargado_por_rol: string | null; archivo_url: string | null }[];
   antibioticos: Antibiotico[] | null; // null: la tabla todavía no existe (SQL sin aplicar)
+  // Marcas de la Base (null: la tabla todavía no existe)
+  revisiones: Revision[] | null;
+  autorizacionJudicial: MarcaJudicial[] | null;
+  organosAceptados: MarcaOrgano[] | null;
 };
 
 export type CambiosSolicitud = Partial<Pick<Solicitud, "estado" | "respuesta" | "respondida_por" | "respondida_en" | "completed_at" | "anulado">>;
@@ -119,4 +125,12 @@ export interface FuenteBase {
   enviarMensaje(donanteId: string, datos: { rol: RolChat; autor: string | null; texto: string }): Promise<MensajeCaso>;
   registrarEnLinea(donanteId: string, texto: string): Promise<void>;
   cambiarEstadoProtocolo(donanteId: string, estado: "activo" | "cerrado", textoLinea: string): Promise<void>;
+  // Acciones de la Base en el Expediente (todas sin borrado: se anula)
+  marcarRevision(donanteId: string, seccion: string, quien: string | null): Promise<void>;
+  anularRevision(id: string): Promise<void>;
+  marcarAutorizacion(donanteId: string, autorizado: boolean, quien: string | null, vigenteId: string | null): Promise<void>;
+  marcarOrgano(donanteId: string, organo: string, aceptado: boolean, equipoId: string | null, quien: string | null, vigenteId: string | null): Promise<void>;
+  crearEquipo(donanteId: string, datos: DatosEquipo): Promise<void>;
+  guardarHoraQuirofano(donanteId: string, horaIso: string): Promise<void>;
+  subirFotoJudicial(donanteId: string, archivo: File): Promise<void>;
 }

@@ -124,6 +124,8 @@ export type DonanteExportacion = DonanteTablero & {
   me_hora: string | null;
   causa_muerte: string | null;
   antecedentes?: string | null;
+  cama?: string | null;
+  fecha_nacimiento?: string | null;
 };
 
 export type DatosExportacion = {

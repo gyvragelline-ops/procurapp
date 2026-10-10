@@ -553,3 +553,67 @@ textarea.campo {
   border-top: 1px solid #e7edef;
   font-size: 13px;
 }
+/* ---------- acciones por sección ---------- */
+.barraAcciones {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-top: 1px solid #e7edef;
+  background: #fbfcfc;
+}
+.revisada {
+  border-color: var(--g);
+  color: var(--g);
+}
+.avisoImagen {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  padding: 6px 10px;
+  border: 1px solid var(--a);
+  border-radius: 10px;
+  background: #fbf3e5;
+  font-size: 13px;
+  font-weight: 600;
+}
+.fondoPanel {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(27, 42, 46, 0.35);
+}
+.panelLateral {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(820px, 64vw);
+  overflow-y: auto;
+  background: var(--card);
+  box-shadow: -8px 0 28px rgba(0, 0, 0, 0.25);
+}
+.grilla {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.grilla th,
+.grilla td {
+  padding: 5px 8px;
+  border-top: 1px solid #e7edef;
+  text-align: right;
+  white-space: nowrap;
+}
+.grilla th:first-child,
+.grilla td:first-child {
+  text-align: left;
+}
+.grilla th {
+  background: #f7fafa;
+  font-weight: 600;
+  color: var(--mu);
+}

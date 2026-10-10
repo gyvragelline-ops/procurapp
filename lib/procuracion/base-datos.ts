@@ -12,6 +12,8 @@ import { cargarEquipos } from "./quirofano";
 import { cargarEstudiosImagenes } from "./estudios-imagenes";
 import { cargarMensajes, enviarMensaje } from "./chat";
 import { PLANILLA_MEDIDAS } from "./medidas-campos";
+import { crearEquipo, guardarHoraQuirofano } from "./quirofano";
+import { subirFotoDocumentacion } from "./subir-foto-doc";
 
 // Base operativa: acceso a datos. Lee las MISMAS tablas que el resto de la
 // app (no duplica datos). Escrituras con guardarConReintento: si fallan,
@@ -20,7 +22,7 @@ import { PLANILLA_MEDIDAS } from "./medidas-campos";
 // ATENCIÓN: sin login ni RLS todavía. NO usar con donantes reales.
 
 const COLS_DONANTE =
-  "id, pd_numero, folio_numero, nombre_completo, dni, edad, sexo, peso, talla, grupo_sanguineo, institucion, localidad, servicio, fecha_ingreso, me_hora, causa_muerte, estado_general, tipo_procuracion, created_at";
+  "id, pd_numero, folio_numero, nombre_completo, dni, edad, sexo, peso, talla, grupo_sanguineo, institucion, localidad, servicio, cama, fecha_nacimiento, fecha_ingreso, me_hora, causa_muerte, estado_general, tipo_procuracion, created_at";
 const CATEGORIAS_ESTADO = ["judicial", "certificacion", "comMuerte", "comDonacion", "labImagenes", "medidas", "mantenimiento"];
 const AVISO_SQL = "Falta aplicar el SQL de la Base operativa (handoff/base_operativa.sql): se muestra lo que hay.";
 
@@ -143,7 +145,7 @@ export function fuenteSupabase(supabase: SupabaseClient): FuenteBase {
       const { donantes } = await cargarDonantes(supabase, { id: donanteId });
       const donante = donantes[0];
       if (!donante) throw new Error("No se encontró el donante.");
-      const [{ filas }, mant, lab, cultivos, equipos, estudios, fotos, linea, mensajes, muestras, planillas, certAux, familiar, analisis, config, antibioticos] = await Promise.all([
+      const [{ filas }, mant, lab, cultivos, equipos, estudios, fotos, linea, mensajes, muestras, planillas, certAux, familiar, analisis, config, antibioticos, revisiones, autorizacion, organosAcept] = await Promise.all([
         cargarFilas(supabase, [donanteId]),
         cargarMantenimiento(supabase, donanteId),
         cargarLaboratorioValores(supabase, donanteId),
@@ -161,6 +163,10 @@ export function fuenteSupabase(supabase: SupabaseClient): FuenteBase {
         supabase.from("mantenimiento_config").select("corazon_candidato, pulmon_candidato, monitoreo_avanzado_activo, updated_at").eq("donante_id", donanteId).maybeSingle(),
         // tabla nueva: si el SQL no se aplicó, la Base sigue (sin antibióticos)
         supabase.from("antibioticos").select("id, antibiotico, desde, foco, creado_en, anulado").eq("donante_id", donanteId).order("desde", { ascending: false }),
+        // marcas de la Base (tablas de handoff/base_acciones.sql)
+        supabase.from("base_revisiones").select("id, seccion, revisado_por, revisado_en, anulado").eq("donante_id", donanteId),
+        supabase.from("autorizacion_judicial").select("id, autorizado, marcado_por, marcado_en, anulado").eq("donante_id", donanteId),
+        supabase.from("organos_aceptados").select("id, organo, aceptado, equipo_id, marcado_por, marcado_en, anulado").eq("donante_id", donanteId),
       ]);
       falla([fotos, linea, muestras, planillas, certAux, familiar, analisis, config], "el expediente");
       const porPlanilla = (k: string) =>
@@ -194,6 +200,9 @@ export function fuenteSupabase(supabase: SupabaseClient): FuenteBase {
         analisisComunicacion: (analisis.data as ExpedienteDatos["analisisComunicacion"]) ?? [],
         fotosDocumentacion: todasLasFotos.filter((f) => f.tipo === "dni" || f.tipo === "grupo_factor"),
         antibioticos: antibioticos.error ? null : ((antibioticos.data as ExpedienteDatos["antibioticos"]) ?? []),
+        revisiones: revisiones.error ? null : ((revisiones.data as ExpedienteDatos["revisiones"]) ?? []),
+        autorizacionJudicial: autorizacion.error ? null : ((autorizacion.data as ExpedienteDatos["autorizacionJudicial"]) ?? []),
+        organosAceptados: organosAcept.error ? null : ((organosAcept.data as ExpedienteDatos["organosAceptados"]) ?? []),
       };
       return datos;
     },
@@ -214,6 +223,47 @@ export function fuenteSupabase(supabase: SupabaseClient): FuenteBase {
     async registrarEnLinea(donanteId, texto) {
       const r = await guardarConReintento(() => supabase.from("timeline_eventos").insert({ donante_id: donanteId, texto }));
       if (!r.ok) throw new Error(r.mensaje);
+    },
+
+    async marcarRevision(donanteId, seccion, quien) {
+      const r = await guardarConReintento(() => supabase.from("base_revisiones").insert({ donante_id: donanteId, seccion, revisado_por: quien }));
+      if (!r.ok) throw new Error(r.mensaje);
+    },
+
+    async anularRevision(id) {
+      const r = await guardarConReintento(() => supabase.from("base_revisiones").update({ anulado: true, anulado_en: new Date().toISOString() }).eq("id", id));
+      if (!r.ok) throw new Error(r.mensaje);
+    },
+
+    // Cambiar la marca = anular la vigente y crear la nueva (queda el historial).
+    async marcarAutorizacion(donanteId, autorizado, quien, vigenteId) {
+      if (vigenteId) {
+        const a = await guardarConReintento(() => supabase.from("autorizacion_judicial").update({ anulado: true, anulado_en: new Date().toISOString() }).eq("id", vigenteId));
+        if (!a.ok) throw new Error(a.mensaje);
+      }
+      const r = await guardarConReintento(() => supabase.from("autorizacion_judicial").insert({ donante_id: donanteId, autorizado, marcado_por: quien }));
+      if (!r.ok) throw new Error(r.mensaje);
+    },
+
+    async marcarOrgano(donanteId, organo, aceptado, equipoId, quien, vigenteId) {
+      if (vigenteId) {
+        const a = await guardarConReintento(() => supabase.from("organos_aceptados").update({ anulado: true, anulado_en: new Date().toISOString() }).eq("id", vigenteId));
+        if (!a.ok) throw new Error(a.mensaje);
+      }
+      const r = await guardarConReintento(() => supabase.from("organos_aceptados").insert({ donante_id: donanteId, organo, aceptado, equipo_id: equipoId, marcado_por: quien }));
+      if (!r.ok) throw new Error(r.mensaje);
+    },
+
+    async crearEquipo(donanteId, datos) {
+      await crearEquipo(supabase, donanteId, datos);
+    },
+
+    async guardarHoraQuirofano(donanteId, horaIso) {
+      await guardarHoraQuirofano(supabase, donanteId, horaIso);
+    },
+
+    async subirFotoJudicial(donanteId, archivo) {
+      await subirFotoDocumentacion(supabase, donanteId, "autorizacion_juez", archivo, "base");
     },
 
     async cambiarEstadoProtocolo(donanteId, estado, textoLinea) {

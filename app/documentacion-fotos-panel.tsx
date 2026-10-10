@@ -12,16 +12,15 @@ import { createClient } from "@/lib/supabase/client";
 import {
   borrarDocumentacionFoto,
   cargarDocumentacionFotos,
-  guardarDocumentacionFoto,
   sincronizarEstadoFotoDoc,
   type DocumentacionFotoRow,
   type RolFoto,
   type TipoFotoDoc,
 } from "@/lib/procuracion/documentacion-fotos";
+import { subirFotoDocumentacion } from "@/lib/procuracion/subir-foto-doc";
 
 const supabase = createClient();
 
-const MAX_DIM = 1600;
 const TIMEOUT_MS = 45000;
 
 const CATEGORIAS_DOC: { valor: TipoFotoDoc; etiqueta: string }[] = [
@@ -29,39 +28,6 @@ const CATEGORIAS_DOC: { valor: TipoFotoDoc; etiqueta: string }[] = [
   { valor: "grupo_factor", etiqueta: "Foto de grupo y factor" },
 ];
 const ETIQUETA_ROL: Record<RolFoto, string> = { procurador: "Procurador", base: "Base" };
-
-function comprimirImagen(file: File): Promise<{ base64: string; mediaType: string }> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    const url = URL.createObjectURL(file);
-    img.onload = () => {
-      try {
-        URL.revokeObjectURL(url);
-        const scale = Math.min(1, MAX_DIM / Math.max(img.width, img.height));
-        const w = Math.round(img.width * scale);
-        const h = Math.round(img.height * scale);
-        const canvas = document.createElement("canvas");
-        canvas.width = w;
-        canvas.height = h;
-        const ctx = canvas.getContext("2d");
-        if (!ctx) {
-          reject(new Error("No se pudo procesar la imagen."));
-          return;
-        }
-        ctx.drawImage(img, 0, 0, w, h);
-        const dataUrl = canvas.toDataURL("image/jpeg", 0.82);
-        resolve({ base64: dataUrl.split(",")[1], mediaType: "image/jpeg" });
-      } catch (e) {
-        reject(e instanceof Error ? e : new Error("No se pudo procesar la imagen."));
-      }
-    };
-    img.onerror = () => {
-      URL.revokeObjectURL(url);
-      reject(new Error("No se pudo leer la imagen."));
-    };
-    img.src = url;
-  });
-}
 
 function conTimeout<T>(promesa: Promise<T>, mensaje: string): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -131,20 +97,7 @@ export default function DocumentacionFotosPanel({
   }
 
   async function subir(file: File, tipo: TipoFotoDoc): Promise<void> {
-    const comprimida = await comprimirImagen(file);
-    const uploadBody = Uint8Array.from(atob(comprimida.base64), (c) => c.charCodeAt(0));
-    const contentType = comprimida.mediaType;
-
-    const stamp = Date.now();
-    const path = `${donanteId}/doc-${tipo}-${stamp}.jpg`;
-    const { error: uploadError } = await supabase.storage
-      .from("estudios-imagenes")
-      .upload(path, uploadBody, { contentType, upsert: true });
-    if (uploadError) throw new Error(`No se pudo subir el archivo: ${uploadError.message}`);
-    const { data: pub } = supabase.storage.from("estudios-imagenes").getPublicUrl(path);
-
-    await guardarDocumentacionFoto(supabase, donanteId, tipo, pub.publicUrl, contentType, conRol ? rol : null);
-    await sincronizarEstadoFotoDoc(supabase, donanteId, tipo, true);
+    await subirFotoDocumentacion(supabase, donanteId, tipo, file, conRol ? rol : null);
   }
 
   async function handleFile(file: File) {

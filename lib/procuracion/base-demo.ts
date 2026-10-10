@@ -156,6 +156,9 @@ function armar(
     analisisComunicacion: extras.analisisComunicacion ?? [],
     fotosDocumentacion: extras.fotosDocumentacion ?? [],
     antibioticos: extras.antibioticos ?? [],
+    revisiones: extras.revisiones ?? [],
+    autorizacionJudicial: extras.autorizacionJudicial ?? [],
+    organosAceptados: extras.organosAceptados ?? [],
   };
   return {
     ...insumos,
@@ -269,6 +272,13 @@ function neuroDemo(): Record<string, string | null> {
   return c;
 }
 
+// Imagen de prueba (SVG en data URL): sin datos de nadie, para probar
+// ver / copiar / compartir en el modo demo.
+export function imagenDemo(texto: string, color = "#0F8F83"): string {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="480" height="320"><rect width="480" height="320" fill="${color}"/><text x="240" y="170" font-family="sans-serif" font-size="28" fill="#fff" text-anchor="middle">${texto} (simulado)</text></svg>`;
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+}
+
 const MARCABLES = ["potencial", "me", "certificacion", "comMuerte", "comDonacion", "muestras", "medidas", "labImagenes", "cultivos", "documentacion", "mantenimiento", "judicial", "quirofano"];
 const completas = (n: number): Record<string, MarcaEtapa> => Object.fromEntries(MARCABLES.slice(0, n).map((k) => [k, { marca: "completo" as const, en: null }]));
 
@@ -364,7 +374,7 @@ export function donantesSimulados(ahora: number): DonanteSimulado[] {
       analisisComunicacion: [{ id: "a-ca1", texto: "La familia pregunta si puede despedirse antes del quirófano (simulado).", etapa_detectada: 2, created_at: iso(ahora, 5 * 60) }],
       fotosDocumentacion: [
         { tipo: "dni", created_at: iso(ahora, 11 * 60), cargado_por_rol: "procurador", archivo_url: null },
-        { tipo: "grupo_factor", created_at: iso(ahora, 10 * 60), cargado_por_rol: "procurador", archivo_url: null },
+        { tipo: "grupo_factor", created_at: iso(ahora, 10 * 60), cargado_por_rol: "procurador", archivo_url: imagenDemo("Grupo y factor", "#C98512") },
       ],
       cultivos: [
         cultivo("a-c1", ahora, "aspirado_traqueal", 8 * 60, "pendiente"),
@@ -372,8 +382,8 @@ export function donantesSimulados(ahora: number): DonanteSimulado[] {
         cultivo("a-c3", ahora, "urocultivo", 16 * 60, "negativo", { resultado_en: iso(ahora, 3 * 60) }),
       ],
       estudios: [
-        { id: "a-e1", tipo_estudio: "ECG", descripcion: "Ritmo sinusal (simulado)", archivo_url: null, created_at: iso(ahora, 7 * 60) },
-        { id: "a-e2", tipo_estudio: "Rx_torax", descripcion: null, archivo_url: null, created_at: iso(ahora, 6 * 60 + 50) },
+        { id: "a-e1", tipo_estudio: "ECG", descripcion: "Ritmo sinusal (simulado)", archivo_url: imagenDemo("ECG"), archivo_tipo: "image", created_at: iso(ahora, 7 * 60) },
+        { id: "a-e2", tipo_estudio: "Rx_torax", descripcion: null, archivo_url: imagenDemo("Rx de tórax", "#5E7378"), archivo_tipo: "image", created_at: iso(ahora, 6 * 60 + 50) },
       ],
       muestras: muestrasDemo(5),
       corazonCandidato: "sin_definir",
@@ -425,7 +435,7 @@ export function donantesSimulados(ahora: number): DonanteSimulado[] {
         equipo("c-q1", ahora, "Hígado Hospital Simulado", ["higado"], "sin_confirmar", 50),
         equipo("c-q2", ahora, "Riñón Simulado", ["rinones"], "si", 40),
       ],
-      fotosJudiciales: [{ tipo: "precario", created_at: iso(ahora, 70), cargado_por_rol: "procurador" }],
+      fotosJudiciales: [{ tipo: "precario", created_at: iso(ahora, 70), cargado_por_rol: "procurador", archivo_url: imagenDemo("Precario", "#1B2A2E") }],
       estudios: [{ id: "c-e1", tipo_estudio: "Ecocardiograma", descripcion: "FEVI conservada (simulado)", archivo_url: null, created_at: iso(ahora, 5 * 60) }],
       muestras: muestrasDemo(8),
       corazonCandidato: "si",
@@ -503,6 +513,31 @@ export function crearFuenteDemo(ahora: number): FuenteBase {
     async cambiarEstadoProtocolo(id, estado, texto) {
       sim(id).donante.estado_general = estado;
       anotar(id, texto);
+    },
+    async marcarRevision(id, seccion, quien) {
+      (sim(id).expediente.revisiones ??= []).push({ id: nuevoId("r"), seccion, revisado_por: quien, revisado_en: ahoraIso(), anulado: false });
+    },
+    async anularRevision(revId) {
+      for (const s of sims) for (const r of s.expediente.revisiones ?? []) if (r.id === revId) r.anulado = true;
+    },
+    async marcarAutorizacion(id, autorizado, quien, vigenteId) {
+      const xs = (sim(id).expediente.autorizacionJudicial ??= []);
+      for (const x of xs) if (x.id === vigenteId) x.anulado = true;
+      xs.push({ id: nuevoId("j"), autorizado, marcado_por: quien, marcado_en: ahoraIso(), anulado: false });
+    },
+    async marcarOrgano(id, organo, aceptado, equipoId, quien, vigenteId) {
+      const xs = (sim(id).expediente.organosAceptados ??= []);
+      for (const x of xs) if (x.id === vigenteId) x.anulado = true;
+      xs.push({ id: nuevoId("o"), organo, aceptado, equipo_id: equipoId, marcado_por: quien, marcado_en: ahoraIso(), anulado: false });
+    },
+    async crearEquipo(id, datos) {
+      sim(id).expediente.equipos.push({ id: nuevoId("e"), ...datos, creado_en: ahoraIso(), modificado_en: null, anulado: false });
+    },
+    async guardarHoraQuirofano(id, horaIso) {
+      sim(id).expediente.insumos.etapas.horariosQx.push({ id: nuevoId("q"), hora: horaIso, registrado_en: ahoraIso(), anulado: false });
+    },
+    async subirFotoJudicial(id, archivo) {
+      sim(id).expediente.fotosJudiciales.push({ tipo: "autorizacion_juez", created_at: ahoraIso(), cargado_por_rol: "base", archivo_url: URL.createObjectURL(archivo) });
     },
   };
 }

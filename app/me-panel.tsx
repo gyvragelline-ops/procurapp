@@ -486,8 +486,8 @@ export default function MePanel({
         <div className="tiny" style={{ marginBottom: 8, textTransform: "uppercase", letterSpacing: ".5px" }}>
           Cierre del certificado de fallecimiento
         </div>
-        {renderTextRow("medico1_nombre", "Médico 1 (nombre)", { planillaKey: "certificado" })}
-        {renderTextRow("medico2_nombre", "Médico 2 (nombre)", { planillaKey: "certificado" })}
+        {renderTextRow("medico1_nombre", "Médico de la institución (nombre)", { planillaKey: "certificado" })}
+        {renderTextRow("medico2_nombre", "Neurólogo (nombre)", { planillaKey: "certificado" })}
         <div className="tiny" style={{ marginTop: -6, marginBottom: 6 }}>
           (neurólogo) -- se agrega automáticamente en el PDF
         </div>
