@@ -7,12 +7,21 @@ import type { Donante } from "@/lib/procuracion/types";
 
 const supabase = createClient();
 
+// Antecedentes: texto libre, multilínea, compacto (crece al escribir).
+const MAX_ANTECEDENTES = 2000;
+function ajustarAlto(el: HTMLTextAreaElement | null) {
+  if (!el) return;
+  el.style.height = "auto";
+  el.style.height = `${el.scrollHeight}px`;
+}
+
 type Campo =
   | "servicio"
   | "pd_numero"
   | "fecha_ingreso"
   | "nombre_completo"
   | "edad"
+  | "antecedentes"
   | "institucion"
   | "cama"
   | "fecha_nacimiento";
@@ -68,6 +77,7 @@ export default function PotencialPanel({
     if (field === "fecha_ingreso") value = draft ? new Date(draft).toISOString() : null;
     else if (field === "edad") value = draft.trim() && !Number.isNaN(Number(draft.trim())) ? Number(draft.trim()) : null;
     else if (field === "fecha_nacimiento") value = draft || null;
+    else if (field === "antecedentes") value = draft.trim().slice(0, MAX_ANTECEDENTES) || null;
     else value = draft.trim() || null;
     setEditingField(null);
     const r = await guardarConReintento(() =>
@@ -101,6 +111,7 @@ export default function PotencialPanel({
     { key: "nombre_completo", label: "Potencial donante", display: donante.nombre_completo },
     { key: "pd_numero", label: "PD Nº", display: donante.pd_numero },
     { key: "edad", label: "Edad", display: donante.edad != null ? String(donante.edad) : null },
+    { key: "antecedentes", label: "Antecedentes", display: donante.antecedentes ?? null },
     { key: "institucion", label: "Establecimiento", display: donante.institucion },
     { key: "servicio", label: "Servicio", display: donante.servicio },
     { key: "cama", label: "Cama", display: donante.cama },
@@ -115,7 +126,43 @@ export default function PotencialPanel({
           {errorGuardado}
         </div>
       )}
-      {rows.map((r) => (
+      {rows.map((r) =>
+        r.key === "antecedentes" ? (
+          <div className="field-row" key={r.key} style={{ alignItems: "flex-start" }}>
+            <span className="field-label" style={{ paddingTop: editingField === r.key ? 4 : 0 }}>
+              {r.label}
+            </span>
+            {editingField === r.key ? (
+              <textarea
+                className="mini-input"
+                rows={1}
+                maxLength={MAX_ANTECEDENTES}
+                aria-label="Antecedentes"
+                placeholder="Texto libre"
+                style={{ width: "65%", textAlign: "left", resize: "none", overflow: "hidden", lineHeight: 1.4 }}
+                value={draft}
+                autoFocus
+                ref={ajustarAlto}
+                onChange={(e) => {
+                  setDraft(e.target.value);
+                  ajustarAlto(e.target);
+                }}
+                onBlur={() => saveField(r.key)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") setEditingField(null);
+                }}
+              />
+            ) : (
+              <span
+                className="field-value"
+                style={{ cursor: "pointer", maxWidth: "65%", textAlign: r.display ? "left" : "right", whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}
+                onClick={() => startEdit(r.key)}
+              >
+                {r.display ?? "Tocar para completar"}
+              </span>
+            )}
+          </div>
+        ) : (
         <div className="field-row" key={r.key}>
           <span className="field-label">{r.label}</span>
           {editingField === r.key ? (
@@ -139,7 +186,8 @@ export default function PotencialPanel({
             </span>
           )}
         </div>
-      ))}
+        )
+      )}
       <div className="field-row">
         <span className="field-label">Intervención judicial</span>
         <div style={{ display: "flex", gap: 6 }}>

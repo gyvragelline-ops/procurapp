@@ -19,6 +19,7 @@ export type Donante = {
   fecha_ingreso: string | null;
   me_hora: string | null;
   causa_muerte: string | null;
+  antecedentes?: string | null; // texto libre (etapa 01)
   estado_general: string | null;
   tipo_procuracion: "multiorganico" | "corneas" | null;
   created_at: string;

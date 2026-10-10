@@ -11,6 +11,7 @@ import { cargarCultivos } from "./cultivos";
 import { cargarEquipos } from "./quirofano";
 import { cargarEstudiosImagenes } from "./estudios-imagenes";
 import { cargarMensajes, enviarMensaje } from "./chat";
+import { PLANILLA_MEDIDAS } from "./medidas-campos";
 
 // Base operativa: acceso a datos. Lee las MISMAS tablas que el resto de la
 // app (no duplica datos). Escrituras con guardarConReintento: si fallan,
@@ -55,11 +56,19 @@ async function cargarDonantes(supabase: SupabaseClient, filtro: { activos: true 
     const q = supabase.from("donantes").select(cols);
     return "id" in filtro ? q.eq("id", filtro.id) : q.or("estado_general.is.null,estado_general.neq.cerrado").order("created_at");
   };
-  const con = await consulta(`${COLS_DONANTE}, procurador_nombre`);
-  if (!con.error) return { donantes: (con.data as unknown as DonanteFila[]) ?? [], sinColumnas: false };
-  const sin = await consulta(COLS_DONANTE);
-  if (sin.error) throw new Error(`No se pudieron cargar los donantes: ${sin.error.message}`);
-  return { donantes: ((sin.data as unknown as DonanteFila[]) ?? []).map((d) => ({ ...d, procurador_nombre: null })), sinColumnas: true };
+  // Columnas nuevas (procurador_nombre, antecedentes): si el SQL todavía no
+  // se aplicó, se cargan sin ellas y la pantalla lo avisa.
+  const intentos = [`${COLS_DONANTE}, procurador_nombre, antecedentes`, `${COLS_DONANTE}, antecedentes`, `${COLS_DONANTE}, procurador_nombre`, COLS_DONANTE];
+  let ultimoError = "";
+  for (const [i, cols] of intentos.entries()) {
+    const r = await consulta(cols);
+    if (!r.error) {
+      const donantes = ((r.data as unknown as DonanteFila[]) ?? []).map((d) => ({ procurador_nombre: null, antecedentes: null, ...d }));
+      return { donantes, sinColumnas: i > 0 };
+    }
+    ultimoError = r.error.message;
+  }
+  throw new Error(`No se pudieron cargar los donantes: ${ultimoError}`);
 }
 
 async function cargarFilas(supabase: SupabaseClient, ids: string[]): Promise<{ filas: Map<string, FilasDonante>; sinColumnas: boolean }> {
@@ -134,32 +143,54 @@ export function fuenteSupabase(supabase: SupabaseClient): FuenteBase {
       const { donantes } = await cargarDonantes(supabase, { id: donanteId });
       const donante = donantes[0];
       if (!donante) throw new Error("No se encontró el donante.");
-      const [{ filas }, mant, lab, cultivos, equipos, estudios, fotos, linea, mensajes, muestras] = await Promise.all([
+      const [{ filas }, mant, lab, cultivos, equipos, estudios, fotos, linea, mensajes, muestras, planillas, certAux, familiar, analisis, config] = await Promise.all([
         cargarFilas(supabase, [donanteId]),
         cargarMantenimiento(supabase, donanteId),
         cargarLaboratorioValores(supabase, donanteId),
         cargarCultivos(supabase, donanteId),
         cargarEquipos(supabase, donanteId),
         cargarEstudiosImagenes(supabase, donanteId),
-        supabase.from("documentacion_fotos").select("tipo, created_at, cargado_por_rol").eq("donante_id", donanteId).in("tipo", ["precario", "autorizacion_juez"]),
+        supabase.from("documentacion_fotos").select("tipo, created_at, cargado_por_rol, archivo_url").eq("donante_id", donanteId),
         supabase.from("timeline_eventos").select("id, ocurrido_en, texto").eq("donante_id", donanteId).order("ocurrido_en", { ascending: false }).limit(200),
         cargarMensajes(supabase, donanteId),
         supabase.from("muestras").select("paquete_key, nombre, obtenida, retirada").eq("donante_id", donanteId),
+        supabase.from("planilla_valores").select("planilla_key, campo_pdf, valor").eq("donante_id", donanteId).in("planilla_key", ["neuro", "certificado", "doppler", PLANILLA_MEDIDAS]),
+        supabase.from("documentacion_estado").select("item_key, estado, meta").eq("donante_id", donanteId).eq("categoria", "certificacion"),
+        supabase.from("familiares").select("nombre, dni, parentesco, direccion, telefono").eq("donante_id", donanteId).limit(1).maybeSingle(),
+        supabase.from("comunicacion_donacion_analisis").select("id, texto, etapa_detectada, created_at").eq("donante_id", donanteId).order("created_at", { ascending: false }),
+        supabase.from("mantenimiento_config").select("corazon_candidato, pulmon_candidato, monitoreo_avanzado_activo, updated_at").eq("donante_id", donanteId).maybeSingle(),
       ]);
-      falla([fotos, linea, muestras], "el expediente");
+      falla([fotos, linea, muestras, planillas, certAux, familiar, analisis, config], "el expediente");
+      const porPlanilla = (k: string) =>
+        Object.fromEntries(((planillas.data as { planilla_key: string; campo_pdf: string; valor: string | null }[]) ?? []).filter((r) => r.planilla_key === k).map((r) => [r.campo_pdf, r.valor]));
+      const todasLasFotos = (fotos.data as (ExpedienteDatos["fotosDocumentacion"][number])[]) ?? [];
       const insumos = armarInsumos(donante as DonanteTablero & DonanteFila, filas.get(donanteId)!);
       const datos: ExpedienteDatos = {
         insumos,
         donante,
-        fuentes: { registros: mant.registros as never, mediciones: mant.mediciones, respirador: mant.respirador, lab: lab as never, bombas: mant.bombas, infusiones: mant.infusiones, pesoKg: donante.peso },
+        fuentes: {
+          registros: mant.registros as never,
+          mediciones: mant.mediciones,
+          respirador: mant.respirador,
+          lab: lab as never,
+          bombas: mant.bombas,
+          infusiones: mant.infusiones,
+          pesoKg: donante.peso,
+          config: (config.data as ExpedienteDatos["fuentes"]["config"]) ?? null,
+        },
         cultivos,
         estudios,
-        fotosJudiciales: (fotos.data as ExpedienteDatos["fotosJudiciales"]) ?? [],
+        fotosJudiciales: todasLasFotos.filter((f) => f.tipo === "precario" || f.tipo === "autorizacion_juez"),
         equipos,
         muestras: (muestras.data as ExpedienteDatos["muestras"]) ?? [],
         corazonCandidato: mant.config?.corazon_candidato ?? null,
         linea: (linea.data as ExpedienteDatos["linea"]) ?? [],
         mensajes,
+        planillas: { neuro: porPlanilla("neuro"), certificado: porPlanilla("certificado"), doppler: porPlanilla("doppler"), medidas: porPlanilla(PLANILLA_MEDIDAS) },
+        certAux: (certAux.data as ExpedienteDatos["certAux"]) ?? [],
+        familiar: (familiar.data as ExpedienteDatos["familiar"]) ?? null,
+        analisisComunicacion: (analisis.data as ExpedienteDatos["analisisComunicacion"]) ?? [],
+        fotosDocumentacion: todasLasFotos.filter((f) => f.tipo === "dni" || f.tipo === "grupo_factor"),
       };
       return datos;
     },

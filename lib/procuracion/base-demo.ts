@@ -56,6 +56,7 @@ export function donanteDemo(id: string, ahora: number, extra: Partial<DonanteExp
     fecha_ingreso: null,
     me_hora: null,
     causa_muerte: null,
+    antecedentes: null,
     procurador_nombre: null,
     ...extra,
   };
@@ -148,6 +149,11 @@ function armar(
     corazonCandidato: extras.corazonCandidato ?? null,
     linea: extras.linea ?? [],
     mensajes: extras.mensajes ?? [],
+    planillas: extras.planillas ?? { neuro: {}, certificado: {}, doppler: {}, medidas: {} },
+    certAux: extras.certAux ?? [],
+    familiar: extras.familiar ?? null,
+    analisisComunicacion: extras.analisisComunicacion ?? [],
+    fotosDocumentacion: extras.fotosDocumentacion ?? [],
   };
   return {
     ...insumos,
@@ -225,6 +231,42 @@ function noradrenalina(pref: string, ahora: number, registros: { id: string }[],
   return { infusiones: [infusion], bombas };
 }
 
+function boloDemo(id: string, ahora: number, droga: "furosemida" | "desmopresina" | "esmolol" | "vasopresina", dosis: number, min: number) {
+  return { id, registrado_en: iso(ahora, min), droga, tipo: "bolo" as const, ampollas: null, contenido_por_ampolla: null, unidad_contenido: null, volumen_final_ml: null, velocidad_ml_h: null, dosis_calculada: dosis, unidad_dosis: null, anulado: false };
+}
+
+// Examen neurológico simulado completo (todos los reflejos ausentes, apnea).
+function neuroDemo(): Record<string, string | null> {
+  const c: Record<string, string | null> = {
+    fecha_examen: "10/10/2026",
+    hora_1a: "08:00",
+    hora_2a: "14:00",
+    ta_tam_1a: "75",
+    ta_tam_2a: "72",
+    t_central_1a: "36,5",
+    t_central_2a: "36,4",
+    diabetes_insipida_1a_no: "si",
+    diabetes_insipida_2a_si: "si",
+    pupilas_1a: "midriáticas arreactivas",
+    pupilas_2a: "midriáticas arreactivas",
+    tipo_test_confirmacion: "apnea",
+    apneica1_pco2_inicial: "40",
+    apneica1_pco2_final: "65",
+    apneica1_duracion: "8 min",
+    apneica1_resultado: "positiva",
+    causa_coma: "ACV hemorrágico (simulado)",
+    arm_fecha_hs: "09/10/2026 22:00",
+    estudios_complementarios: "TAC de cerebro (simulado)",
+    cumple_me_si: "si",
+    eeg1_fecha: "10/10/2026",
+    eeg1_hora: "10:00",
+    eeg1_informe: "Silencio eléctrico cerebral (simulado)",
+  };
+  for (const k of ["fotomotor", "corneano", "oculocefalico", "oculovestibular", "nauseoso", "deglutorio", "maseterino", "dolor", "osteotendinosos", "plantar", "cremasteriano", "cutaneoabdominal"])
+    for (const m of ["1a", "2a"]) c[`reflejo_${k}_${m}`] = "ausente";
+  return c;
+}
+
 const MARCABLES = ["potencial", "me", "certificacion", "comMuerte", "comDonacion", "muestras", "medidas", "labImagenes", "cultivos", "documentacion", "mantenimiento", "judicial", "quirofano"];
 const completas = (n: number): Record<string, MarcaEtapa> => Object.fromEntries(MARCABLES.slice(0, n).map((k) => [k, { marca: "completo" as const, en: null }]));
 
@@ -283,7 +325,7 @@ export function donantesSimulados(ahora: number): DonanteSimulado[] {
     ing_sol_09_ml: 100,
   }));
   const a = armar(
-    base("sim-a", "000101", 14 * 60, { nombre_completo: "Sofía Alvarez", sexo: "femenino", edad: 29, peso: 62, procurador_nombre: "Dra. Ruiz (simulado)" }),
+    base("sim-a", "000101", 14 * 60, { nombre_completo: "Sofía Alvarez", sexo: "femenino", edad: 29, peso: 62, procurador_nombre: "Dra. Ruiz (simulado)", antecedentes: "Hipertensión arterial en tratamiento.\nTabaquista 10 paquetes/año (simulado)." }),
     { marcas: completas(8), muestras: [{ obtenida: true }, { obtenida: false }], cultivos: [{ estado: "pendiente", anulado: false }, { estado: "pendiente", anulado: false }] },
     {
       ...fuentesVacias(),
@@ -293,11 +335,31 @@ export function donantesSimulados(ahora: number): DonanteSimulado[] {
       lab: [
         ...tomaLab("a", ahora, 7 * 60, { na: 148, k: 3.9, glucemia: 170, hb: 10.4, plaquetas: 172000, creatinina: 1.1, urea: 38, tgo: 45, tgp: 38, ph: 7.38, pao2: 150, fio2: 40 }),
         ...tomaLab("a", ahora, 60, { na: 152, k: 3.6, glucemia: 128, hb: 10.2, ph: 7.41, pao2: 140, fio2: 40 }),
+        // troponina: el procurador eligió ng/L (la unidad tiene que verse siempre)
+        { ...tomaLab("a", ahora, 3 * 60, { troponina: 45 })[0], unidad: "ng/L" },
+        { ...tomaLab("a", ahora, 6 * 60, { cpk_mb: 3.1 })[0], unidad: "ng/mL" },
       ] as never,
-      ...noradrenalina("a", ahora, regA, 12 * 60 + 20, (i) => (i < 6 ? 6 : 15)),
+      ...(() => {
+        const n = noradrenalina("a", ahora, regA, 12 * 60 + 20, (i) => (i < 6 ? 6 : 15));
+        return { ...n, infusiones: [...n.infusiones, boloDemo("a-bo1", ahora, "furosemida", 20, 4 * 60), boloDemo("a-bo2", ahora, "desmopresina", 1, 2 * 60)] };
+      })(),
+      config: { corazon_candidato: "sin_definir", pulmon_candidato: "si", monitoreo_avanzado_activo: false, updated_at: iso(ahora, 9 * 60) },
     },
     [solicitudDemo("a-s1", "sim-a", ahora, { titulo: "Ecocardiograma", prioridad: "urgente", created_at: iso(ahora, 45), destino: "procurador", pedido_por: "Base (simulado)" })],
     {
+      planillas: { neuro: neuroDemo(), certificado: { medico1_nombre: "Dr. Simulado Uno", medico2_nombre: "Dra. Simulada Dos", archivo_lugar: "Archivo UTI (simulado)" }, doppler: { fecha_dia: "10", fecha_mes: "10", fecha_anio: "2026", fecha_hora_top: "09:30", interpretacion_resto: "Patrón de reverberación (simulado)" }, medidas: { l_esternal: "18", p_axilar: "92", p_xif: "85", p_umbilic: "80", biliaco: "27", xifopubiano: "38", d_ventral: "21", femur: "44" } },
+      certAux: [
+        { item_key: "eeg", estado: "completo", meta: {} },
+        { item_key: "doppler_transcraneano", estado: "completo", meta: {} },
+        { item_key: "potenciales_evocados", estado: "no_corresponde", meta: {} },
+        { item_key: "angiografia_cerebral", estado: "pendiente", meta: {} },
+      ],
+      familiar: { nombre: "Familiar Simulado", dni: "DNI-FAM-0001", parentesco: "Hermana", direccion: "Calle Simulada 123", telefono: "000-000-0000" },
+      analisisComunicacion: [{ id: "a-ca1", texto: "La familia pregunta si puede despedirse antes del quirófano (simulado).", etapa_detectada: 2, created_at: iso(ahora, 5 * 60) }],
+      fotosDocumentacion: [
+        { tipo: "dni", created_at: iso(ahora, 11 * 60), cargado_por_rol: "procurador", archivo_url: null },
+        { tipo: "grupo_factor", created_at: iso(ahora, 10 * 60), cargado_por_rol: "procurador", archivo_url: null },
+      ],
       cultivos: [
         cultivo("a-c1", ahora, "aspirado_traqueal", 8 * 60, "pendiente"),
         cultivo("a-c2", ahora, "hemocultivo", 8 * 60 - 5, "pendiente"),
@@ -346,7 +408,7 @@ export function donantesSimulados(ahora: number): DonanteSimulado[] {
       pesoKg: 64,
       registros: regC as never,
       mediciones: [
-        { id: "c-m1", registrado_en: iso(ahora, 3 * 60), disfuncion_miocardica: false, anulado: false, pvc: 8, gc: 5.2, ic_medido: 3.1, sat_venosa: 72, delta_pp: 9, delta_vs: null, delta_co2_espirado: null, indice_vena_cava: null, resultado_pasivo_miembros: null },
+        { id: "c-m1", registrado_en: iso(ahora, 3 * 60), disfuncion_miocardica: false, anulado: false, pvc: 8, gc: 5.2, ic_medido: 3.1, sat_venosa: 72, delta_pp: 9, delta_vs: 8, delta_co2_espirado: 4, indice_vena_cava: 10, resultado_pasivo_miembros: 6 },
       ],
       respirador: [respiradorDemo("c", ahora, 10 * 60)],
       lab: tomaLab("c", ahora, 2 * 60, { na: 144, k: 4.0, glucemia: 140, troponina: 0.04, cpk_mb: 3.2, tgo: 30, tgp: 28, bili_total: 0.8, rin: 1.1 }) as never,
@@ -370,7 +432,13 @@ export function donantesSimulados(ahora: number): DonanteSimulado[] {
   const d = armar(
     base("sim-d", "000104", 10 * 60, { nombre_completo: "Juan Cruz", edad: 67, peso: 78, procurador_nombre: "Dr. Pérez (simulado)" }),
     { marcas: completas(5), muestras: [{ obtenida: true }, { obtenida: false }, { obtenida: false }] },
-    { ...fuentesVacias(), pesoKg: 78, registros: regD as never },
+    {
+      ...fuentesVacias(),
+      pesoKg: 78,
+      registros: regD as never,
+      // bomba de insulina cargada sin dilución: se ven los mL/h, sin dosis
+      bombas: [{ id: "d-b1", registro_id: regD[regD.length - 1].id, droga: "insulina", velocidad_ml_h: 3, dilucion_id: null, anulado: false }],
+    },
     [solicitudDemo("d-s1", "sim-d", ahora, { titulo: "Foto del DNI", created_at: iso(ahora, 90), pedido_por: "Base (simulado)" })],
     { muestras: muestrasDemo(1) }
   );

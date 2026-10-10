@@ -13,6 +13,7 @@ import type { DonanteExportacion } from "./base-exportar.ts";
 import type { Cultivo } from "./cultivos-calculos.ts";
 import type { HorarioQuirofano, EquipoQuirofano } from "./quirofano-calculos.ts";
 import type { MensajeCaso, RolChat } from "./chat-calculos.ts";
+import type { AnalisisComunicacion, Familiar, FilaCertAux } from "./base-expediente-etapas.ts";
 
 export type FilasDonante = {
   etapas: { etapa_key: string; estado: EstadoEtapa; marcado_manual?: string | null; marcado_en?: string | null }[];
@@ -93,6 +94,12 @@ export type ExpedienteDatos = {
   corazonCandidato: "si" | "no" | "sin_definir" | null;
   linea: EventoLinea[];
   mensajes: MensajeCaso[];
+  // Lo que cargó el procurador en cada etapa (se muestra en crudo).
+  planillas: { neuro: Record<string, string | null>; certificado: Record<string, string | null>; doppler: Record<string, string | null>; medidas: Record<string, string | null> };
+  certAux: FilaCertAux[];
+  familiar: Familiar | null;
+  analisisComunicacion: AnalisisComunicacion[];
+  fotosDocumentacion: { tipo: string; created_at: string; cargado_por_rol: string | null; archivo_url: string | null }[];
 };
 
 export type CambiosSolicitud = Partial<Pick<Solicitud, "estado" | "respuesta" | "respondida_por" | "respondida_en" | "completed_at" | "anulado">>;

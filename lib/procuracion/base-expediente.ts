@@ -9,16 +9,26 @@
 // laboratorio_valores = laboratorio (o enfermería si así se cargó, p. ej.
 // glucemia capilar de la fila horaria).
 
-import { balancePorHora, estadoBombas, pafiConRespirador, type BombaHora, type EventoRespirador, type FilaHoraria, type InfusionFila, type MedicionMedico } from "./mantenimiento-calculos.ts";
-import { DROGAS_INFUSION, MODOS_RESPIRADOR, type ClaveMeta, type DrogaInfusion } from "./mantenimiento-metas.ts";
+import { balancePorHora, disfuncionMiocardica, estadoBombas, pafiConRespirador, type BombaHora, type EventoRespirador, type FilaHoraria, type InfusionFila, type MedicionMedico } from "./mantenimiento-calculos.ts";
+import { BOLOS, DROGAS_INFUSION, MODOS_RESPIRADOR, type ClaveMeta, type DrogaBolo, type DrogaInfusion } from "./mantenimiento-metas.ts";
 import { textoRangoMeta } from "./mantenimiento-tendencias.ts";
 
 export type Origen = "enfermeria" | "medico" | "laboratorio";
 export const ETIQUETA_ORIGEN: Record<Origen, string> = { enfermeria: "Enfermería", medico: "Médico", laboratorio: "Laboratorio" };
 
 // Un dato crudo: número (o texto, p. ej. modo del respirador o sedimento),
-// con su hora y su origen. Nunca hay valor sin hora ni origen.
-export type Dato = { valor: number | string; en: string; origen: Origen };
+// con su hora y su origen. Nunca hay valor sin hora ni origen. `unidad`:
+// la que se guardó con el valor (laboratorio: troponina y CPK-MB la elige
+// el procurador); viaja SIEMPRE pegada al valor, en pantalla y en el CSV.
+export type Dato = { valor: number | string; en: string; origen: Origen; unidad?: string | null };
+
+// Configuración del médico (mantenimiento_config), con su hora.
+export type ConfigExpediente = {
+  corazon_candidato: "si" | "no" | "sin_definir";
+  pulmon_candidato: "si" | "no" | "sin_definir";
+  monitoreo_avanzado_activo: boolean;
+  updated_at: string;
+};
 
 type RegistroFuente = FilaHoraria & Record<string, unknown>;
 type LabFuente = { parametro: string; valor: number | null; valor_texto?: string | null; unidad: string | null; medido_en: string; anulado: boolean; toma_id: string; origen?: "laboratorio" | "enfermeria" | null };
@@ -31,6 +41,7 @@ export type FuentesExpediente = {
   bombas: BombaHora[];
   infusiones: InfusionFila[];
   pesoKg: number | null;
+  config?: ConfigExpediente | null;
 };
 
 export type Parametro = {
@@ -39,9 +50,13 @@ export type Parametro = {
   unidad: string | null;
   decimales: number;
   meta?: ClaveMeta;
+  sinCambio?: true; // volúmenes por registro, textos: el "cambio en 12 h" no aplica
 };
 
 const p = (clave: string, etiqueta: string, unidad: string | null, decimales = 0, meta?: ClaveMeta): Parametro => ({ clave, etiqueta, unidad, decimales, meta });
+const fijo = (x: Parametro): Parametro => ({ ...x, sinCambio: true });
+const bolo = (d: DrogaBolo) => fijo(p(`bolo:${d}`, `${BOLOS[d].etiqueta} (bolo)`, BOLOS[d].unidad, 1));
+const config = (clave: keyof Omit<ConfigExpediente, "updated_at">, etiqueta: string) => fijo(p(`config:${clave}`, etiqueta, null));
 
 // Drogas por sistema (dosis vigente según bombas + dilución).
 const DROGAS_HEMODINAMICO: DrogaInfusion[] = ["noradrenalina", "adrenalina", "dopamina", "dobutamina", "isoproterenol", "esmolol", "amiodarona", "vasopresina"];
@@ -62,9 +77,17 @@ export const SISTEMAS: { key: string; titulo: string; parametros: Parametro[] }[
       p("sat_venosa", "SvO2", "%", 0),
       p("delta_pp", "ΔPP", "%", 0),
       p("delta_vs", "ΔVS", "%", 0),
+      p("delta_co2_espirado", "Δ CO2 espirado", "%", 0),
+      p("indice_vena_cava", "Índice de vena cava", "%", 0),
+      p("resultado_pasivo_miembros", "Elevación pasiva de miembros", "% del VS o GC", 0),
+      fijo(p("disfuncion_miocardica", "Disfunción miocárdica", null)),
       ...drogas(DROGAS_HEMODINAMICO),
+      bolo("esmolol"),
+      bolo("vasopresina"),
       p("troponina", "Troponina", null, 2),
       p("cpk_mb", "CPK-MB", null, 1),
+      config("corazon_candidato", "Corazón candidato"),
+      config("monitoreo_avanzado_activo", "Monitoreo avanzado activo"),
     ],
   },
   {
@@ -82,6 +105,7 @@ export const SISTEMAS: { key: string; titulo: string; parametros: Parametro[] }[
       p("ph", "pH", null, 2, "ph"),
       p("pao2", "PaO2", "mmHg", 0),
       p("pafi", "PaFi", null, 0, "pafi"),
+      config("pulmon_candidato", "Pulmón candidato"),
     ],
   },
   {
@@ -89,8 +113,16 @@ export const SISTEMAS: { key: string; titulo: string; parametros: Parametro[] }[
     titulo: "Renal y balance",
     parametros: [
       p("diuresis_ml", "Diuresis (mL del registro)", "mL", 0),
+      fijo(p("ing_sol_09_ml", "Ingreso: solución 0,9 %", "mL", 0)),
+      fijo(p("ing_ringer_ml", "Ingreso: Ringer lactato", "mL", 0)),
+      fijo(p("ing_sol_medio_ml", "Ingreso: solución al medio (0,45 %)", "mL", 0)),
+      fijo(p("ing_dextrosa_ml", "Ingreso: dextrosa", "mL", 0)),
+      fijo(p("ing_hemoderivados_ml", "Ingreso: hemoderivados", "mL", 0)),
+      fijo(p("egr_sng_drenajes_ml", "Egreso: SNG / drenajes", "mL", 0)),
+      fijo(p("perdidas_insensibles_ml", "Egreso: pérdidas insensibles (cargadas a mano)", "mL", 0)),
       p("balance_acumulado", "Balance acumulado", "mL", 0),
       ...drogas(DROGAS_RENAL),
+      bolo("furosemida"),
       p("urea", "Urea", "mg/dL", 0),
       p("creatinina", "Creatinina", "mg/dL", 2),
       p("osm_serica", "Osmolaridad sérica", "mOsm/kg", 0),
@@ -109,6 +141,7 @@ export const SISTEMAS: { key: string; titulo: string; parametros: Parametro[] }[
       p("glucemia", "Glucemia", "mg/dL", 0, "glucemia"),
       p("amilasa", "Amilasa", "U/L", 0),
       ...drogas(DROGAS_METABOLICO),
+      bolo("desmopresina"),
     ],
   },
   {
@@ -139,8 +172,13 @@ export const SISTEMAS: { key: string; titulo: string; parametros: Parametro[] }[
 ];
 
 // Columnas de la planilla de enfermería y del médico que se muestran.
-const CAMPOS_REGISTRO = ["fc", "pam", "temperatura", "sat_o2", "fio2", "peep", "volumen_corriente", "diuresis_ml", "osm_urinaria", "osm_serica", "densidad_urinaria", "pvc", "gc", "ic_medido", "sat_venosa", "delta_pp", "delta_vs"];
-const CAMPOS_MEDICO = ["pvc", "gc", "ic_medido", "sat_venosa", "delta_pp", "delta_vs"];
+const CAMPOS_REGISTRO = [
+  "fc", "pam", "temperatura", "sat_o2", "fio2", "peep", "volumen_corriente", "diuresis_ml", "osm_urinaria", "osm_serica", "densidad_urinaria",
+  "pvc", "gc", "ic_medido", "sat_venosa", "delta_pp", "delta_vs", "delta_co2_espirado", "indice_vena_cava", "resultado_pasivo_miembros",
+  "ing_sol_09_ml", "ing_ringer_ml", "ing_sol_medio_ml", "ing_dextrosa_ml", "ing_hemoderivados_ml", "egr_sng_drenajes_ml", "perdidas_insensibles_ml",
+];
+const CAMPOS_MEDICO = ["pvc", "gc", "ic_medido", "sat_venosa", "delta_pp", "delta_vs", "delta_co2_espirado", "indice_vena_cava", "resultado_pasivo_miembros"];
+const SI_NO_SD: Record<string, string> = { si: "Sí", no: "No", sin_definir: "Sin definir" };
 const CAMPOS_RESPIRADOR = ["fio2", "peep", "volumen_corriente", "frecuencia", "presion_plateau", "presion_pico"] as const;
 
 const numero = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
@@ -154,6 +192,27 @@ export function serie(clave: string, f: FuentesExpediente, ahora: number): Dato[
     const droga = clave.slice(6) as DrogaInfusion;
     const b = estadoBombas({ registros: f.registros, bombas: f.bombas, infusiones: f.infusiones, pesoKg: f.pesoKg, ahora }).porDroga[droga];
     if (b?.dosis) r.push({ valor: b.dosis.dosis, en: b.momento, origen: "enfermeria" });
+    return r;
+  }
+  if (clave.startsWith("bolo:")) {
+    const droga = clave.slice(5) as DrogaBolo;
+    for (const x of f.infusiones) {
+      if (!x.anulado && x.tipo === "bolo" && x.droga === droga && x.dosis_calculada !== null)
+        r.push({ valor: x.dosis_calculada, en: x.registrado_en, origen: "enfermeria", unidad: BOLOS[droga].unidad });
+    }
+    return porHora(r);
+  }
+  if (clave === "disfuncion_miocardica") {
+    const d = disfuncionMiocardica(f.mediciones);
+    if (d.estado !== "sin_evaluar") r.push({ valor: d.estado === "si" ? "Sí" : "No", en: d.registrado_en, origen: "medico" });
+    return r;
+  }
+  if (clave.startsWith("config:")) {
+    const c = f.config;
+    if (!c) return r;
+    const campo = clave.slice(7) as keyof Omit<ConfigExpediente, "updated_at">;
+    const v = c[campo];
+    r.push({ valor: typeof v === "boolean" ? (v ? "Sí" : "No") : SI_NO_SD[v] ?? v, en: c.updated_at, origen: "medico" });
     return r;
   }
   if (clave === "balance_acumulado") {
@@ -199,18 +258,30 @@ export function serie(clave: string, f: FuentesExpediente, ahora: number): Dato[
   for (const x of f.lab) {
     if (x.anulado || x.parametro !== clave) continue;
     const valor = x.valor ?? x.valor_texto ?? null;
-    if (valor !== null && valor !== "") r.push({ valor, en: x.medido_en, origen: x.origen === "enfermeria" ? "enfermeria" : "laboratorio" });
+    if (valor !== null && valor !== "") r.push({ valor, en: x.medido_en, origen: x.origen === "enfermeria" ? "enfermeria" : "laboratorio", unidad: x.unidad });
   }
   return porHora(r);
 }
 
+// Unidad efectiva de un dato: la guardada con el valor o, si no tiene, la
+// del parámetro.
+export const unidadDe = (d: Dato, porDefecto: string | null = null) => d.unidad ?? porDefecto;
+
 // Cambio en 12 h: último valor menos el PRIMERO dentro de las últimas
-// 12 h (hacen falta al menos dos números en la ventana).
-export function cambio12h(datos: Dato[], ahora: number): number | null {
+// 12 h (hacen falta al menos dos números en la ventana). Si en la ventana
+// hay unidades distintas (p. ej. troponina en ng/mL y en ng/L) NO se
+// calcula: restar entre unidades distintas daría un número falso.
+export function cambio12h(datos: Dato[], ahora: number, unidadPorDefecto: string | null = null): number | null {
   const desde = ahora - 12 * 3_600_000;
   const v = porHora(datos).filter((d) => typeof d.valor === "number" && new Date(d.en).getTime() > desde && new Date(d.en).getTime() <= ahora);
   if (v.length < 2) return null;
+  if (new Set(v.map((d) => unidadDe(d, unidadPorDefecto))).size > 1) return null;
   return (v[v.length - 1].valor as number) - (v[0].valor as number);
+}
+export function unidadesMezcladas(datos: Dato[], ahora: number, unidadPorDefecto: string | null = null): boolean {
+  const desde = ahora - 12 * 3_600_000;
+  const v = datos.filter((d) => typeof d.valor === "number" && new Date(d.en).getTime() > desde && new Date(d.en).getTime() <= ahora);
+  return new Set(v.map((d) => unidadDe(d, unidadPorDefecto))).size > 1;
 }
 
 export type FilaSistema = {
@@ -221,28 +292,53 @@ export type FilaSistema = {
   ultimo: Dato | null;
   cambio12h: number | null;
   referencia: string | null;
+  nota: string | null; // dato crudo extra: mL/h de la bomba, cantidad de bolos, unidades distintas
 };
 
+const plural = (n: number, uno: string, varios: string) => `${n} ${n === 1 ? uno : varios}`;
+const mlh = (n: number) => `${String(n).replace(".", ",")} mL/h`;
+
 export function filaParametro(par: Parametro, f: FuentesExpediente, ahora: number): FilaSistema {
+  const base = { clave: par.clave, etiqueta: par.etiqueta, decimales: par.decimales, referencia: par.meta ? textoRangoMeta(par.meta) || null : null };
+  // Bomba: la dosis calculada con su unidad y, al lado, los mL/h crudos.
+  // Si corre pero no hay dosis (falta dilución o peso), se ven los mL/h.
+  if (par.clave.startsWith("droga:")) {
+    const b = estadoBombas({ registros: f.registros, bombas: f.bombas, infusiones: f.infusiones, pesoKg: f.pesoKg, ahora }).porDroga[par.clave.slice(6) as DrogaInfusion];
+    if (!b) return { ...base, unidad: par.unidad, ultimo: null, cambio12h: null, nota: null };
+    if (b.dosis) return { ...base, unidad: b.dosis.unidad, ultimo: { valor: b.dosis.dosis, en: b.momento, origen: "enfermeria", unidad: b.dosis.unidad }, cambio12h: null, nota: mlh(b.velocidadMlH) };
+    return {
+      ...base,
+      unidad: "mL/h",
+      ultimo: { valor: b.velocidadMlH, en: b.momento, origen: "enfermeria", unidad: "mL/h" },
+      cambio12h: null,
+      nota: b.estado === "falta_peso" ? "sin dosis: falta el peso" : "sin dosis: falta la dilución",
+      referencia: null,
+    };
+  }
   const s = serie(par.clave, f, ahora);
+  const ultimo = s[s.length - 1] ?? null;
+  const desde = ahora - 12 * 3_600_000;
+  const nota = par.clave.startsWith("bolo:")
+    ? plural(s.filter((d) => new Date(d.en).getTime() > desde).length, "bolo en 12 h", "bolos en 12 h")
+    : unidadesMezcladas(s, ahora, par.unidad)
+      ? "unidades distintas en 12 h: sin cambio calculado"
+      : null;
   return {
-    clave: par.clave,
-    etiqueta: par.etiqueta,
-    unidad: par.unidad,
-    decimales: par.decimales,
-    ultimo: s[s.length - 1] ?? null,
-    cambio12h: cambio12h(s, ahora),
-    referencia: par.meta ? textoRangoMeta(par.meta) || null : null,
+    ...base,
+    unidad: ultimo ? unidadDe(ultimo, par.unidad) : par.unidad,
+    ultimo,
+    cambio12h: par.sinCambio ? null : cambio12h(s, ahora, par.unidad),
+    nota,
   };
 }
 
-// Las tarjetas por sistema. Las drogas que no corren no se listan; el
-// resto de los parámetros se lista siempre (sin dato: "—").
+// Las tarjetas por sistema. Las drogas y los bolos que no se usaron no se
+// listan; el resto de los parámetros se lista siempre (sin dato: "—").
 export function mantenimientoPorSistema(f: FuentesExpediente, ahora: number) {
   return SISTEMAS.map((s) => ({
     key: s.key,
     titulo: s.titulo,
-    filas: s.parametros.map((par) => filaParametro(par, f, ahora)).filter((x) => !x.clave.startsWith("droga:") || x.ultimo !== null),
+    filas: s.parametros.map((par) => filaParametro(par, f, ahora)).filter((x) => !(x.clave.startsWith("droga:") || x.clave.startsWith("bolo:")) || x.ultimo !== null),
   }));
 }
 

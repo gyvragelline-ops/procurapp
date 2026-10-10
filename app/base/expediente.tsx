@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import {
   RESULTADOS_CIERRE,
   esActivo,
@@ -23,6 +23,7 @@ import type { ExpedienteDatos, FuenteBase } from "@/lib/procuracion/base-armado"
 import SolicitudesPanel from "./solicitudes-panel";
 import ChatBase from "./chat-base";
 import Impresion from "./impresion";
+import { TarjetaPotencial, TarjetaComunicacion, TarjetaDocumentacion, TarjetaMedidas, TarjetaMetodosAuxiliares, TarjetaMuestras, TarjetaNeurologico } from "./etapas-detalle";
 import { metaDonante } from "./tablero";
 import { COLOR, colorEtapa, descargar, diaYHora, dosCifras, horaCorta, hhmm, textoActualizado, textoEstadoEtapa, useConsultaPeriodica } from "./ui";
 import styles from "./base.module.css";
@@ -31,7 +32,20 @@ const CONSULTA_MS = 30_000;
 
 // Ancla de cada etapa del índice: su sección si tiene una; si no, su
 // renglón en "Etapas".
-const ANCLA: Record<string, string> = { mantenimiento: "sec-mantenimiento", cultivos: "sec-cultivos", labImagenes: "sec-estudios", judicial: "sec-quirofano", quirofano: "sec-quirofano" };
+const ANCLA: Record<string, string> = {
+  potencial: "sec-potencial",
+  me: "sec-me",
+  certificacion: "sec-cert",
+  comDonacion: "sec-comdon",
+  muestras: "sec-muestras",
+  medidas: "sec-medidas",
+  labImagenes: "sec-estudios",
+  cultivos: "sec-cultivos",
+  documentacion: "sec-doc",
+  mantenimiento: "sec-mantenimiento",
+  judicial: "sec-quirofano",
+  quirofano: "sec-quirofano",
+};
 const ancla = (key: string) => ANCLA[key] ?? `etapa-${key}`;
 
 const colorPestana = (i: InsumosTablero, ahora: number) => {
@@ -151,6 +165,167 @@ export default function Expediente({
   const ultimoMant = mant.tipo === "con_datos" ? `Último dato de Mantenimiento ${horaCorta(mant.ultimo, ahora)}` : mant.tipo === "sin_datos" ? "Sin datos de Mantenimiento" : "";
   const cultivosVig = datos.cultivos.filter((c) => !c.anulado);
   const pendientesCult = cultivosVig.filter((c) => c.estado === "pendiente").length;
+
+
+  // Bloques del centro (se ubican en el orden de las etapas).
+  const bloqueMantenimiento = (
+    <>
+                <div id="sec-mantenimiento" className={styles.seccionTitulo}>
+                  <span>{dosCifras(barraMant?.numero ?? 0)} · Mantenimiento por sistema</span>
+                  <span className={`${styles.chico} ${styles.mu}`}>{ultimoMant} · datos en crudo, sin interpretar</span>
+                </div>
+                <div className={styles.sistemas}>
+                  {sistemas.map((s) => {
+                    const conDato = s.filas.filter((x) => x.ultimo);
+                    const ult = conDato.reduce<string | null>((a, x) => (x.ultimo!.en > (a ?? "") ? x.ultimo!.en : a), null);
+                    return (
+                      <div key={s.key} className={styles.card}>
+                        <div className={styles.cardCab}>
+                          <span>{s.titulo}</span>
+                          <span className={styles.mu}>{ult ? `último dato ${horaCorta(ult, ahora)}` : "sin datos"}</span>
+                        </div>
+                        {s.filas.map((x) => (
+                          <div key={x.clave} className={styles.filaSistema}>
+                            <span className={styles.dosRenglones}>
+                              <span>{x.etiqueta}</span>
+                              {x.ultimo && <span className={`${styles.chico} ${styles.mu}`}>{ETIQUETA_ORIGEN[x.ultimo.origen]}</span>}
+                            </span>
+                            <span className={styles.dosRenglones}>
+                              <span className={`${styles.num} ${styles.valor}`}>{x.ultimo ? `${textoValor(x.ultimo.valor, x.decimales)}${x.unidad ? ` ${x.unidad}` : ""}` : "—"}</span>
+                              {x.ultimo && <span className={`${styles.num} ${styles.chico} ${styles.mu}`}>{horaCorta(x.ultimo.en, ahora)}</span>}
+                            </span>
+                            <span className={`${styles.num} ${styles.mu} ${styles.dosRenglones}`}>
+                              <span>
+                                {x.cambio12h === null ? "" : `${x.cambio12h > 0 ? "↑" : x.cambio12h < 0 ? "↓" : "="} ${textoCambio(x.cambio12h, x.decimales)}`}
+                                {x.cambio12h !== null && <span className={styles.chico}> en 12 h</span>}
+                              </span>
+                              {x.nota && <span className={styles.chico}>{x.nota}</span>}
+                            </span>
+                            <span className={`${styles.chico} ${styles.mu}`}>{x.referencia ? `ref. ${x.referencia}` : ""}</span>
+                          </div>
+                        ))}
+                        {s.key === "infeccioso" && (
+                          <div className={styles.filaSistema}>
+                            <span>Cultivos</span>
+                            <span className={`${styles.num} ${styles.valor}`}>{cultivosVig.length} cargados</span>
+                            <span className={`${styles.num} ${styles.mu}`}>{pendientesCult} pendientes</span>
+                            <span className={`${styles.chico} ${styles.mu}`}>{cultivosVig.filter((c) => c.estado === "positivo").length} positivos</span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+  );
+  const bloqueCultivos = (
+            <div id="sec-cultivos" className={`${styles.card} ${styles.ancla}`}>
+              <div className={styles.cardCab}>
+                <span>{barraCult ? `${dosCifras(barraCult.numero)} · ` : ""}Cultivos</span>
+                <span style={{ color: pendientesCult ? COLOR.a : COLOR.mu }}>{pendientesCult === 1 ? "1 pendiente" : `${pendientesCult} pendientes`}</span>
+              </div>
+              {cultivosVig.length === 0 && <div className={`${styles.cardFila} ${styles.mu}`}>Sin cultivos cargados.</div>}
+              {[...cultivosVig]
+                .sort((a, b) => b.tomado_en.localeCompare(a.tomado_en))
+                .map((c) => (
+                  <div key={c.id} className={styles.filaCultivo}>
+                    <span>{c.tipo === "otro" ? c.tipo_otro ?? "Otro" : TIPOS_CULTIVO.find((t) => t.valor === c.tipo)?.etiqueta ?? c.tipo}</span>
+                    <span className={`${styles.num} ${styles.mu}`}>{diaYHora(c.tomado_en, ahora)}</span>
+                    <span style={{ fontWeight: 600, color: c.estado === "pendiente" ? COLOR.a : c.estado === "positivo" ? COLOR.r : COLOR.g }}>
+                      {c.estado === "pendiente" ? "Pendiente" : c.estado === "positivo" ? "Positivo" : "Negativo"}
+                    </span>
+                    <span>
+                      {c.estado === "pendiente"
+                        ? `Tomado hace ${Math.max(0, Math.round((ahora - new Date(c.tomado_en).getTime()) / 3_600_000))} h, sin resultado`
+                        : [c.germen, c.sensibilidad ? `sensibilidad: ${c.sensibilidad}` : null, c.resultado_en ? `resultado ${diaYHora(c.resultado_en, ahora)}` : null].filter(Boolean).join(" · ")}
+                    </span>
+                  </div>
+                ))}
+            </div>
+
+  );
+  const bloqueEstudios = (
+              <div id="sec-estudios" className={`${styles.card} ${styles.ancla}`}>
+                <div className={styles.cardCab}>
+                  <span>{barraLab ? `${dosCifras(barraLab.numero)} · ` : ""}Imágenes y estudios</span>
+                </div>
+                {TIPOS_ESTUDIO_INFO.map((t) => {
+                  const xs = datos.estudios.filter((e) => e.tipo_estudio === t.valor).sort((a, b) => b.created_at.localeCompare(a.created_at));
+                  const u = xs[0];
+                  return (
+                    <div key={t.valor} className={styles.par}>
+                      <span>{t.etiqueta}</span>
+                      <span style={{ fontWeight: 600, color: u ? COLOR.g : COLOR.mu }}>
+                        {u ? `Cargado ${diaYHora(u.created_at, ahora)}${xs.length > 1 ? ` (${xs.length})` : ""}` : "Sin cargar"}
+                        {u?.archivo_url && (
+                          <>
+                            {" · "}
+                            <a href={u.archivo_url} target="_blank" rel="noreferrer" className={styles.enlace}>
+                              ver
+                            </a>
+                          </>
+                        )}
+                        {u?.descripcion && (
+                          <span className={styles.chico} style={{ display: "block", fontWeight: 400, color: COLOR.tx }}>
+                            {u.descripcion}
+                          </span>
+                        )}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+
+  );
+  const bloqueQuirofano = (
+              <div id="sec-quirofano" className={`${styles.card} ${styles.ancla}`}>
+                <div className={styles.cardCab}>
+                  <span>
+                    {[f.barra.find((e) => e.key === "judicial"), f.barra.find((e) => e.key === "quirofano")]
+                      .filter(Boolean)
+                      .map((e) => dosCifras(e!.numero))
+                      .join("–")}
+                    {" · "}
+                    {judicialAplica ? "Judicial, quirófano y equipos" : "Quirófano y equipos"}
+                  </span>
+                </div>
+                {judicialAplica &&
+                  (["precario", "autorizacion_juez"] as const).map((tipo) => {
+                    const foto = datos.fotosJudiciales.filter((x) => x.tipo === tipo).sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
+                    return (
+                      <div key={tipo} className={styles.par}>
+                        <span>{tipo === "precario" ? "Foto del precario" : "Autorización del juez (foto)"}</span>
+                        <span style={{ fontWeight: 600, color: foto ? COLOR.g : COLOR.a }}>
+                          {foto ? `Cargada ${diaYHora(foto.created_at, ahora)}${foto.cargado_por_rol ? ` · ${foto.cargado_por_rol}` : ""}` : "Sin cargar"}
+                        </span>
+                      </div>
+                    );
+                  })}
+                <div className={styles.par}>
+                  <span>Hora de quirófano</span>
+                  {(() => {
+                    const h = horaVigente(datos.insumos.etapas.horariosQx);
+                    return <span style={{ fontWeight: 600, color: h ? COLOR.tx : COLOR.a }}>{h ? diaYHora(h.hora, ahora) : "Sin definir"}</span>;
+                  })()}
+                </div>
+                {datos.equipos
+                  .filter((e) => !e.anulado)
+                  .map((e) => (
+                    <div key={e.id} className={styles.par}>
+                      <span>{e.equipo}</span>
+                      <span style={{ fontWeight: 600, color: e.anestesista === "sin_confirmar" ? COLOR.a : COLOR.tx }}>
+                        {e.organos.map((o) => (o === "otro" ? e.organo_otro ?? "Otro" : ORGANOS_EQUIPO.find((x) => x.valor === o)?.etiqueta ?? o)).join(", ")} · anestesista:{" "}
+                        {ANESTESISTA.find((a) => a.valor === e.anestesista)?.etiqueta.toLowerCase()}
+                        <span className={`${styles.chico} ${styles.mu}`} style={{ display: "block", fontWeight: 400 }}>
+                          avisado {diaYHora(e.creado_en, ahora)}
+                          {e.medio ? ` · ${e.medio}` : ""}
+                        </span>
+                      </span>
+                    </div>
+                  ))}
+                {datos.equipos.filter((e) => !e.anulado).length === 0 && <div className={`${styles.cardFila} ${styles.mu}`}>Ningún equipo avisado todavía.</div>}
+              </div>
+  );
 
   return (
     <>
@@ -272,154 +447,38 @@ export default function Expediente({
 
           {/* centro */}
           <div className={styles.centro}>
-            {barraMant && (
-              <>
-                <div id="sec-mantenimiento" className={styles.seccionTitulo}>
-                  <span>{dosCifras(barraMant.numero)} · Mantenimiento por sistema</span>
-                  <span className={`${styles.chico} ${styles.mu}`}>{ultimoMant} · datos en crudo, sin interpretar</span>
-                </div>
-                <div className={styles.sistemas}>
-                  {sistemas.map((s) => {
-                    const conDato = s.filas.filter((x) => x.ultimo);
-                    const ult = conDato.reduce<string | null>((a, x) => (x.ultimo!.en > (a ?? "") ? x.ultimo!.en : a), null);
-                    return (
-                      <div key={s.key} className={styles.card}>
-                        <div className={styles.cardCab}>
-                          <span>{s.titulo}</span>
-                          <span className={styles.mu}>{ult ? `último dato ${horaCorta(ult, ahora)}` : "sin datos"}</span>
-                        </div>
-                        {s.filas.map((x) => (
-                          <div key={x.clave} className={styles.filaSistema}>
-                            <span className={styles.dosRenglones}>
-                              <span>{x.etiqueta}</span>
-                              {x.ultimo && <span className={`${styles.chico} ${styles.mu}`}>{ETIQUETA_ORIGEN[x.ultimo.origen]}</span>}
-                            </span>
-                            <span className={styles.dosRenglones}>
-                              <span className={`${styles.num} ${styles.valor}`}>{x.ultimo ? `${textoValor(x.ultimo.valor, x.decimales)}${x.unidad ? ` ${x.unidad}` : ""}` : "—"}</span>
-                              {x.ultimo && <span className={`${styles.num} ${styles.chico} ${styles.mu}`}>{horaCorta(x.ultimo.en, ahora)}</span>}
-                            </span>
-                            <span className={`${styles.num} ${styles.mu}`}>
-                              {x.cambio12h === null ? "" : `${x.cambio12h > 0 ? "↑" : x.cambio12h < 0 ? "↓" : "="} ${textoCambio(x.cambio12h, x.decimales)}`}
-                              {x.cambio12h !== null && <span className={styles.chico}> en 12 h</span>}
-                            </span>
-                            <span className={`${styles.chico} ${styles.mu}`}>{x.referencia ? `ref. ${x.referencia}` : ""}</span>
-                          </div>
-                        ))}
-                        {s.key === "infeccioso" && (
-                          <div className={styles.filaSistema}>
-                            <span>Cultivos</span>
-                            <span className={`${styles.num} ${styles.valor}`}>{cultivosVig.length} cargados</span>
-                            <span className={`${styles.num} ${styles.mu}`}>{pendientesCult} pendientes</span>
-                            <span className={`${styles.chico} ${styles.mu}`}>{cultivosVig.filter((c) => c.estado === "positivo").length} positivos</span>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </>
-            )}
-
-            {/* cultivos */}
-            <div id="sec-cultivos" className={`${styles.card} ${styles.ancla}`}>
-              <div className={styles.cardCab}>
-                <span>{barraCult ? `${dosCifras(barraCult.numero)} · ` : ""}Cultivos</span>
-                <span style={{ color: pendientesCult ? COLOR.a : COLOR.mu }}>{pendientesCult === 1 ? "1 pendiente" : `${pendientesCult} pendientes`}</span>
-              </div>
-              {cultivosVig.length === 0 && <div className={`${styles.cardFila} ${styles.mu}`}>Sin cultivos cargados.</div>}
-              {[...cultivosVig]
-                .sort((a, b) => b.tomado_en.localeCompare(a.tomado_en))
-                .map((c) => (
-                  <div key={c.id} className={styles.filaCultivo}>
-                    <span>{c.tipo === "otro" ? c.tipo_otro ?? "Otro" : TIPOS_CULTIVO.find((t) => t.valor === c.tipo)?.etiqueta ?? c.tipo}</span>
-                    <span className={`${styles.num} ${styles.mu}`}>{diaYHora(c.tomado_en, ahora)}</span>
-                    <span style={{ fontWeight: 600, color: c.estado === "pendiente" ? COLOR.a : c.estado === "positivo" ? COLOR.r : COLOR.g }}>
-                      {c.estado === "pendiente" ? "Pendiente" : c.estado === "positivo" ? "Positivo" : "Negativo"}
-                    </span>
-                    <span>
-                      {c.estado === "pendiente"
-                        ? `Tomado hace ${Math.max(0, Math.round((ahora - new Date(c.tomado_en).getTime()) / 3_600_000))} h, sin resultado`
-                        : [c.germen, c.sensibilidad ? `sensibilidad: ${c.sensibilidad}` : null, c.resultado_en ? `resultado ${diaYHora(c.resultado_en, ahora)}` : null].filter(Boolean).join(" · ")}
-                    </span>
-                  </div>
-                ))}
-            </div>
-
-            <div className={styles.dosCols}>
-              {/* imágenes y estudios */}
-              <div id="sec-estudios" className={`${styles.card} ${styles.ancla}`}>
-                <div className={styles.cardCab}>
-                  <span>{barraLab ? `${dosCifras(barraLab.numero)} · ` : ""}Imágenes y estudios</span>
-                </div>
-                {TIPOS_ESTUDIO_INFO.map((t) => {
-                  const xs = datos.estudios.filter((e) => e.tipo_estudio === t.valor).sort((a, b) => b.created_at.localeCompare(a.created_at));
-                  const u = xs[0];
-                  return (
-                    <div key={t.valor} className={styles.par}>
-                      <span>{t.etiqueta}</span>
-                      <span style={{ fontWeight: 600, color: u ? COLOR.g : COLOR.mu }}>
-                        {u ? `Cargado ${diaYHora(u.created_at, ahora)}${xs.length > 1 ? ` (${xs.length})` : ""}` : "Sin cargar"}
-                        {u?.archivo_url && (
-                          <>
-                            {" · "}
-                            <a href={u.archivo_url} target="_blank" rel="noreferrer" className={styles.enlace}>
-                              ver
-                            </a>
-                          </>
-                        )}
-                        {u?.descripcion && (
-                          <span className={styles.chico} style={{ display: "block", fontWeight: 400, color: COLOR.tx }}>
-                            {u.descripcion}
-                          </span>
-                        )}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* judicial, quirófano y equipos */}
-              <div id="sec-quirofano" className={`${styles.card} ${styles.ancla}`}>
-                <div className={styles.cardCab}>
-                  <span>{judicialAplica ? "Judicial, quirófano y equipos" : "Quirófano y equipos"}</span>
-                </div>
-                {judicialAplica &&
-                  (["precario", "autorizacion_juez"] as const).map((tipo) => {
-                    const foto = datos.fotosJudiciales.filter((x) => x.tipo === tipo).sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
-                    return (
-                      <div key={tipo} className={styles.par}>
-                        <span>{tipo === "precario" ? "Foto del precario" : "Autorización del juez (foto)"}</span>
-                        <span style={{ fontWeight: 600, color: foto ? COLOR.g : COLOR.a }}>
-                          {foto ? `Cargada ${diaYHora(foto.created_at, ahora)}${foto.cargado_por_rol ? ` · ${foto.cargado_por_rol}` : ""}` : "Sin cargar"}
-                        </span>
-                      </div>
-                    );
-                  })}
-                <div className={styles.par}>
-                  <span>Hora de quirófano</span>
-                  {(() => {
-                    const h = horaVigente(datos.insumos.etapas.horariosQx);
-                    return <span style={{ fontWeight: 600, color: h ? COLOR.tx : COLOR.a }}>{h ? diaYHora(h.hora, ahora) : "Sin definir"}</span>;
-                  })()}
-                </div>
-                {datos.equipos
-                  .filter((e) => !e.anulado)
-                  .map((e) => (
-                    <div key={e.id} className={styles.par}>
-                      <span>{e.equipo}</span>
-                      <span style={{ fontWeight: 600, color: e.anestesista === "sin_confirmar" ? COLOR.a : COLOR.tx }}>
-                        {e.organos.map((o) => (o === "otro" ? e.organo_otro ?? "Otro" : ORGANOS_EQUIPO.find((x) => x.valor === o)?.etiqueta ?? o)).join(", ")} · anestesista:{" "}
-                        {ANESTESISTA.find((a) => a.valor === e.anestesista)?.etiqueta.toLowerCase()}
-                        <span className={`${styles.chico} ${styles.mu}`} style={{ display: "block", fontWeight: 400 }}>
-                          avisado {diaYHora(e.creado_en, ahora)}
-                          {e.medio ? ` · ${e.medio}` : ""}
-                        </span>
-                      </span>
-                    </div>
-                  ))}
-                {datos.equipos.filter((e) => !e.anulado).length === 0 && <div className={`${styles.cardFila} ${styles.mu}`}>Ningún equipo avisado todavía.</div>}
-              </div>
-            </div>
+            {/* secciones en el orden de las etapas (01–13) */}
+            {f.barra.map((e) => {
+              const num = dosCifras(e.numero);
+              switch (e.key) {
+                case "potencial":
+                  return <TarjetaPotencial key={e.key} numero={num} datos={datos} />;
+                case "me":
+                  return <TarjetaNeurologico key={e.key} numero={num} datos={datos} />;
+                case "certificacion":
+                  return <TarjetaMetodosAuxiliares key={e.key} numero={num} datos={datos} />;
+                case "comDonacion":
+                  return <TarjetaComunicacion key={e.key} numero={num} datos={datos} ahora={ahora} />;
+                case "muestras":
+                  return <TarjetaMuestras key={e.key} numero={num} datos={datos} />;
+                case "medidas":
+                  return <TarjetaMedidas key={e.key} numero={num} datos={datos} />;
+                case "labImagenes":
+                  return <Fragment key={e.key}>{bloqueEstudios}</Fragment>;
+                case "cultivos":
+                  return <Fragment key={e.key}>{bloqueCultivos}</Fragment>;
+                case "documentacion":
+                  return <TarjetaDocumentacion key={e.key} numero={num} datos={datos} ahora={ahora} />;
+                case "mantenimiento":
+                  return <Fragment key={e.key}>{bloqueMantenimiento}</Fragment>;
+                case "judicial":
+                  return <Fragment key={e.key}>{bloqueQuirofano}</Fragment>;
+                case "quirofano":
+                  return judicialAplica ? null : <Fragment key={e.key}>{bloqueQuirofano}</Fragment>;
+                default:
+                  return null;
+              }
+            })}
 
             {/* todas las etapas, con lo que falta (anclas del índice) */}
             <div className={styles.card}>

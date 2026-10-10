@@ -397,7 +397,7 @@ button.fila:hover {
 }
 .filaSistema {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 110px 96px 86px;
+  grid-template-columns: minmax(0, 1fr) 120px 124px 90px;
   gap: 8px;
   padding: 8px 16px;
   border-top: 1px solid #e7edef;
@@ -534,4 +534,22 @@ textarea.campo {
 }
 .nw {
   white-space: nowrap;
+}
+.soloBase {
+  display: inline-block;
+  border: 1px dashed var(--mu);
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--mu);
+  white-space: nowrap;
+}
+.filaTabla {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 140px 140px;
+  gap: 8px;
+  padding: 6px 16px;
+  border-top: 1px solid #e7edef;
+  font-size: 13px;
 }

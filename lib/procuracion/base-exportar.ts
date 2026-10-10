@@ -123,6 +123,7 @@ export type DonanteExportacion = DonanteTablero & {
   fecha_ingreso: string | null;
   me_hora: string | null;
   causa_muerte: string | null;
+  antecedentes?: string | null;
 };
 
 export type DatosExportacion = {
@@ -145,7 +146,8 @@ function filasSeccion(s: Seccion, d: DatosExportacion, donante: string, ahora: n
       return s.claves.flatMap((clave) => {
         const par = PARAMETROS.get(clave);
         const etiqueta = par?.etiqueta ?? clave;
-        return serie(clave, d.fuentes, ahora).map((x) => fila(x.en, etiqueta, x.valor, par?.unidad ?? null, ETIQUETA_ORIGEN[x.origen]));
+        // La unidad guardada con cada valor (troponina / CPK-MB: la que eligió el procurador).
+        return serie(clave, d.fuentes, ahora).map((x) => fila(x.en, etiqueta, x.valor, x.unidad ?? par?.unidad ?? null, ETIQUETA_ORIGEN[x.origen]));
       });
     case "identificacion": {
       const x = d.donante;
@@ -155,6 +157,7 @@ function filasSeccion(s: Seccion, d: DatosExportacion, donante: string, ahora: n
         ficha("PD", x.pd_numero),
         ficha("Folio", x.folio_numero),
         ficha("Edad", x.edad, "años"),
+        ficha("Antecedentes", x.antecedentes ?? null),
         ficha("Sexo", x.sexo),
         ficha("Peso", x.peso, "kg"),
         ficha("Talla", x.talla, "cm"),

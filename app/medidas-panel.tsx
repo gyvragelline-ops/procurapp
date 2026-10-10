@@ -7,7 +7,9 @@ import type { Donante } from "@/lib/procuracion/types";
 
 const supabase = createClient();
 
-const PLANILLA_KEY = "op2_p2";
+import { CAMPOS_PLANILLA, PLANILLA_MEDIDAS } from "@/lib/procuracion/medidas-campos";
+
+const PLANILLA_KEY = PLANILLA_MEDIDAS;
 
 // Mismos nombres de campo_pdf que campo_mapeo (planilla_key='op2_p2',
 // sección Antropometría) -- por prolijidad, no porque se vaya a generar
@@ -16,20 +18,6 @@ const PLANILLA_KEY = "op2_p2";
 // El número al frente de cada label es el mismo que la imagen de
 // referencia de arriba -- Peso/Talla no llevan número, no están en el
 // diagrama.
-const CAMPOS_PLANILLA: { key: string; label: string; ayuda: string }[] = [
-  { key: "l_esternal", label: "1. Línea esternal", ayuda: "Longitud del esternón, desde el manubrio hasta el apéndice xifoides" },
-  { key: "p_axilar", label: "2. Perímetro axilar", ayuda: "Circunferencia torácica completa, cinta métrica a la altura de ambas axilas" },
-  { key: "p_xif", label: "3. Perímetro xifoideo", ayuda: "Circunferencia completa a la altura del apéndice xifoides" },
-  { key: "p_umbilic", label: "4. Perímetro umbilical", ayuda: "Circunferencia completa a la altura del ombligo" },
-  { key: "biliaco", label: "5. Biilíaco", ayuda: "Distancia entre ambas crestas ilíacas (no circunferencia)" },
-  { key: "xifopubiano", label: "6. Xifopubiano", ayuda: "Distancia entre el apéndice xifoides y la sínfisis del pubis" },
-  {
-    key: "d_ventral",
-    label: "7. Dorso ventral",
-    ayuda: "Diámetro anteroposterior del abdomen: paciente en decúbito supino, desde el plano de la camilla hasta el punto más prominente de la pared abdominal",
-  },
-  { key: "femur", label: "8. Fémur", ayuda: "Longitud del fémur" },
-];
 
 export default function MedidasPanel({
   donante,
