@@ -45,3 +45,36 @@ test("al abrir el chat, la marca de lectura es la hora del último mensaje", () 
   assert.equal(marcaDeLectura([m("a", "base", iso(9)), m("b", "base", iso(12)), m("c", "base", iso(10))]), iso(12));
   assert.equal(marcaDeLectura([]), null);
 });
+
+// ---------------------------------------------------------------- quién habla y a quién
+import { destinatarios, nuevosDeOtros, textoAviso, textoDeA } from "../chat-calculos.ts";
+
+test("destinatario por regla (no se guarda): Procurador → Base; Equipo → Base; Base → Procurador y Equipo", () => {
+  assert.deepEqual(destinatarios("procurador"), ["base"]);
+  assert.deepEqual(destinatarios("equipo"), ["base"]);
+  assert.deepEqual(destinatarios("base"), ["procurador", "equipo"]);
+  assert.equal(textoDeA("procurador"), "Procurador → Base");
+  assert.equal(textoDeA("equipo"), "Equipo → Base");
+  assert.equal(textoDeA("base"), "Base → Procurador y Equipo");
+});
+
+test("aviso breve: solo mensajes nuevos de OTRO rol (no anulados); nada por los propios", () => {
+  const antes = new Set(["1", "2"]);
+  const ms = [
+    m("1", "base", iso(9)),
+    m("2", "procurador", iso(10)),
+    m("3", "procurador", iso(11)), // mío: no avisa
+    m("4", "base", iso(12), true), // anulado: no avisa
+    m("5", "equipo", iso(13)),
+    m("6", "base", iso(14)),
+  ];
+  assert.deepEqual(nuevosDeOtros(antes, ms, "procurador").map((x) => x.id), ["5", "6"]);
+  assert.deepEqual(nuevosDeOtros(new Set(ms.map((x) => x.id)), ms, "procurador"), []);
+});
+
+test("texto del aviso: 'Base: texto cortado…'", () => {
+  assert.equal(textoAviso({ rol: "base", texto: "Quirófano 16:30" }), "Base: Quirófano 16:30");
+  const largo = textoAviso({ rol: "equipo", texto: "Confirmamos equipo de hígado, salimos 15:30 desde el hospital, llevamos anestesista" }, 30);
+  assert.equal(largo, "Equipo: Confirmamos equipo de hígado,…");
+  assert.equal(textoAviso({ rol: "base", texto: "  dos\n\nlíneas " }), "Base: dos líneas");
+});
