@@ -5,8 +5,6 @@ import { createClient } from "@/lib/supabase/client";
 import { guardarConReintento } from "@/lib/procuracion/guardar";
 import {
   STAGES_MULTIORGANICO,
-  STRIP_LABELS,
-  dotClass,
   chipClass,
   stageLabel,
   computePotencialEstado,
@@ -19,7 +17,6 @@ import {
   computeMantenimientoEstado,
   computeMuestrasEstado,
   stagesForTipo,
-  stripStagesForTipo,
   ME_CAMPO_KEYS,
   METODOS_CERT_AUX,
   CERTIFICADO_CIERRE_KEYS,
@@ -50,6 +47,10 @@ import CultivosPanel from "./cultivos-panel";
 import { estadoEtapaCultivos, type Cultivo } from "@/lib/procuracion/cultivos-calculos";
 import QuirofanoPanel from "./quirofano-panel";
 import ChatDonante from "./chat-donante";
+import MarcaEtapaControl from "./marca-etapa-control";
+import FranjaEtapas from "./franja-etapas";
+import { estadoConMarca, type MarcaEtapa } from "@/lib/procuracion/marca-etapa";
+import { cargarMarcas } from "@/lib/procuracion/marca-etapa-datos";
 import { estadoEtapaJudicial, estadoEtapaQuirofano, type HorarioQuirofano } from "@/lib/procuracion/quirofano-calculos";
 import type { DocumentacionFotoRow } from "@/lib/procuracion/documentacion-fotos";
 import NuevoDonante from "./nuevo-donante";
@@ -74,6 +75,10 @@ export default function Home() {
   const [donante, setDonante] = useState<Donante | null>(null);
   const [familiar, setFamiliar] = useState<Familiar | null>(null);
   const [etapas, setEtapas] = useState<Record<string, EstadoEtapa>>({});
+  // Marca manual por etapa (prevalece sobre el cálculo). disponible=false
+  // si la base todavía no tiene las columnas: la pantalla sigue igual.
+  const [marcas, setMarcas] = useState<Record<string, MarcaEtapa>>({});
+  const [marcasDisponibles, setMarcasDisponibles] = useState(false);
   const [judicialAplica, setJudicialAplica] = useState(false);
   const [meCampos, setMeCampos] = useState<MeCampos>(EMPTY_ME_CAMPOS);
   const [certAuxCampos, setCertAuxCampos] = useState<CertAuxCampos>(EMPTY_CERT_AUX_CAMPOS);
@@ -117,6 +122,11 @@ export default function Home() {
     if (!selectedId) return;
     setLoadingDetail(true);
     setOpenStage(null);
+    setMarcas({});
+    cargarMarcas(supabase, selectedId).then((r) => {
+      setMarcas(r.marcas);
+      setMarcasDisponibles(r.disponible);
+    });
     setStageData({});
     // Se olvida cualquier generación previa de PDFs de Muestras al entrar
     // a este caso, para que el efecto de más abajo regenere siempre con
@@ -350,7 +360,13 @@ export default function Home() {
     setDescargaError(null);
   }
 
+  // Estado visible: el calculado, salvo que haya marca manual.
   function getEtapaEstado(key: string): EstadoEtapa | undefined {
+    const m = marcas[key];
+    return m ? estadoConMarca(estadoCalculado(key), m.marca).estado : estadoCalculado(key);
+  }
+
+  function estadoCalculado(key: string): EstadoEtapa | undefined {
     if (key === "potencial" && donante) return computePotencialEstado(donante);
     if (key === "me") return computeMeEstado(meCampos);
     if (key === "certificacion") return computeCertAuxEstado(certAuxCampos);
@@ -521,14 +537,8 @@ export default function Home() {
                 permitido fuera de las etapas. */}
             <ChatDonante key={donante.id} donanteId={donante.id} />
 
-            <div className="status-strip">
-              {stripStagesForTipo(donante.tipo_procuracion).map((k) => (
-                <div className="status-cell" key={k}>
-                  <div className={`status-dot ${dotClass(getEtapaEstado(k))}`}></div>
-                  <div className="lbl">{STRIP_LABELS[k]}</div>
-                </div>
-              ))}
-            </div>
+            {/* Franja de luces (una línea); tocar una abre esa etapa. */}
+            <FranjaEtapas etapas={visibleStages} estadoDe={getEtapaEstado} onIr={irAEtapa} />
 
             <div className="section-label" style={{ marginTop: 18 }}>
               Línea de tiempo del caso
@@ -554,6 +564,24 @@ export default function Home() {
 
                     {open && (
                       <div className="stage-panel">
+                        {donante && (
+                          <MarcaEtapaControl
+                            donanteId={donante.id}
+                            etapaKey={s.key}
+                            etiqueta={s.label}
+                            calculado={estadoCalculado(s.key)}
+                            marca={marcas[s.key]}
+                            disponible={marcasDisponibles}
+                            onChange={(m) =>
+                              setMarcas((prev) => {
+                                const sig = { ...prev };
+                                if (m) sig[s.key] = m;
+                                else delete sig[s.key];
+                                return sig;
+                              })
+                            }
+                          />
+                        )}
                         {s.key === "potencial" && donante && (
                           <PotencialPanel
                             donante={donante}

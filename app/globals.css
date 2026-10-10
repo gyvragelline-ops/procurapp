@@ -113,41 +113,53 @@ button {
 
 /* ---------- status strip (signature element) ---------- */
 .status-strip {
+  /* UNA sola línea, siempre: si no entran, las luces se achican (sin
+     salto de línea ni scroll). */
   display: flex;
-  flex-wrap: wrap; /* en celulares angostos pasa a 2 filas en vez de cortar las últimas etapas */
-  gap: 0;
+  flex-wrap: nowrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 6px;
   border-radius: 12px;
-  overflow: hidden;
   border: 1px solid var(--border-soft);
-}
-.status-cell {
-  flex: 1 1 52px;
-  min-width: 0;
-  padding: 9px 4px 8px;
-  text-align: center;
-  /* bordes derecho e inferior; el margen negativo esconde los del borde
-     exterior (la barra los recorta), también al pasar a 2 filas */
-  border-right: 1px solid var(--border-soft);
-  border-bottom: 1px solid var(--border-soft);
-  margin-right: -1px;
-  margin-bottom: -1px;
   background: var(--bg-elev);
-  position: relative;
+  overflow: hidden;
 }
-.status-dot {
-  width: 8px;
-  height: 8px;
+.status-luz {
+  flex: 0 1 24px;
+  min-width: 0;
+  max-width: 24px;
+  aspect-ratio: 1;
   border-radius: 50%;
-  margin: 0 auto 5px;
-}
-.status-cell .lbl {
-  overflow-wrap: break-word; /* corta entre palabras ("CERT." / "NEURO"), no en el medio */
-  font-size: 8.5px;
-  color: var(--text-faint);
-  letter-spacing: 0.3px;
-  text-transform: uppercase;
+  border: none;
+  padding: 0;
   font-family: var(--font-mono);
-  line-height: 1.2;
+  font-size: clamp(8px, 2.6vw, 11px);
+  font-weight: 700;
+  line-height: 1;
+  color: #0b0f14;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: none;
+}
+.status-luz.dot-green,
+.status-luz.dot-amber,
+.status-luz.dot-red {
+  box-shadow: none;
+}
+.status-luz.dot-gray {
+  color: var(--text-faint);
+}
+/* la primera etapa no completa */
+.status-luz-anillo {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.status-strip .status-luz-anillo {
+  margin-inline: 3px;
 }
 .dot-green {
   background: var(--green);
