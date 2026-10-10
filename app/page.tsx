@@ -48,7 +48,7 @@ import DocumentacionFotosPanel from "./documentacion-fotos-panel";
 import MedidasPanel from "./medidas-panel";
 import MantenimientoPanel from "./mantenimiento-panel";
 import CultivosPanel from "./cultivos-panel";
-import { estadoEtapaCultivos, textoPositivos, type Cultivo } from "@/lib/procuracion/cultivos-calculos";
+import { estadoEtapaCultivos, type Cultivo } from "@/lib/procuracion/cultivos-calculos";
 import NuevoDonante from "./nuevo-donante";
 
 const EMPTY_ME_CAMPOS: MeCampos = Object.fromEntries(ME_CAMPO_KEYS.map((k) => [k, null]));
@@ -347,7 +347,7 @@ export default function Home() {
     if (key === "medidas") return computeMedidasEstado(medidasCompleto);
     if (key === "mantenimiento") return computeMantenimientoEstado(mantenimientoCompleto);
     if (key === "muestras") return computeMuestrasEstado(muestras);
-    if (key === "cultivos") return estadoEtapaCultivos(cultivos).estado;
+    if (key === "cultivos") return estadoEtapaCultivos(cultivos);
     return etapas[key];
   }
 
@@ -536,14 +536,7 @@ export default function Home() {
                       onClick={() => handleOpenStage(s.key)}
                     >
                       <div className="stage-num">{num}</div>
-                      <div className="stage-name">
-                        {s.label}
-                        {s.key === "cultivos" && textoPositivos(estadoEtapaCultivos(cultivos).positivos) && (
-                          <span className="tiny" style={{ color: "var(--red)", marginLeft: 6 }}>
-                            ✕ {textoPositivos(estadoEtapaCultivos(cultivos).positivos)}
-                          </span>
-                        )}
-                      </div>
+                      <div className="stage-name">{s.label}</div>
                       <span className={`chip ${chipClass(st)}`}>{stageLabel(st)}</span>
                     </div>
 

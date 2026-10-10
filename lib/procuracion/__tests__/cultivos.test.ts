@@ -5,7 +5,6 @@ import {
   estadoEtapaCultivos,
   etiquetaCultivo,
   lineasCultivosMedico,
-  textoPositivos,
   validarAlta,
   validarResultado,
   type Cultivo,
@@ -80,15 +79,14 @@ test("sobre el mismo registro: solo columnas de resultado (nunca tipo ni toma); 
 });
 
 // ---------------------------------------------------------------- etapa
-test("etapa: gris sin cultivos, ámbar con alguno pendiente, verde si todos tienen resultado; positivos aparte", () => {
-  assert.deepEqual(estadoEtapaCultivos([]), { estado: "gray", positivos: 0 });
-  assert.deepEqual(estadoEtapaCultivos([cult("a"), cult("b", { estado: "negativo" })]), { estado: "amber", positivos: 0 });
-  assert.deepEqual(estadoEtapaCultivos([cult("a", { estado: "positivo" }), cult("b", { estado: "negativo" })]), { estado: "green", positivos: 1 });
+test("etapa: solo avance (gris sin cultivos, ámbar con pendientes, verde si todos tienen resultado); un positivo no se marca afuera", () => {
+  assert.equal(estadoEtapaCultivos([]), "gray");
+  assert.equal(estadoEtapaCultivos([cult("a"), cult("b", { estado: "negativo" })]), "amber");
+  // con un positivo, la etapa queda verde como cualquier otra completa: sin color ni texto de alerta
+  assert.equal(estadoEtapaCultivos([cult("a", { estado: "positivo", germen: "S. aureus", resultado_en: iso(9) }), cult("b", { estado: "negativo" })]), "green");
+  assert.equal(estadoEtapaCultivos([cult("a", { estado: "positivo", germen: "S. aureus", resultado_en: iso(9) })]), "green");
   // anulados no cuentan
-  assert.deepEqual(estadoEtapaCultivos([cult("a", { anulado: true })]), { estado: "gray", positivos: 0 });
-  assert.equal(textoPositivos(0), null);
-  assert.equal(textoPositivos(1), "1 positivo");
-  assert.equal(textoPositivos(2), "2 positivos");
+  assert.equal(estadoEtapaCultivos([cult("a", { anulado: true })]), "gray");
 });
 
 // ---------------------------------------------------------------- vista del médico

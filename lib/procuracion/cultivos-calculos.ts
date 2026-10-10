@@ -104,20 +104,16 @@ export function validarResultado(
 }
 
 // ---------------------------------------------------------------------
-// Etapa: gris sin cultivos, ámbar con alguno pendiente, verde si todos
-// tienen resultado. Los positivos se cuentan aparte ("N positivo(s)").
-// Lo anulado no cuenta.
+// Etapa (lista y barra de etapas): SOLO avance, como las demás. Gris sin
+// cultivos, ámbar con alguno pendiente, verde si todos tienen resultado.
+// Un positivo NO se marca afuera: se ve dentro de la etapa Cultivos y en
+// la tarjeta de Alertas de la vista del médico. Lo anulado no cuenta.
 // ---------------------------------------------------------------------
-export function estadoEtapaCultivos(cultivos: Pick<Cultivo, "estado" | "anulado">[]): { estado: EstadoEtapa; positivos: number } {
+export function estadoEtapaCultivos(cultivos: Pick<Cultivo, "estado" | "anulado">[]): EstadoEtapa {
   const vigentes = cultivos.filter((c) => !c.anulado);
-  const positivos = vigentes.filter((c) => c.estado === "positivo").length;
-  if (vigentes.length === 0) return { estado: "gray", positivos };
-  if (vigentes.some((c) => c.estado === "pendiente")) return { estado: "amber", positivos };
-  return { estado: "green", positivos };
-}
-
-export function textoPositivos(n: number): string | null {
-  return n <= 0 ? null : `${n} ${n === 1 ? "positivo" : "positivos"}`;
+  if (vigentes.length === 0) return "gray";
+  if (vigentes.some((c) => c.estado === "pendiente")) return "amber";
+  return "green";
 }
 
 // ---------------------------------------------------------------------
