@@ -138,9 +138,10 @@ export function medidas(campos: Campos, talla: number | null, peso: number | nul
   ];
 }
 
-// ---------------------------------------------------------- 10 fotos
+// ------------------------------------- 01 fotos de DNI y de grupo y factor
+// (se cargan en 01 Potencial donante; antes estaban en 10 Documentación)
 export const FOTOS_DOCUMENTACION = [
-  { tipo: "dni", etiqueta: "Foto de DNI del potencial donante", soloBase: true },
+  { tipo: "dni", etiqueta: "Foto del DNI", soloBase: true },
   { tipo: "grupo_factor", etiqueta: "Foto de grupo y factor", soloBase: false },
 ] as const;
 

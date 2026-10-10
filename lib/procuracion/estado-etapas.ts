@@ -39,6 +39,10 @@ export type DatosEtapas = {
   cultivos: Pick<Cultivo, "estado" | "anulado">[];
   horariosQx: HorarioQuirofano[];
   fotosJudiciales: { tipo: string }[];
+  // Fotos de DNI y de grupo y factor (etapa 01). Solo para listar lo que
+  // falta: NO cambian el estado de ninguna etapa. undefined = no se cargaron
+  // (pantalla del procurador) y no se listan.
+  fotosDocumentacion?: { tipo: string }[];
   etapasGuardadas: Record<string, EstadoEtapa>; // etapas_estado.estado (las que no se calculan)
   marcas: Record<string, MarcaEtapa>;
 };

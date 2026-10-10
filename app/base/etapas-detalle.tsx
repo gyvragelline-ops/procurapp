@@ -55,7 +55,7 @@ function Par({ etiqueta, valor, extra }: { etiqueta: ReactNode; valor: ReactNode
 }
 
 // ------------------------------------------------- 01 potencial donante
-export function TarjetaPotencial({ numero, datos }: { numero: string; datos: ExpedienteDatos }) {
+export function TarjetaPotencial({ numero, datos, ahora }: { numero: string; datos: ExpedienteDatos; ahora: number }) {
   const t = textoAntecedentes(datos.donante.antecedentes);
   return (
     <Tarjeta id="sec-potencial" titulo={`${numero} · Potencial donante`}>
@@ -63,6 +63,31 @@ export function TarjetaPotencial({ numero, datos }: { numero: string; datos: Exp
         <span>Antecedentes</span>
         <span style={{ whiteSpace: "pre-wrap", textAlign: "left", maxWidth: "75%", fontWeight: t === "Sin cargar" ? 400 : 600, color: t === "Sin cargar" ? COLOR.mu : undefined }}>{t}</span>
       </div>
+      {/* Fotos de DNI y de grupo y factor (antes en 10 Documentación) */}
+      {fotosDocumentacion(datos.fotosDocumentacion).map((f) => (
+        <Par
+          key={f.tipo}
+          etiqueta={
+            <>
+              {f.etiqueta} {f.soloBase && <SoloBase />}
+            </>
+          }
+          valor={
+            <span style={{ color: f.ultima ? COLOR.g : COLOR.mu }}>
+              {f.ultima ? `Cargada ${diaYHora(f.ultima.created_at, ahora)}${f.cantidad > 1 ? ` (${f.cantidad})` : ""}` : "Sin cargar"}
+              {f.ultima?.archivo_url && (
+                <>
+                  {" · "}
+                  <a href={f.ultima.archivo_url} target="_blank" rel="noreferrer" className={styles.enlace}>
+                    ver
+                  </a>
+                </>
+              )}
+            </span>
+          }
+          extra={f.ultima?.cargado_por_rol ? `cargada por: ${f.ultima.cargado_por_rol}` : null}
+        />
+      ))}
     </Tarjeta>
   );
 }
@@ -191,38 +216,6 @@ export function TarjetaMedidas({ numero, datos }: { numero: string; datos: Exped
     <Tarjeta id="sec-medidas" titulo={`${numero} · Medidas antropométricas`}>
       {medidas(datos.planillas.medidas, datos.donante.talla, datos.donante.peso).map((x) => (
         <Par key={x.etiqueta} etiqueta={x.etiqueta} valor={<span className={styles.num}>{vacio(x.valor)}</span>} />
-      ))}
-    </Tarjeta>
-  );
-}
-
-// ------------------------------------------------- 10 documentación
-export function TarjetaDocumentacion({ numero, datos, ahora }: { numero: string; datos: ExpedienteDatos; ahora: number }) {
-  return (
-    <Tarjeta id="sec-doc" titulo={`${numero} · Documentación (fotos)`}>
-      {fotosDocumentacion(datos.fotosDocumentacion).map((f) => (
-        <Par
-          key={f.tipo}
-          etiqueta={
-            <>
-              {f.etiqueta} {f.soloBase && <SoloBase />}
-            </>
-          }
-          valor={
-            <span style={{ color: f.ultima ? COLOR.g : COLOR.mu }}>
-              {f.ultima ? `Cargada ${diaYHora(f.ultima.created_at, ahora)}${f.cantidad > 1 ? ` (${f.cantidad})` : ""}` : "Sin cargar"}
-              {f.ultima?.archivo_url && (
-                <>
-                  {" · "}
-                  <a href={f.ultima.archivo_url} target="_blank" rel="noreferrer" className={styles.enlace}>
-                    ver
-                  </a>
-                </>
-              )}
-            </span>
-          }
-          extra={f.ultima?.cargado_por_rol ? `cargada por: ${f.ultima.cargado_por_rol}` : null}
-        />
       ))}
     </Tarjeta>
   );

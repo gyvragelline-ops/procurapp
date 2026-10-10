@@ -1,9 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { guardarConReintento } from "@/lib/procuracion/guardar";
 import type { Donante } from "@/lib/procuracion/types";
+import DocumentacionFotosPanel from "./documentacion-fotos-panel";
+import type { TipoFotoDoc } from "@/lib/procuracion/documentacion-fotos";
+
+// Antes estaban en la etapa 10 (Documentación). Misma tabla y mismo tipo:
+// las fotos ya cargadas se siguen viendo.
+const FOTOS_POTENCIAL: { valor: TipoFotoDoc; etiqueta: string }[] = [
+  { valor: "dni", etiqueta: "Foto del DNI" },
+  { valor: "grupo_factor", etiqueta: "Foto de grupo y factor" },
+];
 
 const supabase = createClient();
 
@@ -126,8 +135,9 @@ export default function PotencialPanel({
           {errorGuardado}
         </div>
       )}
-      {rows.map((r) =>
-        r.key === "antecedentes" ? (
+      {rows.map((r) => (
+        <Fragment key={r.key}>
+        {r.key === "antecedentes" ? (
           <div className="field-row" key={r.key} style={{ alignItems: "flex-start" }}>
             <span className="field-label" style={{ paddingTop: editingField === r.key ? 4 : 0 }}>
               {r.label}
@@ -186,8 +196,11 @@ export default function PotencialPanel({
             </span>
           )}
         </div>
-        )
-      )}
+        )}
+        {/* Fotos de DNI y de grupo y factor: van en la etapa 01, debajo de Cama. */}
+        {r.key === "cama" && <DocumentacionFotosPanel donanteId={donante.id} categorias={FOTOS_POTENCIAL} />}
+        </Fragment>
+      ))}
       <div className="field-row">
         <span className="field-label">Intervención judicial</span>
         <div style={{ display: "flex", gap: 6 }}>

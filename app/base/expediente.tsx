@@ -16,6 +16,7 @@ import {
 import { mantenimientoPorSistema, textoCambio, textoValor, ETIQUETA_ORIGEN } from "@/lib/procuracion/base-expediente";
 import { EQUIPOS_EXPORTACION, exportarCsv, type DatosExportacion, type EquipoExportacion, type OpcionesExportacion } from "@/lib/procuracion/base-exportar";
 import { TIPOS_CULTIVO } from "@/lib/procuracion/cultivos-calculos";
+import { antibioticosVigentes } from "@/lib/procuracion/antibioticos-calculos";
 import { ANESTESISTA, ORGANOS_EQUIPO, horaVigente } from "@/lib/procuracion/quirofano-calculos";
 import { TIPOS_ESTUDIO_INFO } from "@/lib/procuracion/estudios-imagenes-tipos";
 import { pendientesEtapa } from "@/lib/procuracion/base-tablero";
@@ -23,7 +24,7 @@ import type { ExpedienteDatos, FuenteBase } from "@/lib/procuracion/base-armado"
 import SolicitudesPanel from "./solicitudes-panel";
 import ChatBase from "./chat-base";
 import Impresion from "./impresion";
-import { TarjetaPotencial, TarjetaComunicacion, TarjetaDocumentacion, TarjetaMedidas, TarjetaMetodosAuxiliares, TarjetaMuestras, TarjetaNeurologico } from "./etapas-detalle";
+import { TarjetaPotencial, TarjetaComunicacion, TarjetaMedidas, TarjetaMetodosAuxiliares, TarjetaMuestras, TarjetaNeurologico } from "./etapas-detalle";
 import { metaDonante } from "./tablero";
 import { COLOR, colorEtapa, descargar, diaYHora, dosCifras, horaCorta, hhmm, textoActualizado, textoEstadoEtapa, useConsultaPeriodica } from "./ui";
 import styles from "./base.module.css";
@@ -41,7 +42,6 @@ const ANCLA: Record<string, string> = {
   medidas: "sec-medidas",
   labImagenes: "sec-estudios",
   cultivos: "sec-cultivos",
-  documentacion: "sec-doc",
   mantenimiento: "sec-mantenimiento",
   judicial: "sec-quirofano",
   quirofano: "sec-quirofano",
@@ -221,7 +221,7 @@ export default function Expediente({
   const bloqueCultivos = (
             <div id="sec-cultivos" className={`${styles.card} ${styles.ancla}`}>
               <div className={styles.cardCab}>
-                <span>{barraCult ? `${dosCifras(barraCult.numero)} · ` : ""}Cultivos</span>
+                <span>{barraCult ? `${dosCifras(barraCult.numero)} · ` : ""}Cultivos y antibióticos</span>
                 <span style={{ color: pendientesCult ? COLOR.a : COLOR.mu }}>{pendientesCult === 1 ? "1 pendiente" : `${pendientesCult} pendientes`}</span>
               </div>
               {cultivosVig.length === 0 && <div className={`${styles.cardFila} ${styles.mu}`}>Sin cultivos cargados.</div>}
@@ -241,6 +241,22 @@ export default function Expediente({
                     </span>
                   </div>
                 ))}
+              <div className={styles.cardFila} style={{ fontWeight: 600 }}>
+                Antibióticos
+              </div>
+              {datos.antibioticos === null && <div className={`${styles.cardFila} ${styles.mu}`}>Sin datos: falta aplicar el SQL de antibióticos.</div>}
+              {datos.antibioticos !== null && antibioticosVigentes(datos.antibioticos).length === 0 && <div className={`${styles.cardFila} ${styles.mu}`}>Sin antibióticos cargados.</div>}
+              {antibioticosVigentes(datos.antibioticos ?? []).map((a) => (
+                <div key={a.id} className={styles.par}>
+                  <span style={{ fontWeight: 600 }}>{a.antibiotico}</span>
+                  <span>
+                    desde <span className={styles.num}>{diaYHora(a.desde, ahora)}</span>
+                    <span className={`${styles.chico} ${styles.mu}`} style={{ display: "block" }}>
+                      foco: {a.foco ?? "—"}
+                    </span>
+                  </span>
+                </div>
+              ))}
             </div>
 
   );
@@ -452,7 +468,7 @@ export default function Expediente({
               const num = dosCifras(e.numero);
               switch (e.key) {
                 case "potencial":
-                  return <TarjetaPotencial key={e.key} numero={num} datos={datos} />;
+                  return <TarjetaPotencial key={e.key} numero={num} datos={datos} ahora={ahora} />;
                 case "me":
                   return <TarjetaNeurologico key={e.key} numero={num} datos={datos} />;
                 case "certificacion":
@@ -467,8 +483,6 @@ export default function Expediente({
                   return <Fragment key={e.key}>{bloqueEstudios}</Fragment>;
                 case "cultivos":
                   return <Fragment key={e.key}>{bloqueCultivos}</Fragment>;
-                case "documentacion":
-                  return <TarjetaDocumentacion key={e.key} numero={num} datos={datos} ahora={ahora} />;
                 case "mantenimiento":
                   return <Fragment key={e.key}>{bloqueMantenimiento}</Fragment>;
                 case "judicial":
@@ -499,7 +513,8 @@ export default function Expediente({
                     <span>
                       <span style={{ fontWeight: 600, color: e.estado === "gray" ? COLOR.mu : colorEtapa(e.estado) }}>{textoEstadoEtapa(e.estado)}</span>
                       {marca && <span className={`${styles.chico} ${styles.mu}`}> · marcado manualmente{marca.en ? ` ${horaCorta(marca.en, ahora)}` : ""}</span>}
-                      {pend.length > 0 && e.estado !== "green" && (
+                      {/* lo que falta; en 01 también las fotos, que no bloquean la etapa */}
+                      {pend.length > 0 && (e.estado !== "green" || e.key === "potencial") && (
                         <span className={styles.chico} style={{ display: "block" }}>
                           {pend.join(" · ")}
                         </span>

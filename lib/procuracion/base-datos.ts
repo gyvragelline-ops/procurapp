@@ -90,7 +90,7 @@ async function cargarFilas(supabase: SupabaseClient, ids: string[]): Promise<{ f
     supabase.from("muestras").select("donante_id, obtenida").in("donante_id", ids),
     supabase.from("cultivos").select("donante_id, estado, anulado").in("donante_id", ids),
     supabase.from("quirofano_horarios").select("donante_id, id, hora, registrado_en, anulado").in("donante_id", ids),
-    supabase.from("documentacion_fotos").select("donante_id, tipo").in("donante_id", ids).in("tipo", ["precario", "autorizacion_juez"]),
+    supabase.from("documentacion_fotos").select("donante_id, tipo").in("donante_id", ids).in("tipo", ["precario", "autorizacion_juez", "dni", "grupo_factor"]),
     supabase.from("mantenimiento_registros").select("donante_id, registrado_en").in("donante_id", ids).eq("anulado", false),
     supabase.from("mantenimiento_medico").select("donante_id, registrado_en").in("donante_id", ids).eq("anulado", false),
     supabase.from("mantenimiento_respirador").select("donante_id, registrado_en").in("donante_id", ids).eq("anulado", false),
@@ -143,7 +143,7 @@ export function fuenteSupabase(supabase: SupabaseClient): FuenteBase {
       const { donantes } = await cargarDonantes(supabase, { id: donanteId });
       const donante = donantes[0];
       if (!donante) throw new Error("No se encontró el donante.");
-      const [{ filas }, mant, lab, cultivos, equipos, estudios, fotos, linea, mensajes, muestras, planillas, certAux, familiar, analisis, config] = await Promise.all([
+      const [{ filas }, mant, lab, cultivos, equipos, estudios, fotos, linea, mensajes, muestras, planillas, certAux, familiar, analisis, config, antibioticos] = await Promise.all([
         cargarFilas(supabase, [donanteId]),
         cargarMantenimiento(supabase, donanteId),
         cargarLaboratorioValores(supabase, donanteId),
@@ -159,6 +159,8 @@ export function fuenteSupabase(supabase: SupabaseClient): FuenteBase {
         supabase.from("familiares").select("nombre, dni, parentesco, direccion, telefono").eq("donante_id", donanteId).limit(1).maybeSingle(),
         supabase.from("comunicacion_donacion_analisis").select("id, texto, etapa_detectada, created_at").eq("donante_id", donanteId).order("created_at", { ascending: false }),
         supabase.from("mantenimiento_config").select("corazon_candidato, pulmon_candidato, monitoreo_avanzado_activo, updated_at").eq("donante_id", donanteId).maybeSingle(),
+        // tabla nueva: si el SQL no se aplicó, la Base sigue (sin antibióticos)
+        supabase.from("antibioticos").select("id, antibiotico, desde, foco, creado_en, anulado").eq("donante_id", donanteId).order("desde", { ascending: false }),
       ]);
       falla([fotos, linea, muestras, planillas, certAux, familiar, analisis, config], "el expediente");
       const porPlanilla = (k: string) =>
@@ -191,6 +193,7 @@ export function fuenteSupabase(supabase: SupabaseClient): FuenteBase {
         familiar: (familiar.data as ExpedienteDatos["familiar"]) ?? null,
         analisisComunicacion: (analisis.data as ExpedienteDatos["analisisComunicacion"]) ?? [],
         fotosDocumentacion: todasLasFotos.filter((f) => f.tipo === "dni" || f.tipo === "grupo_factor"),
+        antibioticos: antibioticos.error ? null : ((antibioticos.data as ExpedienteDatos["antibioticos"]) ?? []),
       };
       return datos;
     },

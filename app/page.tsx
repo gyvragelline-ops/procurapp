@@ -30,6 +30,7 @@ import DocumentacionFotosPanel from "./documentacion-fotos-panel";
 import MedidasPanel from "./medidas-panel";
 import MantenimientoPanel from "./mantenimiento-panel";
 import CultivosPanel from "./cultivos-panel";
+import AntibioticosPanel from "./antibioticos-panel";
 import type { Cultivo } from "@/lib/procuracion/cultivos-calculos";
 import QuirofanoPanel from "./quirofano-panel";
 import ChatDonante from "./chat-donante";
@@ -550,6 +551,12 @@ export default function Home() {
                       })
                     }
                   >
+                        {s.key === "documentacion" && (
+                          <div className="field-row" style={{ fontWeight: 600, color: "var(--text)", borderBottom: "1px solid var(--border-soft)", marginBottom: 6 }}>
+                            Imprimí y adjuntá a la historia clínica.
+                          </div>
+                        )}
+
                         {s.key === "potencial" && donante && (
                           <PotencialPanel
                             donante={donante}
@@ -629,12 +636,8 @@ export default function Home() {
                           </>
                         )}
 
-                        {s.key === "documentacion" && donante && (
-                          <>
-                            <DocumentacionFotosPanel donanteId={donante.id} />
-                            <DocumentosPanel donante={donante} familiar={familiar} />
-                          </>
-                        )}
+                        {/* Las fotos de DNI y de grupo y factor se cargan ahora en 01 Potencial donante. */}
+                        {s.key === "documentacion" && donante && <DocumentosPanel donante={donante} familiar={familiar} />}
 
                         {s.key === "muestras" && donante && (
                           <>
@@ -750,7 +753,12 @@ export default function Home() {
                           />
                         )}
 
-                        {s.key === "cultivos" && donante && <CultivosPanel donanteId={donante.id} cultivos={cultivos} onChange={setCultivos} />}
+                        {s.key === "cultivos" && donante && (
+                          <>
+                            <CultivosPanel donanteId={donante.id} cultivos={cultivos} onChange={setCultivos} />
+                            <AntibioticosPanel donanteId={donante.id} />
+                          </>
+                        )}
 
                         {s.key === "judicial" && donante && (
                           <DocumentacionFotosPanel

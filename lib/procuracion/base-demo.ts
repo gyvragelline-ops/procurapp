@@ -129,6 +129,7 @@ function armar(
     ...datosEtapasVacios(donante.tipo_procuracion ?? "multiorganico"),
     ...etapas,
     donante: { servicio: d.servicio, pd_numero: donante.pd_numero, fecha_ingreso: donante.fecha_ingreso, tipo_procuracion: donante.tipo_procuracion },
+    fotosDocumentacion: (extras.fotosDocumentacion ?? []).map((f) => ({ tipo: f.tipo })),
   };
   const momentosMantenimiento = [
     ...fuentes.registros.filter((r) => !r.anulado).map((r) => r.registrado_en),
@@ -154,6 +155,7 @@ function armar(
     familiar: extras.familiar ?? null,
     analisisComunicacion: extras.analisisComunicacion ?? [],
     fotosDocumentacion: extras.fotosDocumentacion ?? [],
+    antibioticos: extras.antibioticos ?? [],
   };
   return {
     ...insumos,
@@ -353,6 +355,10 @@ export function donantesSimulados(ahora: number): DonanteSimulado[] {
         { item_key: "doppler_transcraneano", estado: "completo", meta: {} },
         { item_key: "potenciales_evocados", estado: "no_corresponde", meta: {} },
         { item_key: "angiografia_cerebral", estado: "pendiente", meta: {} },
+      ],
+      antibioticos: [
+        { id: "a-ab1", antibiotico: "Piperacilina-tazobactam (simulado)", desde: iso(ahora, 20 * 60), foco: "Respiratorio", creado_en: iso(ahora, 20 * 60), anulado: false },
+        { id: "a-ab2", antibiotico: "Vancomicina (simulado)", desde: iso(ahora, 10 * 60), foco: null, creado_en: iso(ahora, 10 * 60), anulado: false },
       ],
       familiar: { nombre: "Familiar Simulado", dni: "DNI-FAM-0001", parentesco: "Hermana", direccion: "Calle Simulada 123", telefono: "000-000-0000" },
       analisisComunicacion: [{ id: "a-ca1", texto: "La familia pregunta si puede despedirse antes del quirófano (simulado).", etapa_detectada: 2, created_at: iso(ahora, 5 * 60) }],

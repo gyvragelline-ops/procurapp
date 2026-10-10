@@ -11,7 +11,7 @@ export const STAGES_MULTIORGANICO: { key: string; label: string }[] = [
   { key: "muestras", label: "Muestras" },
   { key: "medidas", label: "Medidas antropométricas" },
   { key: "labImagenes", label: "Laboratorio e imágenes" },
-  { key: "cultivos", label: "Cultivos" },
+  { key: "cultivos", label: "Cultivos y antibióticos" },
   { key: "documentacion", label: "Documentación" },
   { key: "mantenimiento", label: "Mantenimiento" },
   { key: "judicial", label: "Intervención judicial" },

@@ -14,6 +14,7 @@ import type { Cultivo } from "./cultivos-calculos.ts";
 import type { HorarioQuirofano, EquipoQuirofano } from "./quirofano-calculos.ts";
 import type { MensajeCaso, RolChat } from "./chat-calculos.ts";
 import type { AnalisisComunicacion, Familiar, FilaCertAux } from "./base-expediente-etapas.ts";
+import type { Antibiotico } from "./antibioticos-calculos.ts";
 
 export type FilasDonante = {
   etapas: { etapa_key: string; estado: EstadoEtapa; marcado_manual?: string | null; marcado_en?: string | null }[];
@@ -61,7 +62,9 @@ export function armarDatosEtapas(
     muestras: f.muestras,
     cultivos: f.cultivos,
     horariosQx: f.horariosQx,
-    fotosJudiciales: f.fotosJudiciales,
+    // f.fotosJudiciales trae los 4 tipos de documentacion_fotos.
+    fotosJudiciales: f.fotosJudiciales.filter((x) => x.tipo === "precario" || x.tipo === "autorizacion_juez"),
+    fotosDocumentacion: f.fotosJudiciales.filter((x) => x.tipo === "dni" || x.tipo === "grupo_factor"),
     etapasGuardadas,
     marcas,
   };
@@ -100,6 +103,7 @@ export type ExpedienteDatos = {
   familiar: Familiar | null;
   analisisComunicacion: AnalisisComunicacion[];
   fotosDocumentacion: { tipo: string; created_at: string; cargado_por_rol: string | null; archivo_url: string | null }[];
+  antibioticos: Antibiotico[] | null; // null: la tabla todavía no existe (SQL sin aplicar)
 };
 
 export type CambiosSolicitud = Partial<Pick<Solicitud, "estado" | "respuesta" | "respondida_por" | "respondida_en" | "completed_at" | "anulado">>;

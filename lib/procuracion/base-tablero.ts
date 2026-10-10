@@ -162,10 +162,18 @@ const plural = (n: number, uno: string, varios: string) => `${n} ${n === 1 ? uno
 
 // Lo que falta en una etapa, sacado de los datos reales. Vacío si está
 // completa (calculada verde).
+// Fotos de DNI y de grupo y factor (etapa 01): se listan si faltan, pero
+// no bloquean ni cambian el color de la etapa.
+export function fotosFaltantesPotencial(d: Pick<DatosEtapas, "fotosDocumentacion">): string[] {
+  if (!d.fotosDocumentacion) return [];
+  const hay = (t: string) => d.fotosDocumentacion!.some((f) => f.tipo === t);
+  return [...(hay("dni") ? [] : ["falta foto del DNI"]), ...(hay("grupo_factor") ? [] : ["falta foto de grupo y factor"])];
+}
+
 export function pendientesEtapa(key: string, d: DatosEtapas): string[] {
   const marca = d.marcas[key]?.marca;
   const calc = estadoCalculadoEtapa(key, d);
-  const extra = marca === "no_completo" ? ["marcada no completa manualmente"] : [];
+  const extra = [...(marca === "no_completo" ? ["marcada no completa manualmente"] : []), ...(key === "potencial" ? fotosFaltantesPotencial(d) : [])];
   if (calc === "green") return extra;
   const r: string[] = [];
   switch (key) {
@@ -225,7 +233,7 @@ export function pendientesEtapa(key: string, d: DatosEtapas): string[] {
       // se completan con la marca manual.
       if (marca !== "completo") r.push("sin marcar completa");
   }
-  if (marca === "completo") return [];
+  if (marca === "completo") return key === "potencial" ? fotosFaltantesPotencial(d) : [];
   return [...extra, ...r];
 }
 
