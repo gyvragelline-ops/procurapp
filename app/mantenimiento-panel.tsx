@@ -7,7 +7,6 @@ import {
   cargarMantenimiento,
   guardarConfig,
   guardarPesoDonante,
-  marcarMantenimientoCompleto,
   type ConfigMantenimiento,
   type RegistroMantenimiento,
 } from "@/lib/procuracion/mantenimiento";
@@ -34,15 +33,11 @@ const supabase = createClient();
 export default function MantenimientoPanel({
   donante,
   onDonanteChange,
-  completo,
-  onCompletoChange,
   cultivos = [],
   onIrACultivos,
 }: {
   donante: Donante;
   onDonanteChange: (d: Donante) => void;
-  completo: boolean;
-  onCompletoChange: (v: boolean) => void;
   cultivos?: Cultivo[]; // de la etapa Cultivos (los carga la ficha)
   onIrACultivos?: () => void;
 }) {
@@ -100,16 +95,6 @@ export default function MantenimientoPanel({
 
   async function guardarPeso(pesoKg: number) {
     onDonanteChange(await guardarPesoDonante(supabase, donante.id, pesoKg));
-  }
-
-  async function marcarCompleto(v: boolean) {
-    setError(null);
-    try {
-      await marcarMantenimientoCompleto(supabase, donante.id, v);
-      onCompletoChange(v);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "No se pudo marcar.");
-    }
   }
 
   if (errorCarga) return <ErrorVisible mensaje={errorCarga} />;
@@ -176,7 +161,6 @@ export default function MantenimientoPanel({
           config={config}
           estado={estado}
           ahora={ahora}
-          completo={completo}
           cultivos={cultivos}
           onIrACultivos={onIrACultivos}
           onInfusionesChange={setInfusiones}
@@ -184,7 +168,6 @@ export default function MantenimientoPanel({
           onRespiradorChange={setRespirador}
           onMedicionesChange={setMediciones}
           onCambiarConfig={cambiarConfig}
-          onMarcarCompleto={marcarCompleto}
           onGuardarPeso={guardarPeso}
         />
       )}

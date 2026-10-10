@@ -278,8 +278,9 @@ export function computeMedidasEstado(completo: boolean): EstadoEtapa {
   return completo ? "green" : "gray";
 }
 
-// Mantenimiento: verde con "Marcar como completo", gris si no (mismo
-// criterio que Medidas y Laboratorio e imágenes).
+// Mantenimiento, Medidas y Laboratorio e imágenes: verde solo si un caso
+// viejo quedó marcado con el botón anterior (documentacion_estado, solo
+// lectura); hoy se completan con la marca manual al pie de la etapa.
 export function computeMantenimientoEstado(completo: boolean): EstadoEtapa {
   return completo ? "green" : "gray";
 }

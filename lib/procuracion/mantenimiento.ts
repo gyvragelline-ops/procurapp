@@ -360,32 +360,3 @@ export async function guardarPesoDonante(supabase: SupabaseClient, donanteId: st
   if (!r.ok) throw new Error(r.mensaje);
   return r.resultado.data as Donante;
 }
-
-// "Marcar como completo": mismo criterio que Medidas y Laboratorio.
-export async function marcarMantenimientoCompleto(supabase: SupabaseClient, donanteId: string, completo: boolean): Promise<void> {
-  const r = await guardarConReintento(() =>
-    supabase
-      .from("documentacion_estado")
-      .upsert(
-        {
-          donante_id: donanteId,
-          categoria: "mantenimiento",
-          item_key: "completo",
-          estado: completo ? "si" : "no",
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: "donante_id,categoria,item_key" }
-      )
-  );
-  if (!r.ok) {
-    // La categoría "mantenimiento" tiene que estar habilitada en
-    // documentacion_estado_categoria_check; si no, el error no es de
-    // conexión: se dice qué pasa en lugar del texto técnico.
-    if (r.mensaje.includes("documentacion_estado_categoria_check")) {
-      throw new Error(
-        `No se pudo marcar Mantenimiento como ${completo ? "completo" : "pendiente"}: falta habilitar la categoría "mantenimiento" en la base. Avisá al administrador.`
-      );
-    }
-    throw new Error(r.mensaje);
-  }
-}

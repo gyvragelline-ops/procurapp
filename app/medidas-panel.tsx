@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { guardarConReintento } from "@/lib/procuracion/guardar";
 import type { Donante } from "@/lib/procuracion/types";
-import MedidasCompleto from "./medidas-completo";
 
 const supabase = createClient();
 
@@ -35,13 +34,9 @@ const CAMPOS_PLANILLA: { key: string; label: string; ayuda: string }[] = [
 export default function MedidasPanel({
   donante,
   onDonanteChange,
-  completo,
-  onCompletoChange,
 }: {
   donante: Donante;
   onDonanteChange: (d: Donante) => void;
-  completo: boolean;
-  onCompletoChange: (v: boolean) => void;
 }) {
   const [campos, setCampos] = useState<Record<string, string | null>>({});
   const [cargado, setCargado] = useState(false);
@@ -191,7 +186,6 @@ export default function MedidasPanel({
         </div>
       ))}
 
-      <MedidasCompleto donanteId={donante.id} completo={completo} onChange={onCompletoChange} />
     </div>
   );
 }

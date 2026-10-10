@@ -36,7 +36,6 @@ import ComDonacionPanel from "./com-donacion-panel";
 import ComDonacionRealizada from "./com-donacion-realizada";
 import FamiliarContactoPanel from "./familiar-contacto-panel";
 import ImagenesVideosPanel from "./imagenes-videos-panel";
-import LabImagenesCompleto from "./lab-imagenes-completo";
 import DocumentosPanel from "./documentos-panel";
 import DocumentacionFotosPanel from "./documentacion-fotos-panel";
 import MedidasPanel from "./medidas-panel";
@@ -753,8 +752,6 @@ export default function Home() {
                           <MedidasPanel
                             donante={donante}
                             onDonanteChange={setDonante}
-                            completo={medidasCompleto}
-                            onCompletoChange={setMedidasCompleto}
                           />
                         )}
 
@@ -762,8 +759,6 @@ export default function Home() {
                           <MantenimientoPanel
                             donante={donante}
                             onDonanteChange={setDonante}
-                            completo={mantenimientoCompleto}
-                            onCompletoChange={setMantenimientoCompleto}
                             cultivos={cultivos}
                             onIrACultivos={() => irAEtapa("cultivos")}
                           />
@@ -785,14 +780,7 @@ export default function Home() {
                         )}
 
                         {s.key === "labImagenes" && donante && (
-                          <>
-                            <LabImagenesCompleto
-                              donanteId={donante.id}
-                              completo={labImagenesCompleto}
-                              onChange={setLabImagenesCompleto}
-                            />
-                            <ImagenesVideosPanel donanteId={donante.id} />
-                          </>
+                          <ImagenesVideosPanel donanteId={donante.id} />
                         )}
                   </EtapaFila>
                 );

@@ -88,7 +88,6 @@ export default function MantenimientoMedico({
   config,
   estado,
   ahora,
-  completo,
   cultivos = [],
   onIrACultivos,
   onInfusionesChange,
@@ -96,7 +95,6 @@ export default function MantenimientoMedico({
   onRespiradorChange,
   onMedicionesChange,
   onCambiarConfig,
-  onMarcarCompleto,
   onGuardarPeso,
 }: {
   donante: Donante;
@@ -109,7 +107,6 @@ export default function MantenimientoMedico({
   config: ConfigMantenimiento | null;
   estado: EstadoBombas;
   ahora: number;
-  completo: boolean;
   cultivos?: Cultivo[];
   onIrACultivos?: () => void;
   onInfusionesChange: (f: InfusionFila[]) => void;
@@ -117,7 +114,6 @@ export default function MantenimientoMedico({
   onRespiradorChange: (e: EventoRespirador[]) => void;
   onMedicionesChange: (m: MedicionMedico[]) => void;
   onCambiarConfig: (c: Partial<Omit<ConfigMantenimiento, "donante_id">>) => void;
-  onMarcarCompleto: (v: boolean) => void;
   onGuardarPeso: (pesoKg: number) => Promise<void>;
 }) {
   const [ventana, setVentana] = useState<number>(VENTANA_TENDENCIA_INICIAL_H);
@@ -501,18 +497,6 @@ export default function MantenimientoMedico({
         <summary className={styles.etiqueta}>Bombas y bolos (solo lectura)</summary>
         <MantenimientoInfusiones pesoKg={peso} donanteId={donante.id} infusiones={infusiones} estado={estado} onInfusionesChange={onInfusionesChange} />
       </details>
-
-      <div className="field-row" style={{ marginTop: 10 }}>
-        <span className="field-label">Mantenimiento</span>
-        <div style={{ display: "flex", gap: 6 }}>
-          <button className={`btn btn-sm ${completo ? "btn-accent" : ""}`} onClick={() => onMarcarCompleto(true)}>
-            {completo ? "✓ " : ""}Completo
-          </button>
-          <button className={`btn btn-sm ${!completo ? "btn-accent" : ""}`} onClick={() => onMarcarCompleto(false)}>
-            Pendiente
-          </button>
-        </div>
-      </div>
 
       {/* ------------------------------------------------ 9. pie */}
       <div className={`${styles.chico} ${styles.apagado}`} style={{ textAlign: "center", marginTop: 14 }}>
