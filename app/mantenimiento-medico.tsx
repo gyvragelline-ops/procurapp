@@ -59,8 +59,11 @@ import MantenimientoInfusiones from "./mantenimiento-infusiones";
 import { PedirPeso, hora, num } from "./mantenimiento-ui";
 import styles from "./mantenimiento-medico.module.css";
 
-// IBM Plex Sans guardada en el repositorio (sin descarga en el build).
-const plexSans = localFont({ src: "./fonts/ibm-plex-sans-latin-var.woff2", weight: "400 600", variable: "--font-plex-sans", display: "swap" });
+// IBM Plex Sans guardada en el repositorio (sin descarga en el build):
+// latino + griego (γ, Δ) como dos familias seguidas en la pila; sin
+// fallback ajustado para que las letras griegas salgan de Plex y no de Arial.
+const plexSans = localFont({ src: "./fonts/ibm-plex-sans-latin-var.woff2", weight: "400 600", variable: "--font-plex-sans", display: "swap", adjustFontFallback: false });
+const plexSansGriego = localFont({ src: "./fonts/ibm-plex-sans-greek-var.woff2", weight: "400 600", variable: "--font-plex-sans-griego", display: "swap", adjustFontFallback: false });
 
 const CLASE_COLOR = { verde: styles.ok, amarillo: styles.fuera, rojo: styles.critico, sin_dato: styles.sinDato } as const;
 
@@ -254,7 +257,7 @@ export default function MantenimientoMedico({
     s.datoDe === "sodio" ? (na?.medido_en ?? null) : s.datoDe === "evaluacion" ? (disfuncion.estado !== "sin_evaluar" ? disfuncion.registrado_en : null) : (ultimo?.registrado_en ?? null);
 
   return (
-    <div className={`${styles.medico} ${plexSans.variable}`}>
+    <div className={`${styles.medico} ${plexSans.variable} ${plexSansGriego.variable}`}>
       {/* ------------------------------------------------ 2. alertas */}
       <section className={styles.tarjeta} aria-label="Alertas">
         <div className={styles.etiqueta}>Alertas</div>

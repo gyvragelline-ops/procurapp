@@ -30,7 +30,7 @@
 
   background: var(--m-fondo);
   color: var(--m-texto);
-  font-family: var(--font-plex-sans), system-ui, sans-serif;
+  font-family: var(--font-plex-sans), var(--font-plex-sans-griego), system-ui, sans-serif;
   padding: 12px;
   border-radius: 14px;
 }
