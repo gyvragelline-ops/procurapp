@@ -5,8 +5,11 @@
 // puede incluirlos solo con la opción explícita.
 
 import { ETIQUETA_ORIGEN, SISTEMAS, serie, type FuentesExpediente, type Parametro } from "./base-expediente.ts";
-import { identificador, type DonanteTablero, type EquipoTablero } from "./base-tablero.ts";
+import { identificador, type DonanteTablero, type EquipoTablero, type FilaTablero } from "./base-tablero.ts";
 import { ORGANOS_EQUIPO, horaVigente, type HorarioQuirofano } from "./quirofano-calculos.ts";
+import { TIPOS_ESTUDIO_INFO } from "./estudios-imagenes-tipos.ts";
+
+const etiquetaEstudio = (t: string) => TIPOS_ESTUDIO_INFO.find((x) => x.valor === t)?.etiqueta ?? t;
 
 export const EQUIPOS_EXPORTACION = [
   { valor: "todo", etiqueta: "Todo" },
@@ -21,7 +24,7 @@ export type EquipoExportacion = (typeof EQUIPOS_EXPORTACION)[number]["valor"];
 // ---------------------------------------------------------------- secciones
 type Seccion =
   | { key: string; titulo: string; tipo: "parametros"; claves: string[] }
-  | { key: string; titulo: string; tipo: "identificacion" | "serologias" | "cultivos" | "quirofano" | "ecg" | "candidato_corazon" }
+  | { key: string; titulo: string; tipo: "identificacion" | "serologias" | "cultivos" | "quirofano" | "candidato_corazon" }
   | { key: string; titulo: string; tipo: "estudios"; tiposEstudio: string[] | null };
 
 const DROGAS_VASOACTIVAS = ["noradrenalina", "adrenalina", "dopamina", "dobutamina", "isoproterenol", "esmolol", "amiodarona", "vasopresina"].map((d) => `droga:${d}`);
@@ -43,11 +46,13 @@ export const SECCIONES: Seccion[] = [
   { key: "lab_cardiaco", titulo: "Troponina y CPK-MB", tipo: "parametros", claves: ["troponina", "cpk_mb"] },
   { key: "monitoreo_avanzado", titulo: "Monitoreo avanzado", tipo: "parametros", claves: ["gc", "ic_medido", "sat_venosa", "delta_pp", "delta_vs"] },
   { key: "candidato_corazon", titulo: "Candidato a corazón", tipo: "candidato_corazon" },
-  { key: "ecg", titulo: "ECG", tipo: "ecg" },
+  { key: "ecg", titulo: "ECG", tipo: "estudios", tiposEstudio: ["ECG"] },
+  { key: "ecocardiograma", titulo: "Ecocardiograma", tipo: "estudios", tiposEstudio: ["Ecocardiograma"] },
   { key: "ecografias", titulo: "Ecografías", tipo: "estudios", tiposEstudio: ["Ecografia"] },
   { key: "respiratorio", titulo: "Respiratorio", tipo: "parametros", claves: ["sat_o2", "modo", "fio2", "peep", "volumen_corriente", "frecuencia", "presion_plateau", "presion_pico"] },
   { key: "gases", titulo: "Gases", tipo: "parametros", claves: ["ph", "pao2", "pafi"] },
   { key: "torax", titulo: "Rx y TAC de tórax", tipo: "estudios", tiposEstudio: ["Rx_torax", "TAC_torax"] },
+  { key: "broncoscopia", titulo: "Broncoscopía", tipo: "estudios", tiposEstudio: ["Broncoscopia"] },
   { key: "balance", titulo: "Balance acumulado", tipo: "parametros", claves: ["balance_acumulado"] },
   { key: "renal", titulo: "Renal", tipo: "parametros", claves: ["diuresis_ml", "urea", "creatinina", "osm_serica", "osm_urinaria", "densidad_urinaria", "droga:furosemida"] },
   { key: "electrolitos", titulo: "Sodio y potasio", tipo: "parametros", claves: ["na", "k"] },
@@ -60,8 +65,8 @@ export const SECCIONES: Seccion[] = [
 export const BLOQUE_COMUN = ["identificacion", "serologias", "hemodinamico", "hemograma", "hepatograma", "coagulograma", "amilasa", "sedimento", "cultivos", "estudios", "quirofano"];
 
 export const PROPIO_DE_EQUIPO: Record<Exclude<EquipoExportacion, "todo">, string[]> = {
-  cardiaco: ["lab_cardiaco", "monitoreo_avanzado", "candidato_corazon", "ecg", "ecografias"],
-  pulmonar: ["respiratorio", "gases", "torax", "balance"],
+  cardiaco: ["lab_cardiaco", "monitoreo_avanzado", "candidato_corazon", "ecg", "ecocardiograma", "ecografias"],
+  pulmonar: ["respiratorio", "gases", "torax", "broncoscopia", "balance"],
   hepatico: ["electrolitos", "glucemia", "ecografias"],
   renal: ["renal", "balance", "electrolitos", "ecografias"],
   pancreas: ["glucemia", "insulina"],
@@ -179,10 +184,11 @@ function filasSeccion(s: Seccion, d: DatosExportacion, donante: string, ahora: n
           )
         );
     case "estudios":
-      return d.estudios
+      const filas = d.estudios
         .filter((e) => s.tiposEstudio === null || s.tiposEstudio.includes(e.tipo_estudio))
         .sort((a, b) => a.created_at.localeCompare(b.created_at))
-        .map((e) => fila(e.created_at, e.tipo_estudio, e.descripcion ?? "(archivo sin descripción)", null, "Procurador"));
+        .map((e) => fila(e.created_at, etiquetaEstudio(e.tipo_estudio), e.descripcion ?? "(archivo cargado, sin descripción)", null, "Procurador"));
+      return filas.length ? filas : [fila(null, s.titulo, "sin cargar", null, "—")];
     case "quirofano": {
       const h = horaVigente(d.horariosQx);
       const etiquetaOrg = (o: string, otro: string | null) => (o === "otro" ? otro ?? "Otro" : ORGANOS_EQUIPO.find((x) => x.valor === o)?.etiqueta ?? o);
@@ -195,9 +201,6 @@ function filasSeccion(s: Seccion, d: DatosExportacion, donante: string, ahora: n
     }
     case "candidato_corazon":
       return [fila(null, "Candidato a corazón", d.corazonCandidato === "si" ? "sí" : d.corazonCandidato === "no" ? "no" : "sin definir", null, "Médico")];
-    case "ecg":
-      // Todavía no hay dónde cargar el ECG en Procurapp.
-      return [fila(null, "ECG", "sin datos cargados (no hay carga de ECG todavía)", null, "—")];
   }
 }
 
@@ -212,38 +215,74 @@ export function textoTimelineExportacion(equipo: EquipoExportacion, conIdentidad
   return conIdentidad ? `${base} (con nombre y DNI)` : base;
 }
 
-// Un CSV por sección. Para un equipo la identidad nunca sale, aunque se
-// pida: solo la Base, con la opción explícita.
-export function exportarCsv(
-  d: DatosExportacion,
-  opciones: { equipo: EquipoExportacion; destino: "equipo" | "base"; incluirNombreYDni: boolean },
-  ahora: number
-): { archivos: { nombre: string; seccion: string; contenido: string }[]; datosHasta: string; ultimoDato: string | null; timeline: string } {
+export type OpcionesExportacion = { equipo: EquipoExportacion; destino: "equipo" | "base"; incluirNombreYDni: boolean };
+
+// Secciones con sus filas: lo mismo para el CSV y para imprimir / PDF.
+// Para un equipo la identidad nunca sale, aunque se pida: solo la Base,
+// con la opción explícita.
+export function seccionesExportacion(d: DatosExportacion, opciones: OpcionesExportacion, ahora: number) {
   const conIdentidad = opciones.destino === "base" && opciones.incluirNombreYDni;
   const donante = conIdentidad && d.donante.nombre_completo ? `${identificador(d.donante)} · ${d.donante.nombre_completo}` : identificador(d.donante);
-  const equipoEtiqueta = EQUIPOS_EXPORTACION.find((x) => x.valor === opciones.equipo)!.etiqueta;
-  const datosHasta = fechaHoraTexto(ahora);
-  const sello = (() => {
-    const x = new Date(ahora);
-    return `${x.getFullYear()}${p2(x.getMonth() + 1)}${p2(x.getDate())}-${p2(x.getHours())}${p2(x.getMinutes())}`;
-  })();
-  const idArchivo = (d.donante.pd_numero ? `PD${d.donante.pd_numero}` : d.donante.id.slice(0, 8)).replace(/[^A-Za-z0-9_-]/g, "");
-
-  const porSeccion = seccionesDeEquipo(opciones.equipo).map((key) => {
+  const secciones = seccionesDeEquipo(opciones.equipo).map((key) => {
     const s = SECCIONES.find((x) => x.key === key)!;
-    return { s, filas: filasSeccion(s, d, donante, ahora, conIdentidad) };
+    return { key: s.key, titulo: s.titulo, filas: filasSeccion(s, d, donante, ahora, conIdentidad) };
   });
-  const ultimo = ultimoDato(porSeccion.flatMap((x) => x.filas));
-  const archivos = porSeccion.map(({ s, filas }) => ({
+  return {
+    conIdentidad,
+    donante,
+    equipo: EQUIPOS_EXPORTACION.find((x) => x.valor === opciones.equipo)!.etiqueta,
+    datosHasta: fechaHoraTexto(ahora),
+    ultimoDato: ultimoDato(secciones.flatMap((x) => x.filas)),
+    secciones,
+    timeline: textoTimelineExportacion(opciones.equipo, conIdentidad, horaTexto(ahora)),
+  };
+}
+
+// Un CSV por sección.
+export function exportarCsv(
+  d: DatosExportacion,
+  opciones: OpcionesExportacion,
+  ahora: number
+): { archivos: { nombre: string; seccion: string; contenido: string }[]; datosHasta: string; ultimoDato: string | null; timeline: string } {
+  const x = seccionesExportacion(d, opciones, ahora);
+  const t = new Date(ahora);
+  const sello = `${t.getFullYear()}${p2(t.getMonth() + 1)}${p2(t.getDate())}-${p2(t.getHours())}${p2(t.getMinutes())}`;
+  const idArchivo = (d.donante.pd_numero ? `PD${d.donante.pd_numero}` : d.donante.id.slice(0, 8)).replace(/[^A-Za-z0-9_-]/g, "");
+  const archivos = x.secciones.map((s) => ({
     seccion: s.key,
     nombre: `procurapp_${idArchivo}_${opciones.equipo}_${s.key}_${sello}.csv`,
     contenido: armarCsv(
       [
-        ["Procurapp", `Equipo: ${equipoEtiqueta}`, `Sección: ${s.titulo}`],
-        ["Datos hasta", datosHasta, "Último dato", ultimo ? fechaHoraTexto(ultimo) : "—"],
+        ["Procurapp", `Equipo: ${x.equipo}`, `Sección: ${s.titulo}`],
+        ["Datos hasta", x.datosHasta, "Último dato", x.ultimoDato ? fechaHoraTexto(x.ultimoDato) : "—"],
       ],
-      filas
+      s.filas
     ),
   }));
-  return { archivos, datosHasta, ultimoDato: ultimo, timeline: textoTimelineExportacion(opciones.equipo, conIdentidad, horaTexto(ahora)) };
+  return { archivos, datosHasta: x.datosHasta, ultimoDato: x.ultimoDato, timeline: x.timeline };
+}
+
+// ------------------------------------------------------- CSV del tablero
+// Una fila por dato del tablero, por donante (identificador PD / folio,
+// nunca el nombre). Lleva "datos hasta" y la hora de cada último dato.
+export function exportarTableroCsv(filas: FilaTablero[], ahora: number): { nombre: string; contenido: string } {
+  const ahoraIso = new Date(ahora).toISOString();
+  const t = (f: FilaTablero, parametro: string, valor: string | number | null, en: string | null = ahoraIso): FilaCsv => ({ donante: f.identificador, en, parametro, valor, unidad: null, origen: "Base (tablero)" });
+  const ultimo = (f: FilaTablero) =>
+    f.ultimoDato.tipo === "con_datos" ? `hace ${f.ultimoDato.minutos} min` : f.ultimoDato.tipo === "sin_datos" ? (f.ultimoDato.noIniciado ? "Mantenimiento no iniciado" : "sin datos") : "no aplica";
+  const csv = filas.flatMap((f) => [
+    t(f, "Tiempo en protocolo", f.tiempoEnProtocolo),
+    t(f, "Etapa actual", f.etapaActual ? `${p2(f.etapaActual.numero)} · ${f.etapaActual.label}` : "todas completas"),
+    t(f, "Progreso", `${f.barra.filter((e) => e.estado === "green").length} de ${f.barra.length} completas`),
+    t(f, "Falta o bloquea", [...f.falta.rojo, ...f.falta.ambar, ...f.falta.pendientes].join(" · ") || "—"),
+    t(f, "Solicitudes abiertas", f.solicitudesAbiertas),
+    t(f, "Último dato de Mantenimiento", ultimo(f), f.ultimoDato.tipo === "con_datos" ? f.ultimoDato.ultimo : ahoraIso),
+    t(f, "Hora de quirófano", f.quirofano ? fechaHoraTexto(f.quirofano) : "sin definir"),
+    t(f, "Equipos", f.equipos.map((e) => `${e.equipo}: ${e.organos.join(", ")}`).join(" · ") || "—"),
+  ]);
+  const x = new Date(ahora);
+  return {
+    nombre: `procurapp_tablero_${x.getFullYear()}${p2(x.getMonth() + 1)}${p2(x.getDate())}-${p2(x.getHours())}${p2(x.getMinutes())}.csv`,
+    contenido: armarCsv([["Procurapp", "Base operativa · Tablero"], ["Datos hasta", fechaHoraTexto(ahora)]], csv),
+  };
 }

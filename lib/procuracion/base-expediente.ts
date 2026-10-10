@@ -193,6 +193,9 @@ export function serie(clave: string, f: FuentesExpediente, ahora: number): Dato[
       if (!x.anulado && v !== null) r.push({ valor: v, en: x.registrado_en, origen: "medico" });
     }
   }
+  // La FiO2 "de la gasometría" (lab) es la de esa extracción y se usa para
+  // la PaFi; la fila FiO2 muestra la del respirador / enfermería.
+  if (clave === "fio2") return porHora(r);
   for (const x of f.lab) {
     if (x.anulado || x.parametro !== clave) continue;
     const valor = x.valor ?? x.valor_texto ?? null;

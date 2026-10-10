@@ -153,14 +153,17 @@ test("fila del tablero: datos crudos, equipos con órganos, sin nombre", () => {
   const f = filaTablero(c, AHORA);
   assert.equal(f.iniciales, "NS");
   assert.equal(f.tiempoEnProtocolo, "1 d 1 h");
-  assert.equal(f.hospital, "Hospital Simulado · La Plata");
+  assert.equal(f.hospital, "Hospital Simulado B · La Plata");
   assert.deepEqual(f.equipos, [
     { equipo: "Hígado Hospital Simulado", organos: ["Hígado"] },
     { equipo: "Riñón Simulado", organos: ["Riñones"] },
   ]);
-  assert.equal(JSON.stringify(f).includes("Nombre Simulado"), false);
-  assert.equal(f.barra.length, 12);
-  assert.deepEqual(f.barra.map((e) => e.numero), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+  assert.equal(JSON.stringify(f).includes("Nora Sosa"), false);
+  // intervención judicial aplica: 13 etapas; la actual es la judicial (falta la autorización)
+  assert.equal(f.barra.length, 13);
+  assert.deepEqual(f.barra.map((e) => e.numero), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]);
+  assert.equal(f.etapaActual?.key, "judicial");
+  assert.deepEqual(f.falta.pendientes, ["falta autorización del juez"]);
 });
 
 test("cerrar protocolo: resultado obligatorio ('otro' con texto) y línea de tiempo", () => {

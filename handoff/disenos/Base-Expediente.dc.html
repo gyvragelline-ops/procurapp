@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Base operativa · Expediente</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+.num{font-family:'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums}
+button{font-family:'IBM Plex Sans',sans-serif;cursor:pointer}
+</style>
+</helmet>
+<div style="width:1440px;height:1760px;box-sizing:border-box;padding:20px 28px;background:#F3F6F7;color:#1B2A2E;font-family:'IBM Plex Sans',sans-serif;display:flex;flex-direction:column;gap:16px">
+
+<div style="display:flex;align-items:center;gap:8px;flex-wrap:nowrap">
+<button style="min-height:44px;padding:0 16px;border:1px solid #C9D5D8;border-radius:10px;background:#FFFFFF;color:#1B2A2E;font-size:14px;font-weight:600">Tablero</button>
+<sc-for list="{{tabs}}" as="t" hint-placeholder-count="5">
+<button style="min-height:44px;padding:0 16px;border:{{t.b}};border-radius:10px;background:{{t.bg}};color:{{t.fg}};font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px"><span style="width:10px;height:10px;border-radius:50%;background:{{t.dot}};display:inline-block"></span>{{t.n}}</button>
+</sc-for>
+</div>
+
+<div style="background:#FFFFFF;border:1px solid #D9E1E3;border-radius:12px;padding:16px 20px;display:flex;justify-content:space-between;align-items:center;gap:20px">
+<div style="display:flex;align-items:baseline;gap:18px">
+<span style="font-size:26px;font-weight:600">M.R.</span>
+<span style="font-size:14px;color:#5E7378">54 a · M · 70 kg · Grupo A+ · Hospital A · Procurador: Dr. García</span>
+<span class="num" style="font-size:14px;color:#1B2A2E">31 h en protocolo</span>
+</div>
+<div style="display:flex;align-items:center;gap:8px">
+<span style="font-size:13px;color:#5E7378">Exportar para:</span>
+<sc-for list="{{chips}}" as="c" hint-placeholder-count="6">
+<button style="min-height:36px;padding:0 12px;border:{{c.b}};border-radius:999px;background:{{c.bg}};color:{{c.fg}};font-size:13px;font-weight:600">{{c.n}}</button>
+</sc-for>
+<button style="min-height:44px;padding:0 16px;border:1px solid #C9D5D8;border-radius:10px;background:#FFFFFF;color:#1B2A2E;font-size:14px;font-weight:600;margin-left:8px">Imprimir</button>
+<button style="min-height:44px;padding:0 16px;border:1px solid #C9D5D8;border-radius:10px;background:#FFFFFF;color:#1B2A2E;font-size:14px;font-weight:600">PDF</button>
+<button style="min-height:44px;padding:0 16px;border:0;border-radius:10px;background:#0F8F83;color:#FFFFFF;font-size:14px;font-weight:600">Excel / CSV (crudo)</button>
+</div>
+</div>
+
+<div style="display:grid;grid-template-columns:210px minmax(0,1fr) 340px;gap:16px;align-items:start">
+
+<div style="background:#FFFFFF;border:1px solid #D9E1E3;border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:4px">
+<span style="font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:#5E7378;margin-bottom:6px">Índice · orden Procurapp</span>
+<sc-for list="{{indice}}" as="i" hint-placeholder-count="9">
+<div style="display:flex;align-items:center;gap:10px;min-height:36px;padding:0 8px;border-radius:8px;background:{{i.bg}}">
+<span style="width:10px;height:10px;border-radius:50%;background:{{i.c}};flex:none"></span>
+<span class="num" style="font-size:12px;color:#5E7378">{{i.k}}</span>
+<span style="font-size:13px;font-weight:{{i.w}}">{{i.n}}</span>
+</div>
+</sc-for>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:16px;min-width:0">
+
+<div style="display:flex;justify-content:space-between;align-items:baseline">
+<span style="font-size:18px;font-weight:600">11 · Mantenimiento por sistema</span>
+<span style="font-size:13px;color:#5E7378">Último dato de enfermería 14:40 · datos en crudo, sin interpretar</span>
+</div>
+
+<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px">
+<sc-for list="{{sistemas}}" as="s" hint-placeholder-count="6">
+<div style="background:#FFFFFF;border:1px solid #D9E1E3;border-radius:12px;overflow:hidden">
+<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 16px;background:#EAF0F1">
+<span style="font-size:14px;font-weight:600">{{s.nombre}}</span>
+<span style="font-size:12px;color:{{s.c}};font-weight:600">{{s.estado}}</span>
+</div>
+<sc-for list="{{s.filas}}" as="f" hint-placeholder-count="4">
+<div style="display:grid;grid-template-columns:1fr 92px 96px 86px;gap:8px;padding:8px 16px;border-top:1px solid #E7EDEF;font-size:13px;align-items:baseline">
+<span>{{f.p}}</span>
+<span class="num" style="font-weight:600;color:{{f.c}}">{{f.v}}</span>
+<span class="num" style="color:#5E7378">{{f.d}}</span>
+<span style="color:#5E7378;font-size:12px">{{f.m}}</span>
+</div>
+</sc-for>
+</div>
+</sc-for>
+</div>
+
+<div style="background:#FFFFFF;border:1px solid #D9E1E3;border-radius:12px;overflow:hidden">
+<div style="display:flex;justify-content:space-between;padding:10px 16px;background:#EAF0F1"><span style="font-size:14px;font-weight:600">09 · Cultivos</span><span style="font-size:12px;color:#C98512;font-weight:600">2 pendientes</span></div>
+<sc-for list="{{cultivos}}" as="c" hint-placeholder-count="4">
+<div style="display:grid;grid-template-columns:160px 130px 120px 1fr;gap:10px;padding:8px 16px;border-top:1px solid #E7EDEF;font-size:13px">
+<span>{{c.tipo}}</span><span class="num" style="color:#5E7378">{{c.fecha}}</span><span style="font-weight:600;color:{{c.c}}">{{c.estado}}</span><span style="color:#1B2A2E">{{c.det}}</span>
+</div>
+</sc-for>
+</div>
+
+<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px">
+<div style="background:#FFFFFF;border:1px solid #D9E1E3;border-radius:12px;overflow:hidden">
+<div style="padding:10px 16px;background:#EAF0F1;font-size:14px;font-weight:600">08 · Imágenes y estudios</div>
+<sc-for list="{{estudios}}" as="e" hint-placeholder-count="5">
+<div style="display:flex;justify-content:space-between;gap:10px;padding:8px 16px;border-top:1px solid #E7EDEF;font-size:13px"><span>{{e.n}}</span><span style="font-weight:600;color:{{e.c}}">{{e.e}}</span></div>
+</sc-for>
+</div>
+<div style="background:#FFFFFF;border:1px solid #D9E1E3;border-radius:12px;overflow:hidden">
+<div style="padding:10px 16px;background:#EAF0F1;font-size:14px;font-weight:600">12–13 · Judicial, quirófano y equipos</div>
+<sc-for list="{{equipos}}" as="q" hint-placeholder-count="5">
+<div style="display:flex;justify-content:space-between;gap:10px;padding:8px 16px;border-top:1px solid #E7EDEF;font-size:13px"><span>{{q.n}}</span><span style="font-weight:600;color:{{q.c}}">{{q.e}}</span></div>
+</sc-for>
+</div>
+</div>
+
+</div>
+
+<div style="display:flex;flex-direction:column;gap:14px">
+
+<div style="background:#FFFFFF;border:1px solid #D9E1E3;border-radius:12px;overflow:hidden">
+<div style="display:flex;justify-content:space-between;padding:10px 16px;background:#EAF0F1"><span style="font-size:14px;font-weight:600">Solicitudes</span><span style="font-size:12px;color:#C98512;font-weight:600">2 abiertas</span></div>
+<sc-for list="{{solicitudes}}" as="s" hint-placeholder-count="4">
+<div style="padding:10px 16px;border-top:1px solid #E7EDEF;display:flex;flex-direction:column;gap:3px">
+<div style="display:flex;justify-content:space-between;font-size:13px"><span style="font-weight:600;color:{{s.c}}">{{s.e}}</span><span class="num" style="color:#5E7378">{{s.h}}</span></div>
+<span style="font-size:14px">{{s.t}}</span>
+<span style="font-size:12px;color:#5E7378">{{s.d}}</span>
+</div>
+</sc-for>
+</div>
+
+<div style="background:#FFFFFF;border:1px solid #D9E1E3;border-radius:12px;overflow:hidden">
+<div style="padding:10px 16px;background:#EAF0F1;font-size:14px;font-weight:600">Chat con el procurador</div>
+<div style="padding:12px 16px;display:flex;flex-direction:column;gap:8px">
+<sc-for list="{{chat}}" as="m" hint-placeholder-count="4">
+<div style="display:flex;flex-direction:column;align-items:{{m.al}};gap:2px">
+<span style="font-size:11px;color:#5E7378">{{m.de}} · {{m.h}}</span>
+<span style="font-size:13px;padding:7px 11px;border-radius:10px;background:{{m.bg}};max-width:250px">{{m.t}}</span>
+</div>
+</sc-for>
+<div style="display:flex;gap:8px;margin-top:4px"><div style="flex:1;min-height:40px;border:1px solid #C9D5D8;border-radius:10px;display:flex;align-items:center;padding:0 12px;font-size:13px;color:#8EA0A4">Mensaje</div><button style="min-height:40px;padding:0 14px;border:0;border-radius:10px;background:#0F8F83;color:#FFFFFF;font-size:13px;font-weight:600">Enviar</button></div>
+</div>
+</div>
+
+<div style="background:#FFFFFF;border:1px solid #D9E1E3;border-radius:12px;overflow:hidden">
+<div style="padding:10px 16px;background:#EAF0F1;font-size:14px;font-weight:600">Línea de tiempo</div>
+<sc-for list="{{tiempo}}" as="x" hint-placeholder-count="6">
+<div style="display:grid;grid-template-columns:48px 1fr;gap:10px;padding:7px 16px;border-top:1px solid #E7EDEF;font-size:13px"><span class="num" style="color:#5E7378">{{x.h}}</span><span>{{x.t}}</span></div>
+</sc-for>
+</div>
+
+</div>
+</div>
+
+<span style="font-size:12px;color:#5E7378;line-height:1.4">Información ordenada para los equipos; la aptitud de cada órgano la decide el equipo correspondiente. Propuesta visual con datos de ejemplo, no de un donante real.</span>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1760}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const G = '#1F9D6B', A = '#C98512', R = '#C8402F', N = '#9AAAAE', T = '#1B2A2E';
+    const tabs = [
+      { n: 'S.A.', dot: R, act: false }, { n: 'L.P.', dot: A, act: false }, { n: 'M.R.', dot: A, act: true },
+      { n: 'J.C.', dot: A, act: false }, { n: 'R.G.', dot: G, act: false }
+    ].map((t) => ({ n: t.n, dot: t.dot, b: t.act ? '0' : '1px solid #C9D5D8', bg: t.act ? '#0F8F83' : '#FFFFFF', fg: t.act ? '#FFFFFF' : '#1B2A2E' }));
+    const chips = ['Todo', 'Cardíaco', 'Pulmonar', 'Hepático', 'Renal', 'Páncreas'].map((n, i) => ({
+      n: n, b: i === 3 ? '0' : '1px solid #C9D5D8', bg: i === 3 ? '#1B2A2E' : '#FFFFFF', fg: i === 3 ? '#FFFFFF' : '#1B2A2E'
+    }));
+    const indice = [
+      { k: '01–05', n: 'Datos, certificación', c: G }, { k: '06', n: 'Muestras', c: G }, { k: '07', n: 'Medidas antropométricas', c: G },
+      { k: '08', n: 'Laboratorio e imágenes', c: G }, { k: '09', n: 'Cultivos', c: A }, { k: '10', n: 'Documentación', c: G },
+      { k: '11', n: 'Mantenimiento', c: A, act: true }, { k: '12', n: 'Intervención judicial', c: N }, { k: '13', n: 'Hora de quirófano', c: N }
+    ].map((i) => ({ k: i.k, n: i.n, c: i.c, bg: i.act ? '#E3F2F0' : 'transparent', w: i.act ? 600 : 400 }));
+    const f = (p, v, d, m, c) => ({ p: p, v: v, d: d, m: m, c: c });
+    const sistemas = [
+      { nombre: 'Hemodinámico', estado: '1 fuera de meta', c: A, filas: [
+        f('PAM', '62 mmHg', '↓ −18 en 12 h', '60–80', G), f('FC', '112 lpm', '↑ +28', '60–120', G),
+        f('Noradrenalina', '0,34 γ', '↑ +0,29', '≤0,30', A), f('Vasopresina', '—', '', 'U/min', T) ] },
+      { nombre: 'Respiratorio', estado: 'dato de 06:10', c: T, filas: [
+        f('Modo / FiO₂', 'VCV · 40 %', 'seteado 06:10', '', T), f('PEEP · VT · FR', '8 · 450 · 14', '', '', T),
+        f('Plateau', '22', '', '<30', G), f('PaFi', '350', 'calculada', '>330', G), f('Saturación', '92 %', '↓ −6', '>94', A) ] },
+      { nombre: 'Renal y balance', estado: 'diuresis en caída', c: A, filas: [
+        f('Diuresis', '0,7 mL/kg/h', '↓ 2,1 → 0,7', '>1,0', A), f('Balance acumulado', '+1.180 mL', '↑ +1.090', '', T),
+        f('Na plasmático', '152', 'hace 7 h', '135–150', A), f('Creatinina', '1,2', 'hace 7 h', '', T) ] },
+      { nombre: 'Metabólico y temperatura', estado: '1 fuera de meta', c: A, filas: [
+        f('Glucemia', '100 mg/dL', '↓ −28', '110–180', A), f('Temperatura', '36,1 °C', '↓ −1,1', '36–37,5', G),
+        f('pH', '7,41', 'hace 3 h', '7,35–7,50', G), f('Lactato', '1,4', 'hace 3 h', '', T) ] },
+      { nombre: 'Hepático y hematológico', estado: 'faltan datos', c: A, filas: [
+        f('Hb', '10,2', 'hace 7 h', '', T), f('Plaquetas', '168.000', 'hace 7 h', '', T),
+        f('TGO · TGP', 'sin cargar', '', '', A), f('Bilirrubina · TP', 'sin cargar', '', '', A) ] },
+      { nombre: 'Infeccioso', estado: '2 cultivos pendientes', c: A, filas: [
+        f('Temperatura máx. 24 h', '37,2 °C', '', '', T), f('Antibióticos', 'sin registrar', '', '', A),
+        f('Cultivos', '4 cargados', '2 pendientes', '', A), f('Positivos', '0', '', '', G) ] }
+    ];
+    const cultivos = [
+      { tipo: 'Aspirado traqueal', fecha: '10/10 06:30', estado: 'Pendiente', c: A, det: 'Hace 8 h sin resultado' },
+      { tipo: 'Hemocultivos x2', fecha: '10/10 06:35', estado: 'Pendiente', c: A, det: 'Hace 8 h sin resultado' },
+      { tipo: 'Punta de CVC', fecha: '09/10 22:10', estado: 'Negativo', c: G, det: 'Resultado 10/10 11:20' },
+      { tipo: 'Urocultivo', fecha: '09/10 22:10', estado: 'Negativo', c: G, det: 'Resultado 10/10 10:45' }
+    ];
+    const estudios = [
+      { n: 'ECG', e: 'Cargado 10/10 07:15', c: G }, { n: 'Rx de tórax', e: 'Cargada 10/10 07:20', c: G },
+      { n: 'Ecocardiograma', e: 'Cargado 10/10 09:05', c: G }, { n: 'Broncoscopía', e: 'Sin cargar', c: A },
+      { n: 'Hepatograma', e: 'Solicitado 14:00, sin resultado', c: A }
+    ];
+    const equipos = [
+      { n: 'Autorización del juez (foto)', e: 'Cargada 13:10 · Base', c: G }, { n: 'Hora de quirófano', e: 'Sin definir', c: A },
+      { n: 'Equipo hepático', e: 'Hígado · anestesista sin confirmar', c: A }, { n: 'Equipo renal', e: 'Riñones · lleva anestesista', c: G },
+      { n: 'Equipo cardíaco', e: 'Sin avisar', c: N }
+    ];
+    const solicitudes = [
+      { e: 'Pendiente', c: A, h: '14:32', t: 'Laboratorio de las 14:00', d: 'Base → Procurador · prioridad alta' },
+      { e: 'Pendiente', c: A, h: '14:20', t: 'Foto de ECG', d: 'Equipo cardíaco → Base → Procurador' },
+      { e: 'Resuelta', c: G, h: '13:45', t: 'Peso y talla', d: 'Base → Procurador · respondida 13:52' }
+    ];
+    const chat = [
+      { de: 'Base', h: '14:41', t: '¿Llegó el hepatograma?', bg: '#E3F2F0', al: 'flex-start' },
+      { de: 'Procurador · javier', h: '14:44', t: 'Lo estoy esperando, el laboratorio avisó 15:15.', bg: '#EAF0F1', al: 'flex-end' },
+      { de: 'Base', h: '14:45', t: 'Gracias. Aviso al equipo.', bg: '#E3F2F0', al: 'flex-start' }
+    ];
+    const tiempo = [
+      { h: '14:40', t: 'Registro de enfermería cargado' }, { h: '14:32', t: 'Solicitud: laboratorio de las 14:00' },
+      { h: '13:10', t: 'Foto de autorización judicial cargada' }, { h: '11:20', t: 'Resultado de punta de CVC: negativo' },
+      { h: '09:05', t: 'Ecocardiograma cargado' }, { h: '06:10', t: 'Respirador seteado: VCV, FiO₂ 40 %' }
+    ];
+    return { tabs: tabs, chips: chips, indice: indice, sistemas: sistemas, cultivos: cultivos, estudios: estudios, equipos: equipos, solicitudes: solicitudes, chat: chat, tiempo: tiempo };
+  }
+}
+</script>
+</body>
+</html>

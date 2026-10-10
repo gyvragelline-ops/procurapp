@@ -1,0 +1,537 @@
+/* Base operativa: tema claro (diseño handoff/disenos/Base-*.dc.html).
+   Ancho de referencia 1440 px; mínimo útil 1280 px. */
+.app {
+  --bg: #f3f6f7;
+  --tx: #1b2a2e;
+  --mu: #5e7378;
+  --card: #ffffff;
+  --bd: #d9e1e3;
+  --hd: #eaf0f1;
+  --ln: #e3eaec;
+  --ac: #0f8f83;
+  --acl: #e3f2f0;
+  --g: #1f9d6b;
+  --a: #c98512;
+  --r: #c8402f;
+  --n: #c3cfd2;
+  --nd: #9aaaae;
+  --bb: #c9d5d8;
+  color-scheme: light;
+  min-height: 100vh;
+  box-sizing: border-box;
+  padding: 24px 32px;
+  background: var(--bg);
+  color: var(--tx);
+  font-family: var(--font-base-sans), var(--font-base-sans-griego), system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  width: 100%;
+}
+.app *,
+.app *::before,
+.app *::after {
+  box-sizing: border-box;
+}
+.app button {
+  font-family: inherit;
+  cursor: pointer;
+}
+.app button:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+.num {
+  font-family: var(--font-ibm-plex-mono), ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+}
+.mu {
+  color: var(--mu);
+}
+.chico {
+  font-size: 12px;
+}
+
+/* ---------- avisos ---------- */
+.aviso {
+  border: 1px solid var(--r);
+  background: #fbeeec;
+  color: var(--tx);
+  border-radius: 10px;
+  padding: 8px 14px;
+  font-size: 13px;
+}
+.avisoDemo {
+  border-color: var(--a);
+  background: #fbf3e5;
+}
+.error {
+  color: var(--r);
+  font-size: 13px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: #fbeeec;
+}
+
+/* ---------- botones ---------- */
+.btn {
+  min-height: 44px;
+  padding: 0 18px;
+  border: 1px solid var(--bb);
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--tx);
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.btnChico {
+  min-height: 36px;
+  padding: 0 12px;
+  font-size: 13px;
+}
+.btnAcento {
+  border: 0;
+  background: var(--ac);
+  color: #fff;
+}
+.chip {
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--bb);
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--tx);
+  font-size: 13px;
+  font-weight: 600;
+}
+.chipActivo {
+  border-color: var(--tx);
+  background: var(--tx);
+  color: #fff;
+}
+.enlace {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--ac);
+  text-decoration: underline;
+  font-size: 12px;
+}
+
+/* ---------- encabezado del tablero ---------- */
+.cabecera {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.titulo {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+}
+.titulo > :first-child {
+  font-size: 24px;
+  font-weight: 600;
+}
+.acciones {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+/* ---------- tarjetas KPI ---------- */
+.kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+.kpi {
+  background: var(--card);
+  border: 1px solid var(--bd);
+  border-radius: 12px;
+  padding: 14px 18px;
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+.kpi > :first-child {
+  font-size: 32px;
+  font-weight: 600;
+}
+.kpi > :last-child {
+  color: var(--mu);
+}
+
+/* ---------- tabla del tablero ---------- */
+.tabla {
+  background: var(--card);
+  border: 1px solid var(--bd);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.fila {
+  display: grid;
+  /* 1280 px: columnas angostas; desde 1400 px, las del diseño */
+  grid-template-columns: 112px 124px 64px 150px 120px minmax(160px, 1fr) 84px 92px 140px;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 0;
+  border-top: 1px solid var(--ln);
+  align-items: center;
+  font-size: 14px;
+  text-align: left;
+  width: 100%;
+  background: none;
+  color: inherit;
+}
+button.fila:hover {
+  background: #f7fafa;
+}
+.filaTitulos {
+  border-top: 0;
+  padding-block: 12px;
+  background: var(--hd);
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--mu);
+}
+@media (max-width: 1399px) {
+  .app {
+    padding: 20px 24px;
+  }
+  .filaTitulos {
+    font-size: 11px;
+  }
+}
+@media (min-width: 1400px) {
+  .filaTitulos {
+    letter-spacing: 0.06em;
+  }
+  .fila {
+    grid-template-columns: 130px 140px 64px 170px 150px minmax(200px, 1fr) 86px 100px 160px;
+    gap: 14px;
+    padding-inline: 18px;
+  }
+}
+.apilado {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.apilado > * {
+  overflow-wrap: anywhere;
+}
+.donante {
+  font-size: 16px;
+  font-weight: 600;
+}
+.barra {
+  display: flex;
+  gap: 2px;
+  height: 12px;
+}
+.barra > span {
+  flex: 1 1 0;
+  border-radius: 2px;
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
+}
+.pie {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  font-size: 12px;
+  color: var(--mu);
+  flex-wrap: wrap;
+}
+
+/* ---------- expediente ---------- */
+.pestanas {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.pestana {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.pestanaActiva {
+  border: 0;
+  background: var(--ac);
+  color: #fff;
+}
+.punto {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+  flex: none;
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
+}
+.card {
+  background: var(--card);
+  border: 1px solid var(--bd);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.cardCab {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  background: var(--hd);
+  font-size: 14px;
+  font-weight: 600;
+}
+.cardCab > :last-child:not(:first-child) {
+  font-size: 12px;
+}
+.cardFila {
+  padding: 8px 16px;
+  border-top: 1px solid #e7edef;
+  font-size: 13px;
+}
+.cabExp {
+  background: var(--card);
+  border: 1px solid var(--bd);
+  border-radius: 12px;
+  padding: 16px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px 20px;
+  flex-wrap: wrap;
+}
+.nombre {
+  font-size: 26px;
+  font-weight: 600;
+}
+.columnas {
+  display: grid;
+  grid-template-columns: 190px minmax(0, 1fr) 300px;
+  gap: 16px;
+  align-items: start;
+}
+@media (min-width: 1400px) {
+  .columnas {
+    grid-template-columns: 210px minmax(0, 1fr) 340px;
+  }
+}
+.indice {
+  position: sticky;
+  top: 12px;
+  background: var(--card);
+  border: 1px solid var(--bd);
+  border-radius: 12px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.indiceItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 36px;
+  padding: 0 8px;
+  border-radius: 8px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  color: inherit;
+  font-size: 13px;
+}
+.indiceItem:hover {
+  background: #f3f8f8;
+}
+.indiceActual {
+  background: var(--acl);
+  font-weight: 600;
+}
+.centro {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+.derecha {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+.seccionTitulo {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+  scroll-margin-top: 12px;
+}
+.seccionTitulo > :first-child {
+  font-size: 18px;
+  font-weight: 600;
+}
+.sistemas {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
+}
+/* Dos tarjetas por fila solo si entran cómodas (cada fila lleva
+   parámetro + origen, valor + hora, cambio y referencia). */
+@media (min-width: 1680px) {
+  .sistemas {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+.filaSistema {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 110px 96px 86px;
+  gap: 8px;
+  padding: 8px 16px;
+  border-top: 1px solid #e7edef;
+  font-size: 13px;
+  align-items: baseline;
+}
+.dosRenglones {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.valor {
+  font-weight: 600;
+}
+.dosCols {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  align-items: start;
+}
+.filaCultivo {
+  display: grid;
+  grid-template-columns: 150px 110px 90px minmax(0, 1fr);
+  gap: 10px;
+  padding: 8px 16px;
+  border-top: 1px solid #e7edef;
+  font-size: 13px;
+}
+.par {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 16px;
+  border-top: 1px solid #e7edef;
+  font-size: 13px;
+}
+.par > :last-child {
+  text-align: right;
+}
+.ancla {
+  scroll-margin-top: 12px;
+}
+
+/* ---------- formularios (solicitudes, chat, cierre) ---------- */
+.campo {
+  width: 100%;
+  min-height: 40px;
+  border: 1px solid var(--bb);
+  border-radius: 10px;
+  padding: 8px 12px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--tx);
+  background: #fff;
+}
+textarea.campo {
+  resize: vertical;
+}
+.renglon {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.burbuja {
+  font-size: 13px;
+  padding: 7px 11px;
+  border-radius: 10px;
+  max-width: 250px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.panelCierre {
+  border: 1px solid var(--bb);
+  border-radius: 12px;
+  background: #fff;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* ---------- impresión: A4, sin menús, blanco y negro legible ---------- */
+.soloImprimir {
+  display: none;
+}
+.impTabla {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 9.5pt;
+}
+.impTabla th,
+.impTabla td {
+  border: 0.5pt solid #000;
+  padding: 2pt 4pt;
+  text-align: left;
+  vertical-align: top;
+}
+.impSeccion + .impSeccion {
+  break-before: page;
+}
+@media print {
+  .app {
+    background: #fff;
+    color: #000;
+    padding: 0;
+    min-height: 0;
+    font-size: 10pt;
+  }
+  .noImprimir {
+    display: none !important;
+  }
+  .soloImprimir {
+    display: block;
+  }
+  .card,
+  .tabla,
+  .kpi {
+    border-color: #000;
+  }
+  .filaTitulos,
+  .cardCab {
+    background: #fff;
+    color: #000;
+  }
+  .fila {
+    break-inside: avoid;
+    border-top-color: #000;
+  }
+  .mu {
+    color: #000;
+  }
+}
+.nw {
+  white-space: nowrap;
+}

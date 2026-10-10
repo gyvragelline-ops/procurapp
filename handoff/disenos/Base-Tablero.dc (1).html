@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Base operativa · Tablero</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+.num{font-family:'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums}
+button{font-family:'IBM Plex Sans',sans-serif;cursor:pointer}
+</style>
+</helmet>
+<div style="width:1440px;height:780px;box-sizing:border-box;padding:24px 32px;background:#F3F6F7;color:#1B2A2E;font-family:'IBM Plex Sans',sans-serif;display:flex;flex-direction:column;gap:18px">
+
+<div style="display:flex;justify-content:space-between;align-items:center">
+<div style="display:flex;align-items:baseline;gap:14px">
+<span style="font-size:24px;font-weight:600">Base operativa</span>
+<span style="font-size:14px;color:#5E7378">Protocolos activos · orden por urgencia</span>
+</div>
+<div style="display:flex;align-items:center;gap:12px">
+<span class="num" style="font-size:14px;color:#5E7378">Sáb 10/10 · 14:52</span>
+<button style="min-height:44px;padding:0 18px;border:1px solid #C9D5D8;border-radius:10px;background:#FFFFFF;color:#1B2A2E;font-size:14px;font-weight:600">Imprimir tablero</button>
+<button style="min-height:44px;padding:0 18px;border:0;border-radius:10px;background:#0F8F83;color:#FFFFFF;font-size:14px;font-weight:600">Exportar (Excel / CSV)</button>
+</div>
+</div>
+
+<div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px">
+<sc-for list="{{kpis}}" as="k" hint-placeholder-count="4">
+<div style="background:#FFFFFF;border:1px solid #D9E1E3;border-radius:12px;padding:14px 18px;display:flex;align-items:baseline;gap:12px">
+<span class="num" style="font-size:32px;font-weight:600;color:{{k.c}}">{{k.n}}</span>
+<span style="font-size:14px;color:#5E7378">{{k.t}}</span>
+</div>
+</sc-for>
+</div>
+
+<div style="background:#FFFFFF;border:1px solid #D9E1E3;border-radius:12px;overflow:hidden">
+<div style="display:grid;grid-template-columns:150px 150px 70px 200px 170px 1fr 90px 110px 190px;gap:14px;padding:12px 18px;background:#EAF0F1;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:#5E7378">
+<span>Donante</span><span>Hospital · procurador</span><span>Tiempo</span><span>Etapa actual</span><span>Progreso (01–13)</span><span>Falta o bloquea</span><span>Solicitudes</span><span>Último dato</span><span>Quirófano · equipos</span>
+</div>
+<sc-for list="{{rows}}" as="r" hint-placeholder-count="5">
+<div style="display:grid;grid-template-columns:150px 150px 70px 200px 170px 1fr 90px 110px 190px;gap:14px;padding:14px 18px;border-top:1px solid #E3EAEC;align-items:center;font-size:14px">
+<div style="display:flex;flex-direction:column;gap:2px"><span style="font-size:16px;font-weight:600">{{r.id}}</span><span style="font-size:12px;color:#5E7378">{{r.meta}}</span></div>
+<div style="display:flex;flex-direction:column;gap:2px"><span>{{r.hosp}}</span><span style="font-size:12px;color:#5E7378">{{r.proc}}</span></div>
+<span class="num">{{r.t}}</span>
+<span style="font-weight:500">{{r.etapa}}</span>
+<div style="height:12px;border-radius:3px;background:{{r.grad}}"></div>
+<span style="color:{{r.fc}};font-weight:{{r.fw}}">{{r.falta}}</span>
+<span class="num" style="font-weight:600;color:{{r.sc}}">{{r.sol}}</span>
+<span class="num" style="color:{{r.uc}};font-weight:500">{{r.ult}}</span>
+<div style="display:flex;flex-direction:column;gap:2px"><span class="num" style="font-weight:600">{{r.quir}}</span><span style="font-size:12px;color:#5E7378">{{r.eq}}</span></div>
+</div>
+</sc-for>
+</div>
+
+<div style="display:flex;justify-content:space-between;font-size:12px;color:#5E7378">
+<span>Progreso: <span style="color:#1F9D6B;font-weight:600">■</span> completo · <span style="color:#C98512;font-weight:600">■</span> en curso o falta · <span style="color:#C8402F;font-weight:600">■</span> bloqueado · <span style="color:#C3CFD2;font-weight:600">■</span> sin iniciar. Tocar una fila abre el expediente del donante.</span>
+<span>Propuesta visual con datos de ejemplo. Los valores no son de donantes reales.</span>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":780}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const G = '#1F9D6B', A = '#C98512', R = '#C8402F', N = '#C3CFD2', T = '#1B2A2E', M = '#5E7378';
+    const grad = (cols) => {
+      const n = cols.length, w = 100 / n, g = 1.4;
+      const s = cols.map((c, i) => c + ' ' + (i * w).toFixed(2) + '% ' + ((i + 1) * w - g).toFixed(2) + '%, transparent ' + ((i + 1) * w - g).toFixed(2) + '% ' + ((i + 1) * w).toFixed(2) + '%').join(',');
+      return 'linear-gradient(to right,' + s + ')';
+    };
+    const st = (g, a, r) => {
+      const out = [];
+      for (let i = 0; i < 13; i++) out.push(i < g ? G : i < g + a ? A : i < g + a + r ? R : N);
+      return out;
+    };
+    const rows = [
+      { id: 'S.A.', meta: '29 a · M · 82 kg', hosp: 'Hospital C', proc: 'Dr. García', t: '58 h', etapa: '11 · Mantenimiento', cols: st(10, 0, 1), falta: 'Sin registro de enfermería hace 2 h 10 min', fc: R, fw: 600, sol: '1', sc: R, ult: 'hace 2 h 10', uc: R, quir: 'Mañana 08:00', eq: 'Hepático · Renal' },
+      { id: 'L.P.', meta: '38 a · F · 64 kg', hosp: 'Hospital B', proc: 'Dra. Ruiz', t: '44 h', etapa: '13 · Hora de quirófano', cols: st(12, 1, 0), falta: 'Equipo hepático: anestesista sin confirmar', fc: A, fw: 600, sol: '1', sc: A, ult: 'hace 5 min', uc: G, quir: 'Hoy 21:30', eq: 'Hepático · Renal · Cardíaco' },
+      { id: 'M.R.', meta: '54 a · M · 70 kg', hosp: 'Hospital A', proc: 'Dr. García', t: '31 h', etapa: '11 · Mantenimiento', cols: st(10, 1, 0), falta: 'Laboratorio de las 14:00 sin resultado · 2 cultivos pendientes', fc: A, fw: 500, sol: '2', sc: A, ult: 'hace 12 min', uc: G, quir: 'sin definir', eq: '—' },
+      { id: 'J.C.', meta: '67 a · M · 78 kg', hosp: 'Hospital A', proc: 'Dr. Pérez', t: '12 h', etapa: '08 · Laboratorio e imágenes', cols: st(7, 1, 0), falta: 'Hepatograma y ECG sin cargar', fc: T, fw: 400, sol: '0', sc: M, ult: 'hace 48 min', uc: A, quir: '—', eq: '—' },
+      { id: 'R.G.', meta: '71 a · F · 60 kg', hosp: 'Hospital B', proc: 'Dra. Ruiz', t: '8 h', etapa: '07 · Medidas antropométricas', cols: st(6, 1, 0), falta: 'Talla y peso pendientes', fc: T, fw: 400, sol: '0', sc: M, ult: 'hace 20 min', uc: G, quir: '—', eq: '—' }
+    ].map((r) => Object.assign({}, r, { grad: grad(r.cols) }));
+    const kpis = [
+      { n: '5', t: 'protocolos activos', c: T },
+      { n: '3', t: 'requieren acción ahora', c: R },
+      { n: '2', t: 'quirófano en las próximas 24 h', c: A },
+      { n: '4', t: 'solicitudes abiertas', c: A }
+    ];
+    return { kpis: kpis, rows: rows };
+  }
+}
+</script>
+</body>
+</html>
