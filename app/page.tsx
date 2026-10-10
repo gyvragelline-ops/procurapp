@@ -4,17 +4,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { guardarConReintento } from "@/lib/procuracion/guardar";
 import {
-  STAGES_MULTIORGANICO,
-  computePotencialEstado,
-  computeMeEstado,
-  computeCertAuxEstado,
-  computeComMuerteEstado,
-  computeComDonacionEstado,
-  computeLabImagenesEstado,
-  computeMedidasEstado,
-  computeMantenimientoEstado,
-  computeMuestrasEstado,
-  stagesForTipo,
   ME_CAMPO_KEYS,
   METODOS_CERT_AUX,
   CERTIFICADO_CIERRE_KEYS,
@@ -41,14 +30,15 @@ import DocumentacionFotosPanel from "./documentacion-fotos-panel";
 import MedidasPanel from "./medidas-panel";
 import MantenimientoPanel from "./mantenimiento-panel";
 import CultivosPanel from "./cultivos-panel";
-import { estadoEtapaCultivos, type Cultivo } from "@/lib/procuracion/cultivos-calculos";
+import type { Cultivo } from "@/lib/procuracion/cultivos-calculos";
 import QuirofanoPanel from "./quirofano-panel";
 import ChatDonante from "./chat-donante";
 import EtapaFila from "./etapa-fila";
 import FranjaEtapas from "./franja-etapas";
-import { estadoConMarca, type MarcaEtapa } from "@/lib/procuracion/marca-etapa";
+import type { MarcaEtapa } from "@/lib/procuracion/marca-etapa";
+import { estadoCalculadoEtapa, estadoEtapa, etapasVisibles, type DatosEtapas } from "@/lib/procuracion/estado-etapas";
 import { cargarMarcas } from "@/lib/procuracion/marca-etapa-datos";
-import { estadoEtapaJudicial, estadoEtapaQuirofano, type HorarioQuirofano } from "@/lib/procuracion/quirofano-calculos";
+import type { HorarioQuirofano } from "@/lib/procuracion/quirofano-calculos";
 import type { DocumentacionFotoRow } from "@/lib/procuracion/documentacion-fotos";
 import NuevoDonante from "./nuevo-donante";
 
@@ -357,39 +347,35 @@ export default function Home() {
     setDescargaError(null);
   }
 
-  // Estado visible: el calculado, salvo que haya marca manual.
+  // Estados de etapa: misma función que la Base operativa
+  // (lib/procuracion/estado-etapas.ts). La marca manual prevalece.
+  const datosEtapas: DatosEtapas | null = donante
+    ? {
+        donante,
+        judicialAplica,
+        meCampos,
+        certAuxCampos,
+        comMuerteRealizada,
+        comDonacionRealizada,
+        labImagenesCompleto,
+        medidasCompleto,
+        mantenimientoCompleto,
+        muestras,
+        cultivos,
+        horariosQx,
+        fotosJudiciales,
+        etapasGuardadas: etapas,
+        marcas,
+      }
+    : null;
   function getEtapaEstado(key: string): EstadoEtapa | undefined {
-    const m = marcas[key];
-    return m ? estadoConMarca(estadoCalculado(key), m.marca).estado : estadoCalculado(key);
+    return datosEtapas ? estadoEtapa(key, datosEtapas) : etapas[key];
   }
-
   function estadoCalculado(key: string): EstadoEtapa | undefined {
-    if (key === "potencial" && donante) return computePotencialEstado(donante);
-    if (key === "me") return computeMeEstado(meCampos);
-    if (key === "certificacion") return computeCertAuxEstado(certAuxCampos);
-    if (key === "comMuerte") return computeComMuerteEstado(comMuerteRealizada);
-    if (key === "comDonacion") return computeComDonacionEstado(comDonacionRealizada);
-    if (key === "labImagenes") return computeLabImagenesEstado(labImagenesCompleto);
-    if (key === "medidas") return computeMedidasEstado(medidasCompleto);
-    if (key === "mantenimiento") return computeMantenimientoEstado(mantenimientoCompleto);
-    if (key === "muestras") return computeMuestrasEstado(muestras);
-    if (key === "cultivos") return estadoEtapaCultivos(cultivos);
-    if (key === "quirofano") return estadoEtapaQuirofano(horariosQx);
-    if (key === "judicial") return estadoEtapaJudicial(fotosJudiciales);
-    return etapas[key];
+    return datosEtapas ? estadoCalculadoEtapa(key, datosEtapas) : etapas[key];
   }
 
-  const visibleStages = useMemo(() => {
-    const base = stagesForTipo(donante?.tipo_procuracion);
-    const withoutJudicial = base.filter((s) => s.key !== "judicial");
-    if (!judicialAplica) return withoutJudicial;
-    const judicialStage =
-      base.find((s) => s.key === "judicial") ?? STAGES_MULTIORGANICO.find((s) => s.key === "judicial");
-    if (!judicialStage) return withoutJudicial;
-    const withJudicial = [...withoutJudicial];
-    withJudicial.splice(withJudicial.length - 1, 0, judicialStage);
-    return withJudicial;
-  }, [judicialAplica, donante?.tipo_procuracion]);
+  const visibleStages = useMemo(() => etapasVisibles(donante?.tipo_procuracion, judicialAplica), [judicialAplica, donante?.tipo_procuracion]);
 
   function irAEtapa(key: string) {
     setOpenStage(key);

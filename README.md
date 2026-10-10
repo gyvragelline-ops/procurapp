@@ -4,6 +4,13 @@
 > puede leer y escribir. Válido solo para pruebas.
 >
 > Auditoría de ediciones de registros: pendiente (requiere autenticación).
+>
+> **⚠️ Base operativa (`/base`): NO usar con donantes reales** hasta tener
+> autenticación por rol. Muestra datos de VARIOS donantes a la vez y hoy
+> no hay login ni RLS. La entrada pasa por `lib/procuracion/rol.ts` para
+> enchufar la autenticación ahí. El navegador solo tiene la clave pública
+> anon; nunca claves secretas. Para probar: datos simulados de
+> `lib/procuracion/base-demo.ts` (no se escriben en la base).
 
 ## ESTADO AL 01/10 -- proyecto pausado
 
