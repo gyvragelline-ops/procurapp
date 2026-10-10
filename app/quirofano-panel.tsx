@@ -2,49 +2,33 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import {
-  anularEquipo,
-  anularHoraQuirofano,
-  anularMensaje,
-  cargarEquiposYMensajes,
-  crearEquipo,
-  editarEquipo,
-  enviarMensaje,
-  guardarHoraQuirofano,
-} from "@/lib/procuracion/quirofano";
+import { anularEquipo, anularHoraQuirofano, cargarEquipos, crearEquipo, editarEquipo, guardarHoraQuirofano } from "@/lib/procuracion/quirofano";
 import {
   ANESTESISTA,
-  MAX_MENSAJE,
   MEDIOS_AVISO,
   ORGANOS_EQUIPO,
-  ROLES_CHAT,
   equiposVigentes,
   historialHora,
   horaVigente,
-  mensajesOrdenados,
   textoOrganos,
   validarEquipo,
   validarHora,
-  validarMensaje,
   type Anestesista,
   type EquipoQuirofano,
   type HorarioQuirofano,
   type MedioAviso,
-  type MensajeCaso,
   type OrganoEquipo,
-  type RolChat,
 } from "@/lib/procuracion/quirofano-calculos";
 import { Confirmacion, ErrorVisible, aInputLocal, fechaHora, hora, momentoActual } from "./mantenimiento-ui";
 
 const supabase = createClient();
 const ETIQ_ANEST: Record<Anestesista, string> = { si: "Sí", no: "No", sin_confirmar: "Sin confirmar" };
 const ETIQ_MEDIO = Object.fromEntries(MEDIOS_AVISO.map((m) => [m.valor, m.etiqueta])) as Record<MedioAviso, string>;
-const ETIQ_ROL = Object.fromEntries(ROLES_CHAT.map((r) => [r.valor, r.etiqueta])) as Record<RolChat, string>;
 
 // Etapa "Hora de quirófano": SOLO la hora (la carga la Base; cada cambio
-// queda en el historial), el aviso de los equipos (bidireccional, cargado
-// por la Base en nombre del equipo) y, al pie, el chat del caso. Nada de
-// esto genera avisos fuera de la etapa.
+// queda en el historial) y el aviso de los equipos (bidireccional,
+// cargado por la Base en nombre del equipo). Nada de esto genera avisos
+// fuera de la etapa. (El chat vive en la pantalla del donante.)
 export default function QuirofanoPanel({
   donanteId,
   horarios,
@@ -55,18 +39,13 @@ export default function QuirofanoPanel({
   onHorariosChange: (h: HorarioQuirofano[]) => void;
 }) {
   const [equipos, setEquipos] = useState<EquipoQuirofano[]>([]);
-  const [mensajes, setMensajes] = useState<MensajeCaso[]>([]);
   const [errorCarga, setErrorCarga] = useState<string | null>(null);
 
   useEffect(() => {
     let vivo = true;
-    cargarEquiposYMensajes(supabase, donanteId)
-      .then((r) => {
-        if (!vivo) return;
-        setEquipos(r.equipos);
-        setMensajes(r.mensajes);
-      })
-      .catch((e) => vivo && setErrorCarga(e instanceof Error ? e.message : "No se pudieron cargar los equipos y el chat."));
+    cargarEquipos(supabase, donanteId)
+      .then((r) => vivo && setEquipos(r))
+      .catch((e) => vivo && setErrorCarga(e instanceof Error ? e.message : "No se pudieron cargar los equipos."));
     return () => {
       vivo = false;
     };
@@ -78,8 +57,6 @@ export default function QuirofanoPanel({
       <HoraQuirofano donanteId={donanteId} horarios={horarios} onChange={onHorariosChange} />
       <div className="section-label" style={{ marginTop: 14 }}>Aviso de los equipos</div>
       <AvisoEquipos donanteId={donanteId} equipos={equipos} onChange={setEquipos} />
-      <div className="section-label" style={{ marginTop: 14 }}>Comunicación</div>
-      <ChatCaso donanteId={donanteId} mensajes={mensajes} onChange={setMensajes} />
     </div>
   );
 }
@@ -352,95 +329,6 @@ function AvisoEquipos({ donanteId, equipos, onChange }: { donanteId: string; equ
           + Agregar equipo
         </button>
       )}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------
-// Chat del caso (rol elegido a mano; sin avisos fuera de la etapa)
-// ---------------------------------------------------------------------
-function ChatCaso({ donanteId, mensajes, onChange }: { donanteId: string; mensajes: MensajeCaso[]; onChange: (m: MensajeCaso[]) => void }) {
-  const [rol, setRol] = useState<RolChat | null>(null);
-  const [autor, setAutor] = useState("");
-  const [texto, setTexto] = useState("");
-  const [anulandoId, setAnulandoId] = useState<string | null>(null);
-  const [guardando, setGuardando] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function enviar() {
-    setError(null);
-    const v = validarMensaje({ rol, autor, texto });
-    if (!v.ok) return setError(v.error);
-    setGuardando(true);
-    try {
-      const nuevo = await enviarMensaje(supabase, donanteId, v.datos);
-      onChange([...mensajes, nuevo]);
-      setTexto("");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "No se pudo enviar el mensaje.");
-    } finally {
-      setGuardando(false);
-    }
-  }
-
-  async function anular(id: string) {
-    setError(null);
-    setGuardando(true);
-    try {
-      await anularMensaje(supabase, id);
-      onChange(mensajes.map((m) => (m.id === id ? { ...m, anulado: true } : m)));
-      setAnulandoId(null);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "No se pudo anular.");
-    } finally {
-      setGuardando(false);
-    }
-  }
-
-  return (
-    <div>
-      {mensajes.length === 0 && <div className="tiny muted">Sin mensajes.</div>}
-      {mensajesOrdenados(mensajes).map((m) => (
-        <div key={m.id} style={{ padding: "6px 0", borderBottom: "1px solid var(--border-soft)", opacity: m.anulado ? 0.5 : 1 }}>
-          <div className="tiny muted">
-            <strong>{ETIQ_ROL[m.rol]}</strong>
-            {m.autor ? ` · ${m.autor}` : ""} · {fechaHora(m.creado_en)}
-            {m.anulado ? " · anulado" : ""}
-          </div>
-          <div style={{ whiteSpace: "pre-wrap", textDecoration: m.anulado ? "line-through" : undefined }}>{m.texto}</div>
-          {!m.anulado &&
-            (anulandoId === m.id ? (
-              <Confirmacion texto="¿Anular este mensaje? Queda tachado." textoSi="Sí, anular" ocupado={guardando} onSi={() => anular(m.id)} onNo={() => setAnulandoId(null)} />
-            ) : (
-              <button className="btn btn-sm" style={{ fontSize: 11 }} onClick={() => setAnulandoId(m.id)}>
-                Anular
-              </button>
-            ))}
-        </div>
-      ))}
-      <div style={{ marginTop: 8 }}>
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-          {ROLES_CHAT.map((r) => (
-            <button key={r.valor} className={`btn btn-sm ${rol === r.valor ? "btn-accent" : ""}`} style={{ minHeight: 44 }} onClick={() => setRol(r.valor)}>
-              {r.etiqueta}
-            </button>
-          ))}
-          <input className="mini-input" maxLength={80} style={{ width: 140 }} placeholder="Nombre (opcional)" value={autor} onChange={(e) => setAutor(e.target.value)} />
-        </div>
-        <textarea
-          className="mini-input"
-          rows={2}
-          maxLength={MAX_MENSAJE}
-          style={{ width: "100%", marginTop: 6 }}
-          placeholder="Mensaje"
-          value={texto}
-          onChange={(e) => setTexto(e.target.value)}
-        />
-        <ErrorVisible mensaje={error} />
-        <button className="btn btn-sm btn-accent" style={{ minHeight: 44, marginTop: 4 }} disabled={guardando} onClick={enviar}>
-          {guardando ? "Enviando…" : "Enviar"}
-        </button>
-      </div>
     </div>
   );
 }

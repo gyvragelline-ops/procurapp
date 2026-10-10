@@ -6,14 +6,11 @@ import {
   estadoEtapaQuirofano,
   historialHora,
   horaVigente,
-  mensajesOrdenados,
   textoOrganos,
   validarEquipo,
   validarHora,
-  validarMensaje,
   type EquipoQuirofano,
   type HorarioQuirofano,
-  type MensajeCaso,
 } from "../quirofano-calculos.ts";
 import { STAGES_MULTIORGANICO, STRIP_STAGES_MULTIORGANICO } from "../constants.ts";
 
@@ -77,23 +74,6 @@ test("equipos vigentes: en orden de carga; el anulado no aparece", () => {
     creado_en: creado, modificado_en: null, anulado,
   });
   assert.deepEqual(equiposVigentes([e("b", iso(10)), e("a", iso(9)), e("x", iso(8), true)]).map((x) => x.id), ["a", "b"]);
-});
-
-// ---------------------------------------------------------------- chat
-test("chat: rol obligatorio; texto de 1 a 1000 caracteres; autor opcional", () => {
-  assert.deepEqual(validarMensaje({ rol: null, autor: "", texto: "hola" }), { ok: false, error: "Elegí quién escribe (Procurador, Base o Equipo)." });
-  assert.deepEqual(validarMensaje({ rol: "base", autor: "", texto: "   " }), { ok: false, error: "Escribí el mensaje." });
-  assert.equal(validarMensaje({ rol: "base", autor: "", texto: "x".repeat(1001) }).ok, false);
-  assert.deepEqual(validarMensaje({ rol: "equipo", autor: " Riñón Italiano ", texto: " Salimos 15:30 " }), {
-    ok: true, datos: { rol: "equipo", autor: "Riñón Italiano", texto: "Salimos 15:30" },
-  });
-});
-
-test("chat: del más viejo al más nuevo; los anulados se conservan (tachados en pantalla)", () => {
-  const m = (id: string, creado: string, anulado = false): MensajeCaso => ({ id, rol: "base", autor: null, texto: id, creado_en: creado, anulado });
-  assert.deepEqual(mensajesOrdenados([m("c", iso(11)), m("a", iso(9), true), m("b", iso(10))]).map((x) => [x.id, x.anulado]), [
-    ["a", true], ["b", false], ["c", false],
-  ]);
 });
 
 // ---------------------------------------------------------------- etapas

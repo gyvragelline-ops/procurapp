@@ -121,7 +121,7 @@ button {
   border: 1px solid var(--border-soft);
 }
 .status-cell {
-  flex: 1 1 46px;
+  flex: 1 1 52px;
   min-width: 0;
   padding: 9px 4px 8px;
   text-align: center;
@@ -141,7 +141,7 @@ button {
   margin: 0 auto 5px;
 }
 .status-cell .lbl {
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word; /* corta entre palabras ("CERT." / "NEURO"), no en el medio */
   font-size: 8.5px;
   color: var(--text-faint);
   letter-spacing: 0.3px;

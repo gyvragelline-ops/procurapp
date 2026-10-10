@@ -49,6 +49,7 @@ import MantenimientoPanel from "./mantenimiento-panel";
 import CultivosPanel from "./cultivos-panel";
 import { estadoEtapaCultivos, type Cultivo } from "@/lib/procuracion/cultivos-calculos";
 import QuirofanoPanel from "./quirofano-panel";
+import ChatDonante from "./chat-donante";
 import { estadoEtapaJudicial, estadoEtapaQuirofano, type HorarioQuirofano } from "@/lib/procuracion/quirofano-calculos";
 import type { DocumentacionFotoRow } from "@/lib/procuracion/documentacion-fotos";
 import NuevoDonante from "./nuevo-donante";
@@ -514,6 +515,11 @@ export default function Home() {
                 </div>
               </div>
             </div>
+
+            {/* Chat con la Base: botón fijo abajo a la derecha (no tapa la
+                franja de estado); el globito de sin leer es el único aviso
+                permitido fuera de las etapas. */}
+            <ChatDonante key={donante.id} donanteId={donante.id} />
 
             <div className="status-strip">
               {stripStagesForTipo(donante.tipo_procuracion).map((k) => (
