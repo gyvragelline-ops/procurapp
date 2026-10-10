@@ -11,10 +11,10 @@ create table if not exists cultivos (
   modificado_en timestamptz,
   anulado boolean not null default false,
   created_at timestamptz not null default now(),
-  constraint cultivos_tipo_otro_check check ((tipo = 'otro') = (tipo_otro is not null)),
-  constraint cultivos_resultado_check check ((estado = 'pendiente') = (resultado_en is null)),
-  constraint cultivos_positivo_check check (estado = 'positivo' or (germen is null and sensibilidad is null)),
-  constraint cultivos_germen_check check (estado <> 'positivo' or germen is not null)
+  constraint cultivos_otro_con_texto check ((tipo = 'otro') = (tipo_otro is not null)),
+  constraint cultivos_resultado_con_hora check ((estado = 'pendiente') = (resultado_en is null)),
+  constraint cultivos_solo_positivo_con_datos check (estado = 'positivo' or (germen is null and sensibilidad is null)),
+  constraint cultivos_positivo_con_germen check (estado <> 'positivo' or germen is not null)
 );
 create index if not exists cultivos_donante on cultivos (donante_id, tomado_en desc);
 alter table cultivos disable row level security;

@@ -1,9 +1,11 @@
 "use client";
 
-// Fotos de DNI y de Grupo y factor -- mismo patrón compacto de carga
-// que "Laboratorio e imágenes" (botón "Subir" -> Cámara o Galería,
-// miniaturas chicas con cruz para borrar), pero acá son solo 2
-// categorías fijas y sin video (son fotos de documentos).
+// Fotos de documentos -- mismo patrón compacto de carga que "Laboratorio
+// e imágenes" (botón "Subir" -> Cámara o Galería, miniaturas chicas con
+// cruz para borrar), sin video. Por defecto: DNI y Grupo y factor
+// (Documentación). La etapa Intervención judicial lo usa con la foto del
+// precario y la de la autorización del juez, y con "cargó: Procurador /
+// Base" (las dos partes ven las mismas fotos).
 
 import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
@@ -13,6 +15,7 @@ import {
   guardarDocumentacionFoto,
   sincronizarEstadoFotoDoc,
   type DocumentacionFotoRow,
+  type RolFoto,
   type TipoFotoDoc,
 } from "@/lib/procuracion/documentacion-fotos";
 
@@ -21,10 +24,11 @@ const supabase = createClient();
 const MAX_DIM = 1600;
 const TIMEOUT_MS = 45000;
 
-const CATEGORIAS: { valor: TipoFotoDoc; etiqueta: string }[] = [
+const CATEGORIAS_DOC: { valor: TipoFotoDoc; etiqueta: string }[] = [
   { valor: "dni", etiqueta: "Foto de DNI del potencial donante" },
   { valor: "grupo_factor", etiqueta: "Foto de grupo y factor" },
 ];
+const ETIQUETA_ROL: Record<RolFoto, string> = { procurador: "Procurador", base: "Base" };
 
 function comprimirImagen(file: File): Promise<{ base64: string; mediaType: string }> {
   return new Promise((resolve, reject) => {
@@ -77,7 +81,19 @@ function conTimeout<T>(promesa: Promise<T>, mensaje: string): Promise<T> {
 
 type Modo = "foto" | "galeria";
 
-export default function DocumentacionFotosPanel({ donanteId }: { donanteId: string }) {
+export default function DocumentacionFotosPanel({
+  donanteId,
+  categorias = CATEGORIAS_DOC,
+  conRol = false,
+  onFotosChange,
+}: {
+  donanteId: string;
+  categorias?: { valor: TipoFotoDoc; etiqueta: string }[];
+  conRol?: boolean; // pedir quién carga (Procurador / Base)
+  onFotosChange?: (fotos: DocumentacionFotoRow[]) => void; // para el estado de la etapa
+}) {
+  const tipos = categorias.map((c) => c.valor);
+  const [rol, setRol] = useState<RolFoto | null>(null);
   const camaraInputRef = useRef<HTMLInputElement>(null);
   const galeriaInputRef = useRef<HTMLInputElement>(null);
 
@@ -94,13 +110,21 @@ export default function DocumentacionFotosPanel({ donanteId }: { donanteId: stri
       if (!vivo) return;
       setFotos(f);
       setCargado(true);
+      onFotosChange?.(f);
     })();
     return () => {
       vivo = false;
     };
+    // onFotosChange es un aviso al padre; recargar solo si cambia el donante.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [donanteId]);
 
   function iniciarCarga(tipo: TipoFotoDoc, modo: Modo) {
+    if (conRol && !rol) {
+      setError("Elegí quién carga la foto (Procurador o Base).");
+      return;
+    }
+    setError(null);
     setCategoriaActiva(tipo);
     if (modo === "foto") camaraInputRef.current?.click();
     else galeriaInputRef.current?.click();
@@ -119,7 +143,7 @@ export default function DocumentacionFotosPanel({ donanteId }: { donanteId: stri
     if (uploadError) throw new Error(`No se pudo subir el archivo: ${uploadError.message}`);
     const { data: pub } = supabase.storage.from("estudios-imagenes").getPublicUrl(path);
 
-    await guardarDocumentacionFoto(supabase, donanteId, tipo, pub.publicUrl, contentType);
+    await guardarDocumentacionFoto(supabase, donanteId, tipo, pub.publicUrl, contentType, conRol ? rol : null);
     await sincronizarEstadoFotoDoc(supabase, donanteId, tipo, true);
   }
 
@@ -130,7 +154,9 @@ export default function DocumentacionFotosPanel({ donanteId }: { donanteId: stri
     setProcesando(true);
     try {
       await conTimeout(subir(file, tipo), "La carga está tardando demasiado -- puede haberse cortado la conexión. Probá de nuevo.");
-      setFotos(await cargarDocumentacionFotos(supabase, donanteId));
+      const nuevas = await cargarDocumentacionFotos(supabase, donanteId);
+      setFotos(nuevas);
+      onFotosChange?.(nuevas);
     } catch (e) {
       console.error("[DocumentacionFotosPanel] Error al cargar foto:", e);
       setError(e instanceof Error ? e.message : "Error inesperado al procesar la foto.");
@@ -150,6 +176,7 @@ export default function DocumentacionFotosPanel({ donanteId }: { donanteId: stri
     }
     const restantes = fotos.filter((f) => f.id !== foto.id);
     setFotos(restantes);
+    onFotosChange?.(restantes);
     const quedanDeEsteTipo = restantes.some((f) => f.tipo === tipo);
     try {
       await sincronizarEstadoFotoDoc(supabase, donanteId, tipo, quedanDeEsteTipo);
@@ -163,8 +190,8 @@ export default function DocumentacionFotosPanel({ donanteId }: { donanteId: stri
   }
 
   const porTipo = new Map<TipoFotoDoc, DocumentacionFotoRow[]>();
-  for (const c of CATEGORIAS) porTipo.set(c.valor, []);
-  for (const f of fotos) porTipo.get(f.tipo)?.push(f);
+  for (const c of categorias) porTipo.set(c.valor, []);
+  for (const f of fotos) if (tipos.includes(f.tipo)) porTipo.get(f.tipo)?.push(f);
 
   return (
     <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--border-soft)" }}>
@@ -196,7 +223,18 @@ export default function DocumentacionFotosPanel({ donanteId }: { donanteId: stri
         </div>
       )}
 
-      {CATEGORIAS.map((c) => (
+      {conRol && (
+        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
+          <span className="tiny">Carga:</span>
+          {(["procurador", "base"] as const).map((r) => (
+            <button key={r} type="button" className={`btn btn-sm ${rol === r ? "btn-accent" : ""}`} style={{ minHeight: 44 }} onClick={() => setRol(r)}>
+              {ETIQUETA_ROL[r]}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {categorias.map((c) => (
         <FilaFoto
           key={c.valor}
           etiqueta={c.etiqueta}
@@ -274,7 +312,14 @@ function FilaFoto({
       ) : (
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
           {fotos.map((f) => (
-            <Miniatura key={f.id} foto={f} onBorrar={() => onBorrar(f)} />
+            <div key={f.id} style={{ textAlign: "center" }}>
+              <Miniatura foto={f} onBorrar={() => onBorrar(f)} />
+              {f.cargado_por_rol && (
+                <div className="tiny muted" style={{ fontSize: 9, marginTop: 2 }}>
+                  {ETIQUETA_ROL[f.cargado_por_rol]}
+                </div>
+              )}
+            </div>
           ))}
         </div>
       )}

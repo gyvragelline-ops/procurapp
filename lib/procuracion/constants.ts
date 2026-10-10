@@ -14,9 +14,8 @@ export const STAGES_MULTIORGANICO: { key: string; label: string }[] = [
   { key: "cultivos", label: "Cultivos" },
   { key: "documentacion", label: "Documentación" },
   { key: "mantenimiento", label: "Mantenimiento" },
-  { key: "organos", label: "Evaluación multiorgánica" },
   { key: "judicial", label: "Intervención judicial" },
-  { key: "quirofano", label: "Quirófano" },
+  { key: "quirofano", label: "Hora de quirófano" },
 ];
 
 export const STAGES_CORNEAS: { key: string; label: string }[] = [
@@ -45,7 +44,6 @@ export const STRIP_STAGES_MULTIORGANICO = [
   "cultivos",
   "documentacion",
   "mantenimiento",
-  "organos",
   "quirofano",
 ];
 
@@ -66,7 +64,6 @@ export const STRIP_LABELS: Record<string, string> = {
   cultivos: "Cult",
   documentacion: "Doc",
   mantenimiento: "Mant",
-  organos: "Órg",
   quirofano: "Qx",
   entregaCorneas: "Córn",
 };
@@ -76,8 +73,7 @@ export const STRIP_LABELS: Record<string, string> = {
  * Primer borrador de mapeo semántico -- no hay una relación formal en el
  * schema todavía entre etapa_key y planilla_key, así que esto es lo que
  * se ajustará a medida que el flujo real de captura se defina.
- * 'muestras' y 'organos' no usan campo_mapeo: tienen tabla propia
- * (muestras, organos) con su propio modelo de datos.
+ * 'muestras' no usa campo_mapeo: tiene tabla propia (muestras).
  */
 export const ETAPA_PLANILLAS: Record<string, string[]> = {
   potencial: ["op2_p1"],
@@ -91,7 +87,6 @@ export const ETAPA_PLANILLAS: Record<string, string[]> = {
   documentacion: ["doppler"],
   judicial: [],
   mantenimiento: ["op2_p2"],
-  organos: [],
   quirofano: ["op2_p5"],
 };
 

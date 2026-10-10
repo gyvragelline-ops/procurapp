@@ -1,13 +1,17 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { guardarConReintento } from "./guardar";
 
-export type TipoFotoDoc = "dni" | "grupo_factor";
+// dni / grupo_factor: etapa Documentación. precario / autorizacion_juez:
+// etapa Intervención judicial (las carga el procurador o la Base).
+export type TipoFotoDoc = "dni" | "grupo_factor" | "precario" | "autorizacion_juez";
+export type RolFoto = "procurador" | "base";
 
 export type DocumentacionFotoRow = {
   id: string;
   tipo: TipoFotoDoc;
   archivo_url: string;
   mime_type: string | null;
+  cargado_por_rol: RolFoto | null;
   created_at: string;
 };
 
@@ -19,7 +23,8 @@ export async function guardarDocumentacionFoto(
   donanteId: string,
   tipo: TipoFotoDoc,
   archivoUrl: string,
-  mimeType: string
+  mimeType: string,
+  rol: RolFoto | null = null
 ): Promise<void> {
   const r = await guardarConReintento(() =>
     supabase.from("documentacion_fotos").insert({
@@ -27,6 +32,7 @@ export async function guardarDocumentacionFoto(
       tipo,
       archivo_url: archivoUrl,
       mime_type: mimeType,
+      ...(rol ? { cargado_por_rol: rol } : {}),
     })
   );
   if (!r.ok) throw new Error(r.mensaje);
@@ -35,7 +41,7 @@ export async function guardarDocumentacionFoto(
 export async function cargarDocumentacionFotos(supabase: SupabaseClient, donanteId: string): Promise<DocumentacionFotoRow[]> {
   const { data } = await supabase
     .from("documentacion_fotos")
-    .select("id, tipo, archivo_url, mime_type, created_at")
+    .select("id, tipo, archivo_url, mime_type, cargado_por_rol, created_at")
     .eq("donante_id", donanteId)
     .order("created_at", { ascending: false });
   return (data as DocumentacionFotoRow[]) ?? [];
@@ -79,6 +85,9 @@ export async function sincronizarEstadoFotoDoc(
   tipo: TipoFotoDoc,
   hayFotos: boolean
 ): Promise<void> {
+  // Solo las fotos de Documentación tienen chip en esa pestaña; las de
+  // Intervención judicial calculan el estado de su etapa desde las fotos.
+  if (tipo !== "dni" && tipo !== "grupo_factor") return;
   const itemKey = tipo === "dni" ? "foto_dni" : "foto_grupo_factor";
   const r = hayFotos
     ? await guardarConReintento(() =>

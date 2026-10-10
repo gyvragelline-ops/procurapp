@@ -9,7 +9,6 @@ import {
   dotClass,
   chipClass,
   stageLabel,
-  humanizeCampo,
   computePotencialEstado,
   computeMeEstado,
   computeCertAuxEstado,
@@ -29,10 +28,10 @@ import {
   type MeCampos,
   type CertAuxCampos,
 } from "@/lib/procuracion/constants";
-import { loadPanel, ORGANO_EMOJI, type PanelContent } from "@/lib/procuracion/panels";
+import { loadPanel, type PanelContent } from "@/lib/procuracion/panels";
 import { MUESTRAS_PAQUETES, generarMuestrasPdfs, combinarMuestrasPdfs, tieneDatosMinimos, firmaDatosBase } from "@/lib/procuracion/muestras-pdf";
 import { MuestraIconRow } from "./muestra-icons";
-import type { Donante, Familiar, EtapaEstadoRow, MuestraRow, OrganoRow, PlanillaGeneradaRow } from "@/lib/procuracion/types";
+import type { Donante, Familiar, EtapaEstadoRow, MuestraRow, PlanillaGeneradaRow } from "@/lib/procuracion/types";
 import PotencialPanel from "./potencial-panel";
 import MePanel from "./me-panel";
 import CertAuxPanel from "./cert-aux-panel";
@@ -49,6 +48,9 @@ import MedidasPanel from "./medidas-panel";
 import MantenimientoPanel from "./mantenimiento-panel";
 import CultivosPanel from "./cultivos-panel";
 import { estadoEtapaCultivos, type Cultivo } from "@/lib/procuracion/cultivos-calculos";
+import QuirofanoPanel from "./quirofano-panel";
+import { estadoEtapaJudicial, estadoEtapaQuirofano, type HorarioQuirofano } from "@/lib/procuracion/quirofano-calculos";
+import type { DocumentacionFotoRow } from "@/lib/procuracion/documentacion-fotos";
 import NuevoDonante from "./nuevo-donante";
 
 const EMPTY_ME_CAMPOS: MeCampos = Object.fromEntries(ME_CAMPO_KEYS.map((k) => [k, null]));
@@ -57,9 +59,13 @@ const EMPTY_CERT_AUX_CAMPOS: CertAuxCampos = Object.fromEntries(CERT_AUX_KEYS.ma
 
 const supabase = createClient();
 
-type StageData =
-  | { kind: "panel"; loading: boolean; content?: PanelContent }
-  | { kind: "organos"; loading: boolean; organos?: OrganoRow[] };
+type StageData = { kind: "panel"; loading: boolean; content?: PanelContent };
+
+// Fotos de la etapa Intervención judicial (mismo flujo que Documentación).
+const CATEGORIAS_JUDICIAL: { valor: "precario" | "autorizacion_juez"; etiqueta: string }[] = [
+  { valor: "precario", etiqueta: "Foto del precario" },
+  { valor: "autorizacion_juez", etiqueta: "Foto de la autorización del juez" },
+];
 
 export default function Home() {
   const [donantes, setDonantes] = useState<Donante[] | null>(null);
@@ -79,6 +85,8 @@ export default function Home() {
   const [mantenimientoCompleto, setMantenimientoCompleto] = useState(false);
   const [muestras, setMuestras] = useState<MuestraRow[]>([]);
   const [cultivos, setCultivos] = useState<Cultivo[]>([]);
+  const [horariosQx, setHorariosQx] = useState<HorarioQuirofano[]>([]);
+  const [fotosJudiciales, setFotosJudiciales] = useState<{ tipo: string }[]>([]);
   const [planillasGeneradas, setPlanillasGeneradas] = useState<Record<string, PlanillaGeneradaRow>>({});
   const [generandoPdfs, setGenerandoPdfs] = useState(false);
   const [combinandoPdfs, setCombinandoPdfs] = useState(false);
@@ -198,7 +206,9 @@ export default function Home() {
         .select("id, tipo, tipo_otro, tomado_en, estado, germen, sensibilidad, resultado_en, modificado_en, anulado")
         .eq("donante_id", selectedId)
         .order("tomado_en", { ascending: false }),
-    ]).then(([donanteRes, familiarRes, etapasRes, judicialRes, meRes, certificadoCierreRes, dopplerRes, certAuxRes, comMuerteRes, comDonacionRes, labImagenesRes, medidasRes, mantenimientoRes, planillasRes, muestrasRes, cultivosRes]) => {
+      supabase.from("quirofano_horarios").select("id, hora, registrado_en, anulado").eq("donante_id", selectedId).order("registrado_en"),
+      supabase.from("documentacion_fotos").select("tipo").eq("donante_id", selectedId).in("tipo", ["precario", "autorizacion_juez"]),
+    ]).then(([donanteRes, familiarRes, etapasRes, judicialRes, meRes, certificadoCierreRes, dopplerRes, certAuxRes, comMuerteRes, comDonacionRes, labImagenesRes, medidasRes, mantenimientoRes, planillasRes, muestrasRes, cultivosRes, horariosQxRes, fotosJudicialesRes]) => {
       const donanteData = (donanteRes.data as Donante) ?? null;
       setDonante(donanteData);
       setFamiliar((familiarRes.data as Familiar) ?? null);
@@ -241,6 +251,8 @@ export default function Home() {
       setPlanillasGeneradas(planillasMap);
       setMuestras((muestrasRes.data as MuestraRow[]) ?? []);
       setCultivos((cultivosRes.data as Cultivo[]) ?? []);
+      setHorariosQx((horariosQxRes.data as HorarioQuirofano[]) ?? []);
+      setFotosJudiciales((fotosJudicialesRes.data as { tipo: string }[]) ?? []);
       setLoadingDetail(false);
     });
   }, [selectedId]);
@@ -348,6 +360,8 @@ export default function Home() {
     if (key === "mantenimiento") return computeMantenimientoEstado(mantenimientoCompleto);
     if (key === "muestras") return computeMuestrasEstado(muestras);
     if (key === "cultivos") return estadoEtapaCultivos(cultivos);
+    if (key === "quirofano") return estadoEtapaQuirofano(horariosQx);
+    if (key === "judicial") return estadoEtapaJudicial(fotosJudiciales);
     return etapas[key];
   }
 
@@ -385,23 +399,15 @@ export default function Home() {
       key === "labImagenes" ||
       key === "cultivos" ||
       key === "mantenimiento" ||
+      key === "judicial" ||
+      key === "quirofano" ||
       stageData[key] ||
       !donante
     )
       return;
 
-    if (key === "organos") {
-      setStageData((s) => ({ ...s, [key]: { kind: "organos", loading: true } }));
-      const { data } = await supabase
-        .from("organos")
-        .select("organo_key, pct, labs, imagenes, faltante")
-        .eq("donante_id", donante.id);
-      setStageData((s) => ({ ...s, [key]: { kind: "organos", loading: false, organos: (data as OrganoRow[]) ?? [] } }));
-      return;
-    }
-
     setStageData((s) => ({ ...s, [key]: { kind: "panel", loading: true } }));
-    const content = await loadPanel(supabase, key, donante, familiar, etapas);
+    const content = await loadPanel(supabase, key, donante);
     setStageData((s) => ({ ...s, [key]: { kind: "panel", loading: false, content } }));
   }
 
@@ -748,6 +754,19 @@ export default function Home() {
 
                         {s.key === "cultivos" && donante && <CultivosPanel donanteId={donante.id} cultivos={cultivos} onChange={setCultivos} />}
 
+                        {s.key === "judicial" && donante && (
+                          <DocumentacionFotosPanel
+                            donanteId={donante.id}
+                            categorias={CATEGORIAS_JUDICIAL}
+                            conRol
+                            onFotosChange={(f: DocumentacionFotoRow[]) => setFotosJudiciales(f.filter((x) => x.tipo === "precario" || x.tipo === "autorizacion_juez"))}
+                          />
+                        )}
+
+                        {s.key === "quirofano" && donante && (
+                          <QuirofanoPanel donanteId={donante.id} horarios={horariosQx} onHorariosChange={setHorariosQx} />
+                        )}
+
                         {s.key === "labImagenes" && donante && (
                           <>
                             <LabImagenesCompleto
@@ -759,24 +778,6 @@ export default function Home() {
                           </>
                         )}
 
-                        {data?.kind === "organos" && !data.loading && data.organos && (
-                          <>
-                            {data.organos.length === 0 && <div className="tiny">Sin datos de órganos cargados todavía.</div>}
-                            {data.organos.map((o) => (
-                              <div className="field-row" key={o.organo_key}>
-                                <span className="field-label">
-                                  {ORGANO_EMOJI[o.organo_key] ?? ""} {humanizeCampo(o.organo_key)}
-                                </span>
-                                <span className="field-value">{o.pct}% información</span>
-                              </div>
-                            ))}
-                            {data.organos.length > 0 && (
-                              <div className="tiny" style={{ marginTop: 8 }}>
-                                Porcentaje de completitud de información — no representa aptitud del órgano.
-                              </div>
-                            )}
-                          </>
-                        )}
                       </div>
                     )}
                   </div>

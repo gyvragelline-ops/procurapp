@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Donante, Familiar } from "./types";
-import { humanizeCampo, type EstadoEtapa } from "./constants";
+import { humanizeCampo } from "./constants";
 
 export type ChipTone = "green" | "amber" | "red" | "gray";
 export type PanelRow = {
@@ -59,44 +59,7 @@ async function getDocEstado(supabase: SupabaseClient, donanteId: string, categor
   return (data as { item_key: string; estado: string | null; meta: Record<string, unknown> | null }[]) ?? [];
 }
 
-async function getCampos(
-  supabase: SupabaseClient,
-  donanteId: string,
-  planillaKey: string,
-  campos: string[],
-  donante: Donante,
-  familiar: Familiar | null
-) {
-  const [{ data: mapeo }, { data: valores }] = await Promise.all([
-    supabase
-      .from("campo_mapeo")
-      .select("campo_pdf, fuente_canonica")
-      .eq("planilla_key", planillaKey)
-      .in("campo_pdf", campos),
-    supabase
-      .from("planilla_valores")
-      .select("campo_pdf, valor")
-      .eq("donante_id", donanteId)
-      .eq("planilla_key", planillaKey)
-      .in("campo_pdf", campos),
-  ]);
-  const valMap = new Map(((valores as { campo_pdf: string; valor: string | null }[]) ?? []).map((v) => [v.campo_pdf, v.valor]));
-  const result: Record<string, string | null> = {};
-  ((mapeo as { campo_pdf: string; fuente_canonica: string | null }[]) ?? []).forEach((m) => {
-    result[m.campo_pdf] = m.fuente_canonica
-      ? resolveCanonico(m.fuente_canonica, donante, familiar)
-      : (valMap.get(m.campo_pdf) ?? null);
-  });
-  return result;
-}
-
-export async function loadPanel(
-  supabase: SupabaseClient,
-  key: string,
-  donante: Donante,
-  familiar: Familiar | null,
-  etapas: Record<string, EstadoEtapa>
-): Promise<PanelContent> {
+export async function loadPanel(supabase: SupabaseClient, key: string, donante: Donante): Promise<PanelContent> {
   const donanteId = donante.id;
 
   if (key === "potencial") {
@@ -117,20 +80,6 @@ export async function loadPanel(
     };
   }
 
-  if (key === "judicial") {
-    const items = await getDocEstado(supabase, donanteId, "judicial");
-    const foto = items.find((r) => r.item_key === "foto_precario");
-    const auth = items.find((r) => r.item_key === "autorizacion");
-    return {
-      rows: [
-        { label: "Foto del precario", chip: chipFromEstado(foto?.estado, { text: "Pendiente", tone: "amber" }) },
-        { label: "Autorización del juez", chip: chipFromEstado(auth?.estado, { text: "Pendiente", tone: "amber" }) },
-      ],
-      note: "La autorización del juez la gestiona y registra Base Operativa.",
-    };
-  }
-
-
   if (key === "documentacion") {
     // Foto de DNI / Foto de grupo y factor ya NO se listan acá -- tienen
     // su propio bloque con carga real (DocumentacionFotosPanel, ver
@@ -147,17 +96,6 @@ export async function loadPanel(
     return {
       rows: [],
       note: "Panel de Entrega de córneas -- contenido a definir en una próxima iteración.",
-    };
-  }
-
-  if (key === "quirofano") {
-    const campos = await getCampos(supabase, donanteId, "op2_p5", ["indicaciones_medicas"], donante, familiar);
-    return {
-      rows: [
-        { label: "Horario informado por Base", value: null },
-        { label: "Indicaciones médicas (OP2)", value: campos.indicaciones_medicas },
-      ],
-      note: "Coordinación de horario con Base Operativa: sin integración todavía.",
     };
   }
 
