@@ -5,8 +5,6 @@ import { createClient } from "@/lib/supabase/client";
 import { guardarConReintento } from "@/lib/procuracion/guardar";
 import {
   STAGES_MULTIORGANICO,
-  chipClass,
-  stageLabel,
   computePotencialEstado,
   computeMeEstado,
   computeCertAuxEstado,
@@ -47,7 +45,7 @@ import CultivosPanel from "./cultivos-panel";
 import { estadoEtapaCultivos, type Cultivo } from "@/lib/procuracion/cultivos-calculos";
 import QuirofanoPanel from "./quirofano-panel";
 import ChatDonante from "./chat-donante";
-import MarcaEtapaControl from "./marca-etapa-control";
+import EtapaFila from "./etapa-fila";
 import FranjaEtapas from "./franja-etapas";
 import { estadoConMarca, type MarcaEtapa } from "@/lib/procuracion/marca-etapa";
 import { cargarMarcas } from "@/lib/procuracion/marca-etapa-datos";
@@ -545,43 +543,28 @@ export default function Home() {
             </div>
             <div className="stage-rail">
               {visibleStages.map((s, idx) => {
-                const st = getEtapaEstado(s.key);
-                const open = openStage === s.key;
-                const num = idx + 1 < 10 ? "0" + (idx + 1) : String(idx + 1);
                 const data = stageData[s.key];
                 return (
-                  <div key={s.key} id={`etapa-${s.key}`}>
-                    <div
-                      className={`stage-item ${st === "green" ? "done" : ""} ${
-                        st === "amber" || st === "red" ? "attn" : ""
-                      } ${open ? "open" : ""}`}
-                      onClick={() => handleOpenStage(s.key)}
-                    >
-                      <div className="stage-num">{num}</div>
-                      <div className="stage-name">{s.label}</div>
-                      <span className={`chip ${chipClass(st)}`}>{stageLabel(st)}</span>
-                    </div>
-
-                    {open && (
-                      <div className="stage-panel">
-                        {donante && (
-                          <MarcaEtapaControl
-                            donanteId={donante.id}
-                            etapaKey={s.key}
-                            etiqueta={s.label}
-                            calculado={estadoCalculado(s.key)}
-                            marca={marcas[s.key]}
-                            disponible={marcasDisponibles}
-                            onChange={(m) =>
-                              setMarcas((prev) => {
-                                const sig = { ...prev };
-                                if (m) sig[s.key] = m;
-                                else delete sig[s.key];
-                                return sig;
-                              })
-                            }
-                          />
-                        )}
+                  // Contenedor común: encabezado + contenido + marca manual al final.
+                  <EtapaFila
+                    key={s.key}
+                    etapa={s}
+                    numero={idx + 1}
+                    donanteId={donante.id}
+                    calculado={estadoCalculado(s.key)}
+                    marca={marcas[s.key]}
+                    marcasDisponibles={marcasDisponibles}
+                    abierta={openStage === s.key}
+                    onAlternar={() => handleOpenStage(s.key)}
+                    onMarca={(m) =>
+                      setMarcas((prev) => {
+                        const sig = { ...prev };
+                        if (m) sig[s.key] = m;
+                        else delete sig[s.key];
+                        return sig;
+                      })
+                    }
+                  >
                         {s.key === "potencial" && donante && (
                           <PotencialPanel
                             donante={donante}
@@ -811,10 +794,7 @@ export default function Home() {
                             <ImagenesVideosPanel donanteId={donante.id} />
                           </>
                         )}
-
-                      </div>
-                    )}
-                  </div>
+                  </EtapaFila>
                 );
               })}
             </div>
