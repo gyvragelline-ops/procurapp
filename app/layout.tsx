@@ -1,26 +1,35 @@
 import type { Metadata, Viewport } from "next";
-import { Space_Grotesk, Inter, IBM_Plex_Mono } from "next/font/google";
+import localFont from "next/font/local";
 import SwRegister from "./sw-register";
 import SubidasVideoProvider from "./subidas-video-context";
 import SubidasVideoIndicator from "./subidas-video-indicator";
 import "./globals.css";
 
-const spaceGrotesk = Space_Grotesk({
+// Tipografías guardadas en el repositorio (app/fonts, subconjunto latino,
+// los mismos archivos que servía Google Fonts): el build no baja nada de
+// la red.
+const spaceGrotesk = localFont({
+  src: "./fonts/space-grotesk-latin-var.woff2",
+  weight: "500 700",
   variable: "--font-space-grotesk",
-  weight: ["500", "600", "700"],
-  subsets: ["latin"],
+  display: "swap",
 });
 
-const inter = Inter({
+const inter = localFont({
+  src: "./fonts/inter-latin-var.woff2",
+  weight: "400 700",
   variable: "--font-inter",
-  weight: ["400", "500", "600", "700"],
-  subsets: ["latin"],
+  display: "swap",
 });
 
-const ibmPlexMono = IBM_Plex_Mono({
+const ibmPlexMono = localFont({
+  src: [
+    { path: "./fonts/ibm-plex-mono-latin-400.woff2", weight: "400", style: "normal" },
+    { path: "./fonts/ibm-plex-mono-latin-500.woff2", weight: "500", style: "normal" },
+    { path: "./fonts/ibm-plex-mono-latin-600.woff2", weight: "600", style: "normal" },
+  ],
   variable: "--font-ibm-plex-mono",
-  weight: ["400", "500", "600"],
-  subsets: ["latin"],
+  display: "swap",
 });
 
 export const metadata: Metadata = {

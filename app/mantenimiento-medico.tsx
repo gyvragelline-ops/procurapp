@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { IBM_Plex_Sans } from "next/font/google";
+import localFont from "next/font/local";
 import type { Donante } from "@/lib/procuracion/types";
 import type { ConfigMantenimiento, RegistroMantenimiento } from "@/lib/procuracion/mantenimiento";
 import type { ValorLaboratorio } from "@/lib/procuracion/laboratorio-valores";
@@ -59,7 +59,8 @@ import MantenimientoInfusiones from "./mantenimiento-infusiones";
 import { PedirPeso, hora, num } from "./mantenimiento-ui";
 import styles from "./mantenimiento-medico.module.css";
 
-const plexSans = IBM_Plex_Sans({ subsets: ["latin"], weight: ["400", "600"], variable: "--font-plex-sans", display: "swap" });
+// IBM Plex Sans guardada en el repositorio (sin descarga en el build).
+const plexSans = localFont({ src: "./fonts/ibm-plex-sans-latin-var.woff2", weight: "400 600", variable: "--font-plex-sans", display: "swap" });
 
 const CLASE_COLOR = { verde: styles.ok, amarillo: styles.fuera, rojo: styles.critico, sin_dato: styles.sinDato } as const;
 
