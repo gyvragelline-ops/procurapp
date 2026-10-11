@@ -234,8 +234,8 @@ export function seccionMedidas(d: ExpedienteDatos, numero: string): ContenidoSec
 export const LAB_POR_SISTEMA: { titulo: string; claves: string[] }[] = [
   { titulo: "Hemodinámico", claves: ["troponina", "cpk_mb"] },
   { titulo: "Respiratorio", claves: ["ph", "pao2", "pafi"] },
-  { titulo: "Renal", claves: ["urea", "creatinina", "osm_serica", "osm_urinaria", "densidad_urinaria", "sedimento"] },
-  { titulo: "Metabólico", claves: ["na", "k", "glucemia", "amilasa"] },
+  { titulo: "Renal", claves: ["urea", "creatinina", "osm_serica", "osm_urinaria", "densidad_urinaria", "sedimento", "proteinuria"] },
+  { titulo: "Metabólico", claves: ["na", "k", "glucemia", "amilasa", "lipasa"] },
   { titulo: "Hepático y hematológico", claves: ["tgo", "tgp", "bili_total", "bili_directa", "fal", "ggt", "tp", "rin", "kptt", "fibrinogeno", "hb", "hto", "gb", "plaquetas"] },
 ];
 const PARAMETROS = new Map(SISTEMAS.flatMap((s) => s.parametros.map((x) => [x.clave, x] as const)));

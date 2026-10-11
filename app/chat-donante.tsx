@@ -18,6 +18,7 @@ import {
   type RolChat,
 } from "@/lib/procuracion/chat-calculos";
 import { ErrorVisible, fechaHora } from "./mantenimiento-ui";
+import { EVENTO_PANEL, avisarPanelAbierto } from "./solicitudes-donante";
 
 const supabase = createClient();
 const CONSULTA_MS = 10_000; // mientras la pestaña está visible
@@ -133,6 +134,15 @@ export default function ChatDonante({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [donanteId, mostrarAviso]);
 
+  // Abrir "Pedidos" cierra el chat (no se superponen).
+  useEffect(() => {
+    const otroPanel = (e: Event) => {
+      if ((e as CustomEvent).detail !== "chat") setAbierto(false);
+    };
+    window.addEventListener(EVENTO_PANEL, otroPanel);
+    return () => window.removeEventListener(EVENTO_PANEL, otroPanel);
+  }, []);
+
   // Con el chat abierto, bajar al último mensaje.
   useEffect(() => {
     if (abierto) finRef.current?.scrollIntoView({ block: "end" });
@@ -146,7 +156,8 @@ export default function ChatDonante({
   function alternar() {
     marcarLeido(mensajes);
     setAviso(null);
-    setAbierto((a) => !a);
+    if (!abierto) avisarPanelAbierto("chat");
+    setAbierto(!abierto);
   }
   function elegirRol(r: RolChat) {
     setMiRol(r);

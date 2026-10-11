@@ -16,6 +16,7 @@ import { crearEquipo, guardarHoraQuirofano } from "./quirofano";
 import { subirFotoDocumentacion } from "./subir-foto-doc";
 import type { Iniciales } from "./base-iniciales";
 import type { Familiar } from "./base-expediente-etapas";
+import { lineaBaseValida } from "./base-nombre";
 
 // Base operativa: acceso a datos. Lee las MISMAS tablas que el resto de la
 // app (no duplica datos). Escrituras con guardarConReintento: si fallan,
@@ -34,6 +35,8 @@ const SQL_DE_COLUMNA: Record<string, string> = { procurador_nombre: "handoff/bas
 const avisoColumnas = (faltan: string[]) => `Falta aplicar SQL: ${faltan.map((c) => `donantes.${c} (${SQL_DE_COLUMNA[c]})`).join(", ")}. Se muestra lo que hay.`;
 const AVISO_INICIALES = "No se pudieron cargar las iniciales: se muestra «—».";
 const CATEGORIAS_ESTADO = ["judicial", "certificacion", "comMuerte", "comDonacion", "labImagenes", "medidas", "mantenimiento"];
+// Ninguna acción de la Base se graba sin el nombre de quien la hace.
+const SIN_NOMBRE = "No se guardó: falta tu nombre (se pide una vez y queda en este dispositivo).";
 const AVISO_SQL = "Falta aplicar el SQL de la Base operativa (handoff/base_operativa.sql): se muestra lo que hay.";
 
 type DonanteFila = DonanteExportacion & { servicio: string | null };
@@ -260,6 +263,7 @@ export function fuenteSupabase(supabase: SupabaseClient, opciones: { iniciales?:
     enviarMensaje: (donanteId, datos) => enviarMensaje(supabase, donanteId, datos),
 
     async registrarEnLinea(donanteId, texto) {
+      if (!lineaBaseValida(texto)) throw new Error(SIN_NOMBRE);
       const r = await guardarConReintento(() => supabase.from("timeline_eventos").insert({ donante_id: donanteId, texto }));
       if (!r.ok) throw new Error(r.mensaje);
     },
@@ -306,6 +310,7 @@ export function fuenteSupabase(supabase: SupabaseClient, opciones: { iniciales?:
     },
 
     async cambiarEstadoProtocolo(donanteId, estado, textoLinea) {
+      if (!lineaBaseValida(textoLinea)) throw new Error(SIN_NOMBRE);
       const r = await guardarConReintento(() =>
         supabase.from("donantes").update({ estado_general: estado, updated_at: new Date().toISOString() }).eq("id", donanteId)
       );

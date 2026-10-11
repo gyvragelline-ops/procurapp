@@ -32,6 +32,7 @@ import { ANESTESISTA, MEDIOS_AVISO, ORGANOS_EQUIPO, validarEquipo, validarHora, 
 import SeccionTarjeta, { ContenidoCompacto, FilaCompacta, type Acciones } from "./seccion";
 import { svgAPng, nombreArchivo } from "./compartir";
 import { COLOR, colorEtapa, dosCifras, horaCorta, hhmm, leerNombre, textoEstadoEtapa } from "./ui";
+import { useNombre } from "./nombre-base";
 import styles from "./base.module.css";
 
 const quien = () => leerNombre().trim();
@@ -142,11 +143,11 @@ function MantenimientoVivo({ grilla, ahora, idGraficas }: { grilla: FilaGrilla[]
 }
 
 // ------------------------------------------------- 12 judicial (Base)
-function ControlesJudicial({ datos, fuente, donanteId, accion, numero }: { datos: ExpedienteDatos; fuente: FuenteBase; donanteId: string; accion: (fn: () => Promise<void>, linea: string) => Promise<void>; numero: string }) {
+function ControlesJudicial({ datos, fuente, donanteId, accion, numero }: { datos: ExpedienteDatos; fuente: FuenteBase; donanteId: string; accion: (fn: () => Promise<void>, linea: () => string) => Promise<boolean>; numero: string }) {
   const vigente = autorizacionVigente(datos.autorizacionJudicial ?? []);
   const disponible = datos.autorizacionJudicial !== null;
   const ref = useRef<HTMLInputElement>(null);
-  const linea = (t: string) => `Base · ${quien() || "sin nombre"} · ${t} (${numero} Intervención judicial, ${hhmm(new Date().toISOString())})`;
+  const linea = (t: string) => () => `Base · ${quien()} · ${t} (${numero} Intervención judicial, ${hhmm(new Date().toISOString())})`;
   return (
     <div className={`${styles.cardFila} ${styles.renglon} ${styles.noImprimir}`}>
       <span style={{ fontWeight: 600 }}>Autorizado:</span>
@@ -181,7 +182,7 @@ function ControlesJudicial({ datos, fuente, donanteId, accion, numero }: { datos
 }
 
 // ------------------------------------- 13 órganos y quirófano (Base)
-function ControlesQuirofano({ datos, fuente, donanteId, accion, numero }: { datos: ExpedienteDatos; fuente: FuenteBase; donanteId: string; accion: (fn: () => Promise<void>, linea: string) => Promise<void>; numero: string }) {
+function ControlesQuirofano({ datos, fuente, donanteId, accion, numero }: { datos: ExpedienteDatos; fuente: FuenteBase; donanteId: string; accion: (fn: () => Promise<void>, linea: () => string) => Promise<boolean>; numero: string }) {
   const marcas = organosVigentes(datos.organosAceptados ?? []);
   const equipos = datos.equipos.filter((e) => !e.anulado);
   const [equipoDe, setEquipoDe] = useState<Record<string, string>>({});
@@ -193,7 +194,8 @@ function ControlesQuirofano({ datos, fuente, donanteId, accion, numero }: { dato
   const [medio, setMedio] = useState<MedioAviso | null>(null);
   const [error, setError] = useState<string | null>(null);
   const disponible = datos.organosAceptados !== null;
-  const linea = (t: string) => `Base · ${quien() || "sin nombre"} · ${t} (${numero} Órganos y quirófano, ${hhmm(new Date().toISOString())})`;
+  const asegurarNombre = useNombre();
+  const linea = (t: string) => () => `Base · ${quien()} · ${t} (${numero} Órganos y quirófano, ${hhmm(new Date().toISOString())})`;
 
   return (
     <div className={styles.noImprimir}>
@@ -245,7 +247,7 @@ function ControlesQuirofano({ datos, fuente, donanteId, accion, numero }: { dato
             const v = validarHora(hora ? new Date(hora).toISOString() : null);
             if (!v.ok) return setError(v.error);
             setError(null);
-            void accion(() => fuente.guardarHoraQuirofano(donanteId, v.hora), linea(`cargó hora de quirófano ${hora.replace("T", " ")}`)).then(() => setHora(""));
+            void accion(() => fuente.guardarHoraQuirofano(donanteId, v.hora), linea(`cargó hora de quirófano ${hora.replace("T", " ")}`)).then((ok) => ok && setHora(""));
           }}
         >
           Guardar hora
@@ -288,11 +290,14 @@ function ControlesQuirofano({ datos, fuente, donanteId, accion, numero }: { dato
               <button
                 type="button"
                 className={`${styles.btn} ${styles.btnChico} ${styles.btnAcento}`}
-                onClick={() => {
-                  const v = validarEquipo({ equipo: nombre, organos, organoOtro: "", anestesista: anest, informadoPor: quien() ? `Base (${quien()})` : "Base", medio });
+                onClick={async () => {
+                  const q = await asegurarNombre();
+                  if (!q) return;
+                  const v = validarEquipo({ equipo: nombre, organos, organoOtro: "", anestesista: anest, informadoPor: `Base (${q})`, medio });
                   if (!v.ok) return setError(v.error);
                   setError(null);
-                  void accion(() => fuente.crearEquipo(donanteId, v.datos), linea(`cargó equipo avisado ${v.datos.equipo}`)).then(() => {
+                  void accion(() => fuente.crearEquipo(donanteId, v.datos), linea(`cargó equipo avisado ${v.datos.equipo}`)).then((ok) => {
+                    if (!ok) return;
                     setNuevo(false);
                     setNombre("");
                     setOrganos([]);
@@ -347,26 +352,33 @@ export default function SeccionesExpediente({
   chat: ReactNode;
 }) {
   const [error, setError] = useState<string | null>(null);
+  const asegurarNombre = useNombre();
   const ident = identificacionCorta(datos.donante);
   const revisiones = revisionesVigentes(datos.revisiones ?? []);
 
-  async function accion(fn: () => Promise<void>, linea: string) {
+  // Toda acción de la Base: primero el nombre (se pide una vez); sin
+  // nombre no se hace. La línea se arma después, ya con el nombre.
+  async function accion(fn: () => Promise<void>, linea: () => string): Promise<boolean> {
     setError(null);
+    if (!(await asegurarNombre())) return false;
     try {
       await fn();
-      await fuente.registrarEnLinea(donanteId, linea);
+      await fuente.registrarEnLinea(donanteId, linea());
       await recargar();
+      return true;
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo guardar.");
+      return false;
     }
   }
 
   const acciones = (c: ContenidoSeccion, extra?: Partial<Acciones>): Acciones => ({
     revision: revisiones.get(c.clave) ?? null,
     revisionesDisponibles: datos.revisiones !== null,
-    onRevisar: () => accion(() => fuente.marcarRevision(donanteId, c.clave, quien() || null), textoLineaAccion("marcó revisada", c, quien(), Date.now())),
-    onQuitarRevision: (id) => accion(() => fuente.anularRevision(id), textoLineaAccion("quitó la marca de revisada", c, quien(), Date.now())),
+    onRevisar: async () => void await accion(() => fuente.marcarRevision(donanteId, c.clave, quien() || null), () => textoLineaAccion("marcó revisada", c, quien(), Date.now())),
+    onQuitarRevision: async (id) => void await accion(() => fuente.anularRevision(id), () => textoLineaAccion("quitó la marca de revisada", c, quien(), Date.now())),
     onRegistrar: async (a, detalle) => {
+      if (!(await asegurarNombre())) return setError(`Se ${a}, pero no quedó en la línea de tiempo: falta tu nombre.`);
       try {
         await fuente.registrarEnLinea(donanteId, textoLineaAccion(a, c, quien(), Date.now(), detalle));
         await recargar();

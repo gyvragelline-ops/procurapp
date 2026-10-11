@@ -3,8 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import { MAX_MENSAJE, mensajesOrdenados, validarMensaje, type MensajeCaso, type RolChat } from "@/lib/procuracion/chat-calculos";
 import type { FuenteBase } from "@/lib/procuracion/base-armado";
-import { COLOR, horaCorta, leerNombre } from "./ui";
+import { COLOR, horaCorta } from "./ui";
 import { NombreBase } from "./solicitudes-panel";
+import { useNombre } from "./nombre-base";
 import styles from "./base.module.css";
 
 const ETIQUETA: Record<RolChat, string> = { procurador: "Procurador", base: "Base", equipo: "Equipo" };
@@ -28,6 +29,7 @@ export default function ChatBase({
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const cajaRef = useRef<HTMLDivElement>(null);
+  const asegurarNombre = useNombre();
 
   // Baja solo la caja de mensajes (no la página: el chat queda abajo en el
   // expediente compacto y scrollIntoView movía toda la pantalla).
@@ -38,7 +40,11 @@ export default function ChatBase({
 
   async function enviar() {
     setError(null);
-    const v = validarMensaje({ rol: "base", autor: leerNombre(), texto });
+    if (!texto.trim()) return setError("Escribí el mensaje.");
+    // el mensaje lleva quién lo manda: se pide una vez
+    const quien = await asegurarNombre();
+    if (!quien) return;
+    const v = validarMensaje({ rol: "base", autor: quien, texto });
     if (!v.ok) return setError(v.error);
     setGuardando(true);
     try {
@@ -53,23 +59,27 @@ export default function ChatBase({
   }
 
   return (
-    <div className={styles.card}>
-      <div className={styles.cardCab}>
-        <span>Chat con el procurador</span>
+    <div className={styles.cardC}>
+      <div className={styles.cabC}>
+        <span className={styles.punto} style={{ width: 8, height: 8, background: COLOR.nd }} />
+        <span className={styles.cabCTitulo}>Chat con el procurador</span>
+        <span className={styles.cabCEstado} style={{ color: COLOR.mu, fontWeight: 400 }}>
+          {mensajes.length ? `${mensajes.length} mensaje${mensajes.length === 1 ? "" : "s"}` : ""}
+        </span>
       </div>
-      <div style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: 8 }}>
-        <div ref={cajaRef} style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 320, overflowY: "auto" }}>
+      <div className={styles.chatC}>
+        <div ref={cajaRef} className={styles.chatCaja}>
           {mensajes.length === 0 && <span className={`${styles.chico} ${styles.mu}`}>Sin mensajes todavía.</span>}
           {mensajesOrdenados(mensajes).map((m) => {
             const base = m.rol === "base";
             return (
-              <div key={m.id} style={{ display: "flex", flexDirection: "column", alignItems: base ? "flex-start" : "flex-end", gap: 2 }}>
-                <span style={{ fontSize: 11, color: COLOR.mu }}>
+              <div key={m.id} style={{ display: "flex", flexDirection: "column", alignItems: base ? "flex-start" : "flex-end", gap: 1 }}>
+                <span style={{ fontSize: 10.5, color: COLOR.mu }}>
                   {ETIQUETA[m.rol]}
                   {m.autor ? ` · ${m.autor}` : ""} · {horaCorta(m.creado_en, ahora)}
                   {m.anulado ? " · anulado" : ""}
                 </span>
-                <span className={styles.burbuja} style={{ background: base ? "#E3F2F0" : "#EAF0F1", textDecoration: m.anulado ? "line-through" : undefined, opacity: m.anulado ? 0.6 : 1 }}>
+                <span className={`${styles.burbuja} ${styles.burbujaC}`} style={{ background: base ? "#E3F2F0" : "#EAF0F1", textDecoration: m.anulado ? "line-through" : undefined, opacity: m.anulado ? 0.6 : 1 }}>
                   {m.texto}
                 </span>
               </div>
@@ -81,9 +91,9 @@ export default function ChatBase({
             {error}
           </div>
         )}
-        <div className={styles.noImprimir} style={{ display: "flex", gap: 8, marginTop: 4, alignItems: "stretch" }}>
+        <div className={styles.noImprimir} style={{ display: "flex", gap: 6, alignItems: "stretch" }}>
           <textarea
-            className={styles.campo}
+            className={styles.campoC}
             rows={1}
             maxLength={MAX_MENSAJE}
             placeholder="Mensaje"
@@ -92,7 +102,7 @@ export default function ChatBase({
             value={texto}
             onChange={(e) => setTexto(e.target.value)}
           />
-          <button type="button" className={`${styles.btn} ${styles.btnChico} ${styles.btnAcento}`} style={{ minHeight: 40 }} disabled={guardando} onClick={enviar}>
+          <button type="button" className={`${styles.btnCab} ${styles.btnCabAcento}`} disabled={guardando} onClick={enviar}>
             {guardando ? "…" : "Enviar"}
           </button>
         </div>

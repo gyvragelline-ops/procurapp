@@ -11,6 +11,7 @@ import type { InsumosTablero } from "@/lib/procuracion/base-tablero";
 import { puedeVerBase, rolActual } from "@/lib/procuracion/rol";
 import Tablero from "./tablero";
 import Expediente from "./expediente";
+import { ProveedorNombre } from "./nombre-base";
 import { useConsultaPeriodica } from "./ui";
 import { AvisoSinConexion, useConexion } from "./conexion";
 import styles from "./base.module.css";
@@ -73,7 +74,9 @@ function BaseConFuente({ donanteId }: { donanteId: string | null }) {
       {!donanteId && <AvisoSinConexion estado={conexion.estado} />}
       {error && <div className={styles.error}>{error}</div>}
       {donanteId ? (
-        <Expediente key={donanteId} fuente={fuente} donanteId={donanteId} activos={insumos ?? []} ahora={ahora} onAhora={setAhora} irA={irA} onCambioTablero={cargar} />
+        <ProveedorNombre>
+          <Expediente key={donanteId} fuente={fuente} donanteId={donanteId} activos={insumos ?? []} ahora={ahora} onAhora={setAhora} irA={irA} onCambioTablero={cargar} />
+        </ProveedorNombre>
       ) : (
         <Tablero insumos={insumos} ahora={ahora} actualizacion={conexion.estado} onAbrir={(id) => irA(id)} />
       )}

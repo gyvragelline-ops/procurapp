@@ -129,6 +129,7 @@ export const SISTEMAS: { key: string; titulo: string; parametros: Parametro[] }[
       p("osm_urinaria", "Osmolaridad urinaria", "mOsm/kg", 0),
       p("densidad_urinaria", "Densidad urinaria", null, 3),
       p("sedimento", "Sedimento urinario", null),
+      p("proteinuria", "Proteinuria", null),
     ],
   },
   {
@@ -140,6 +141,7 @@ export const SISTEMAS: { key: string; titulo: string; parametros: Parametro[] }[
       p("k", "Potasio", "mEq/L", 1, "potasio"),
       p("glucemia", "Glucemia", "mg/dL", 0, "glucemia"),
       p("amilasa", "Amilasa", "U/L", 0),
+      p("lipasa", "Lipasa", "U/L", 0),
       ...drogas(DROGAS_METABOLICO),
       bolo("desmopresina"),
     ],

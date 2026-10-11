@@ -1,6 +1,7 @@
 // Solicitudes del caso (tabla solicitudes): lógica pura, con tests. La
-// Base las crea y las resuelve; el procurador las verá y responderá desde
-// "Chat y pedidos" (segunda etapa). Nada se borra: se anula.
+// Base las crea y las resuelve; el procurador las ve, las resuelve y le
+// pide a la Base desde "Pedidos" (app/solicitudes-donante.tsx). Nada se
+// borra: se anula.
 
 export const ROLES_SOLICITUD = [
   { valor: "base", etiqueta: "Base" },

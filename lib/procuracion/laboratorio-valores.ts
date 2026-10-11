@@ -39,6 +39,7 @@ export const GRUPOS_LAB: { grupo: string; parametros: ParametroLab[] }[] = [
       { parametro: "ph", etiqueta: "pH", unidad: null },
       { parametro: "pao2", etiqueta: "PaO2", unidad: "mmHg" },
       { parametro: "amilasa", etiqueta: "Amilasa", unidad: "U/L" },
+      { parametro: "lipasa", etiqueta: "Lipasa", unidad: "U/L" },
     ],
   },
   {
@@ -94,7 +95,11 @@ export const GRUPOS_LAB: { grupo: string; parametros: ParametroLab[] }[] = [
   },
   {
     grupo: "Orina",
-    parametros: [{ parametro: "sedimento", etiqueta: "Sedimento urinario", unidad: null, texto: true }],
+    parametros: [
+      { parametro: "sedimento", etiqueta: "Sedimento urinario", unidad: null, texto: true },
+      // en texto: el informe trae "negativa", "trazas", "++" o un valor con su unidad
+      { parametro: "proteinuria", etiqueta: "Proteinuria", unidad: null, texto: true },
+    ],
   },
 ];
 

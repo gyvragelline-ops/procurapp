@@ -5,6 +5,7 @@ import { textoWhatsApp, type ContenidoSeccion, type FilaSeccion, type ImagenSecc
 import type { EstadoTarjeta } from "@/lib/procuracion/base-compacto";
 import { abrirWhatsApp, compartir, copiarImagen, copiarTexto, descargarBlob, descargarTexto, imagenAPng, nombreArchivo } from "./compartir";
 import { COLOR, horaCorta } from "./ui";
+import { useNombre } from "./nombre-base";
 import styles from "./base.module.css";
 
 // Tarjeta de sección del Expediente compacto (diseño handoff/disenos/
@@ -160,9 +161,12 @@ function FilaImagen({ img, ahora, onRegistrar }: { img: ImagenSeccion; ahora: nu
   const [abierta, setAbierta] = useState(false);
   const [aviso, setAviso] = useState<AccionImagen | null>(null);
   const [msj, setMsj] = useState<string | null>(null);
+  const asegurarNombre = useNombre();
   async function hacer(accion: AccionImagen) {
     setAviso(null);
     setMsj(null);
+    // copiar y compartir quedan en la línea de tiempo: primero el nombre
+    if (!(await asegurarNombre())) return;
     try {
       setMsj(await hacerConImagen(img, accion, onRegistrar));
     } catch (e) {
@@ -239,9 +243,13 @@ function useCopiarCompartir(c: ContenidoSeccion, ident: string, ahora: number, a
   const [sinShare, setSinShare] = useState(false);
   const texto = () => textoWhatsApp(c, ident, ahora);
   const conImagenes = c.imagenes.some((i) => i.compartible && i.url && !i.video);
+  const asegurarNombre = useNombre();
 
+  // Copiar y compartir quedan en la línea de tiempo: primero el nombre
+  // (se pide una vez); sin nombre no se hace.
   async function envolver(fn: () => Promise<void>) {
     setMsj(null);
+    if (!(await asegurarNombre())) return;
     setOcupado(true);
     try {
       await fn();

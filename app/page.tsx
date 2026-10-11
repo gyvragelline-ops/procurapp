@@ -34,6 +34,7 @@ import AntibioticosPanel from "./antibioticos-panel";
 import type { Cultivo } from "@/lib/procuracion/cultivos-calculos";
 import QuirofanoPanel from "./quirofano-panel";
 import ChatDonante from "./chat-donante";
+import SolicitudesDonante from "./solicitudes-donante";
 import EtapaFila from "./etapa-fila";
 import FranjaEtapas from "./franja-etapas";
 import type { MarcaEtapa } from "@/lib/procuracion/marca-etapa";
@@ -520,6 +521,8 @@ export default function Home() {
                 franja de estado); el globito de sin leer es el único aviso
                 permitido fuera de las etapas. */}
             <ChatDonante key={donante.id} donanteId={donante.id} />
+            {/* Pedidos de la Base (tabla solicitudes): botón junto al chat. */}
+            <SolicitudesDonante key={`sol-${donante.id}`} donanteId={donante.id} />
 
             {/* Franja de luces (una línea); tocar una abre esa etapa. */}
             <FranjaEtapas etapas={visibleStages} estadoDe={getEtapaEstado} onIr={irAEtapa} />

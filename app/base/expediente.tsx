@@ -21,10 +21,13 @@ import SolicitudesPanel from "./solicitudes-panel";
 import ChatBase from "./chat-base";
 import Impresion from "./impresion";
 import SeccionesExpediente from "./secciones-expediente";
+import DistribucionOrganos from "./distribucion-organos";
 import { metaDonante } from "./tablero";
 import { COLOR, colorEtapa, descargar, dosCifras, horaCorta, hhmm, textoEstadoEtapa, useConsultaPeriodica } from "./ui";
 import { AvisoSinConexion, MarcaActualizado, useConexion } from "./conexion";
 import { CONSULTA_BASE_MS } from "@/lib/procuracion/base-actualizacion";
+import { useNombre } from "./nombre-base";
+import { lineaConAutor } from "@/lib/procuracion/base-nombre";
 import styles from "./base.module.css";
 
 
@@ -63,7 +66,8 @@ export default function Expediente({
   const [detalleCierre, setDetalleCierre] = useState("");
   const [errorAccion, setErrorAccion] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
-  const [mas, setMas] = useState(false); // "Más": exportar para un equipo, imprimir, PDF, cerrar
+  const [mas, setMas] = useState(false);
+  const asegurarNombre = useNombre(); // "Más": exportar para un equipo, imprimir, PDF, cerrar
 
   async function cargar() {
     try {
@@ -132,25 +136,38 @@ export default function Expediente({
     }
   }
 
-  // Toda exportación deja su línea en la línea de tiempo.
-  function exportarCsvAhora() {
+  // Toda exportación deja su línea en la línea de tiempo, con el nombre de
+  // quien la hace (se pide una vez; sin nombre no se exporta).
+  async function exportarCsvAhora() {
+    const q = await asegurarNombre();
+    if (!q) return;
     const r = exportarCsv(exportacion, opciones, Date.now());
     r.archivos.forEach((a, i) => setTimeout(() => descargar(a.nombre, a.contenido), i * 300));
     setAviso(`Se descargan ${r.archivos.length} archivos CSV (uno por sección). Si el navegador pregunta, permití las descargas múltiples.`);
-    void accion(() => fuente.registrarEnLinea(donanteId, r.timeline));
+    void accion(() => fuente.registrarEnLinea(donanteId, lineaConAutor(q, r.timeline)));
   }
-  function imprimirAhora(modo: "impresión" | "PDF") {
+  async function imprimirAhora(modo: "impresión" | "PDF") {
+    const q = await asegurarNombre();
+    if (!q) return;
     const momento = Date.now();
     setImprimir({ momento, modo });
     setAviso(modo === "PDF" ? "En el diálogo de impresión, elegí «Guardar como PDF»." : null);
     const r = exportarCsv(exportacion, opciones, momento);
-    void accion(() => fuente.registrarEnLinea(donanteId, r.timeline));
+    void accion(() => fuente.registrarEnLinea(donanteId, lineaConAutor(q, r.timeline)));
   }
   async function confirmarCierre() {
     const v = validarCierre(resultado, detalleCierre);
     if (!v.ok) return setErrorAccion(v.error);
-    await accion(() => fuente.cambiarEstadoProtocolo(donanteId, "cerrado", textoTimelineCierre(resultado!, v.detalle, hhmm(new Date().toISOString()))));
+    const q = await asegurarNombre();
+    if (!q) return;
+    await accion(() => fuente.cambiarEstadoProtocolo(donanteId, "cerrado", lineaConAutor(q, textoTimelineCierre(resultado!, v.detalle, hhmm(new Date().toISOString())))));
     setCierre(false);
+    await onCambioTablero();
+  }
+  async function reabrir() {
+    const q = await asegurarNombre();
+    if (!q) return;
+    await accion(() => fuente.cambiarEstadoProtocolo(donanteId, "activo", lineaConAutor(q, textoTimelineReapertura(hhmm(new Date().toISOString())))));
     await onCambioTablero();
   }
 
@@ -289,7 +306,7 @@ export default function Expediente({
                   Cerrar protocolo
                 </button>
               ) : (
-                <button type="button" className={`${styles.btn} ${styles.btnChico}`} onClick={() => accion(() => fuente.cambiarEstadoProtocolo(donanteId, "activo", textoTimelineReapertura(hhmm(new Date().toISOString())))).then(onCambioTablero)}>
+                <button type="button" className={`${styles.btn} ${styles.btnChico}`} onClick={reabrir}>
                   Reabrir protocolo
                 </button>
               )}
@@ -401,6 +418,11 @@ export default function Expediente({
             }
             chat={<ChatBase fuente={fuente} donanteId={donanteId} mensajes={datos.mensajes} ahora={ahora} onEnviado={cargar} />}
           />
+        </div>
+
+        {/* banda a todo el ancho: lo que pide cada equipo, cruzado con lo cargado */}
+        <div className={conexion.estado.tipo === "sin_conexion" ? styles.desactualizado : undefined}>
+          <DistribucionOrganos datos={datos} fuente={fuente} donanteId={donanteId} ahora={ahora} recargar={cargar} />
         </div>
 
         <span className={`${styles.chico} ${styles.mu}`} style={{ lineHeight: 1.4 }}>
