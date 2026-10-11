@@ -636,3 +636,277 @@ textarea.campo {
   opacity: 0.55;
   filter: grayscale(0.6);
 }
+
+/* ---------- expediente compacto (handoff/disenos/Base-Expediente-Compacto.dc.html) ----------
+   Diseñado para 1366 px; se verifica también en 1280 y 1440. */
+.app:has(.expCompacto) {
+  padding: 14px 16px;
+  gap: 10px;
+}
+.expCompacto {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.barraSup {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.barraSup .btn {
+  min-height: 34px;
+  padding: 0 12px;
+  font-size: 13px;
+}
+.panelMas {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  background: var(--card);
+  border: 1px solid var(--bd);
+  border-radius: 10px;
+  padding: 8px 12px;
+}
+.cabDonante {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  background: var(--card);
+  border: 1px solid var(--bd);
+  border-radius: 10px;
+  padding: 8px 14px;
+  font-size: 13px;
+}
+.cabDonante .prueba {
+  margin-left: 0;
+}
+.nombreC {
+  font-size: 20px;
+  font-weight: 600;
+}
+.progreso {
+  background: var(--card);
+  border: 1px solid var(--bd);
+  border-radius: 10px;
+  padding: 8px 10px 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.progresoSegs {
+  display: grid;
+  gap: 4px;
+}
+.progresoSeg {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  text-align: left;
+  color: inherit;
+}
+.progresoBarra {
+  height: 7px;
+  border-radius: 3px;
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
+}
+.progresoTexto {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  min-width: 0;
+  font-size: 11px;
+}
+.progresoEtiqueta {
+  font-size: 10.5px;
+  color: var(--mu);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.progresoSeg:hover .progresoEtiqueta {
+  color: var(--tx);
+}
+.progresoPie {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 10.5px;
+  color: var(--mu);
+}
+.tresColumnas {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  align-items: start;
+}
+.columnaC {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.cardC {
+  background: var(--card);
+  border: 1px solid var(--bd);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.cabC {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  min-height: 32px;
+  background: var(--hd);
+}
+.cabCNum {
+  font-size: 11px;
+  color: var(--mu);
+  white-space: nowrap;
+}
+.cabCTitulo {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+.cabCEstado {
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.btnCab {
+  min-height: 22px;
+  padding: 0 8px;
+  border: 1px solid var(--bb);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--tx);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.app .btnCab:disabled {
+  color: #b8c4c7;
+  opacity: 1;
+}
+.enlaceCab {
+  border: 0;
+  background: none;
+  padding: 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ac);
+  white-space: nowrap;
+}
+.avisosCab {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px 6px;
+  border-top: 1px solid #edf1f2;
+}
+.filaC {
+  display: grid;
+  grid-template-columns: minmax(0, 132px) minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: baseline;
+  min-height: 22px;
+  padding: 3px 10px;
+  border-top: 1px solid #edf1f2;
+  font-size: 12px;
+  line-height: 1.35;
+}
+.filaCValor {
+  font-weight: 600;
+  text-align: right;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.filaCHora {
+  color: #8ea0a4;
+  font-size: 11px;
+  max-width: 150px;
+  text-align: right;
+}
+.filaCBoton {
+  width: 100%;
+  border-left: 0;
+  border-right: 0;
+  border-bottom: 0;
+  background: #fff;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+}
+.filaCBoton:hover {
+  background: #f7fafa;
+}
+.controlesToggle {
+  grid-template-columns: 1fr;
+  color: var(--ac);
+  font-weight: 600;
+  font-size: 11.5px;
+}
+.subC {
+  padding: 4px 10px 2px;
+  border-top: 1px solid #edf1f2;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--mu);
+  background: #fafcfc;
+}
+.imagenAbierta {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px 10px 8px;
+  border-top: 1px solid #edf1f2;
+}
+.miniatura {
+  width: 180px;
+  height: 120px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid var(--bd);
+}
+.fueraDePantalla {
+  position: absolute;
+  left: -10000px;
+  top: 0;
+  width: 760px;
+  pointer-events: none;
+}
+.lineaScroll {
+  max-height: 260px;
+  overflow-y: auto;
+}
+.filaLinea {
+  display: grid;
+  grid-template-columns: 78px minmax(0, 1fr);
+  gap: 8px;
+  padding: 3px 10px;
+  border-top: 1px solid #edf1f2;
+  font-size: 12px;
+  line-height: 1.35;
+}
+.filaCDetalle {
+  display: block;
+  font-weight: 400;
+  font-size: 11px;
+  color: #8ea0a4;
+}

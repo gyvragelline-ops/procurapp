@@ -2,7 +2,8 @@
 
 import { useRef, useState, type ReactNode } from "react";
 import type { ExpedienteDatos, FuenteBase } from "@/lib/procuracion/base-armado";
-import type { EtapaBarra } from "@/lib/procuracion/base-tablero";
+import { pendientesEtapa, type EtapaBarra } from "@/lib/procuracion/base-tablero";
+import { estadoTarjeta, laboratorioCondensado, numeroTarjeta, unirSecciones, type EstadoTarjeta } from "@/lib/procuracion/base-compacto";
 import {
   ORGANOS_BASE,
   autorizacionVigente,
@@ -12,7 +13,6 @@ import {
   revisionesVigentes,
   seccionComunicacion,
   seccionCultivos,
-  seccionDocumentacion,
   seccionImagenes,
   seccionJudicial,
   seccionLaboratorios,
@@ -26,11 +26,12 @@ import {
   textoLineaAccion,
   type ContenidoSeccion,
   type FilaGrilla,
+  type FilaSeccion,
 } from "@/lib/procuracion/base-secciones";
 import { ANESTESISTA, MEDIOS_AVISO, ORGANOS_EQUIPO, validarEquipo, validarHora, type Anestesista, type MedioAviso, type OrganoEquipo } from "@/lib/procuracion/quirofano-calculos";
-import SeccionTarjeta, { ContenidoVista, type Acciones } from "./seccion";
+import SeccionTarjeta, { ContenidoCompacto, FilaCompacta, type Acciones } from "./seccion";
 import { svgAPng, nombreArchivo } from "./compartir";
-import { COLOR, dosCifras, horaCorta, hhmm, leerNombre } from "./ui";
+import { COLOR, colorEtapa, dosCifras, horaCorta, hhmm, leerNombre, textoEstadoEtapa } from "./ui";
 import styles from "./base.module.css";
 
 const quien = () => leerNombre().trim();
@@ -318,7 +319,10 @@ function ControlesQuirofano({ datos, fuente, donanteId, accion, numero }: { dato
   );
 }
 
-// ------------------------------------------- todas las secciones, en orden
+// ------------------------------- tarjetas en 3 columnas (expediente compacto)
+// Columna 1: 01 · 02·03 · 04–06 · 07. Columna 2: 08 laboratorio, 08
+// imágenes, 09, línea de tiempo. Columna 3: 11 · 12 · 13, solicitudes y
+// chat. La 10 (Documentación) no tiene tarjeta: va como renglón en la 01.
 export default function SeccionesExpediente({
   datos,
   barra,
@@ -327,6 +331,9 @@ export default function SeccionesExpediente({
   donanteId,
   recargar,
   sistemasOrdenado,
+  lineaDeTiempo,
+  solicitudes,
+  chat,
 }: {
   datos: ExpedienteDatos;
   barra: EtapaBarra[];
@@ -334,7 +341,10 @@ export default function SeccionesExpediente({
   fuente: FuenteBase;
   donanteId: string;
   recargar: () => Promise<void>;
-  sistemasOrdenado: ReactNode; // tarjetas por sistema (Mantenimiento) para "Ver ordenado"
+  sistemasOrdenado: ReactNode; // tarjetas por sistema (Mantenimiento) para "Detalle ›"
+  lineaDeTiempo: ReactNode;
+  solicitudes: ReactNode;
+  chat: ReactNode;
 }) {
   const [error, setError] = useState<string | null>(null);
   const ident = identificacionCorta(datos.donante);
@@ -367,88 +377,113 @@ export default function SeccionesExpediente({
     ...extra,
   });
 
-  const tarjeta = (c: ContenidoSeccion, opciones: { cuerpo?: ReactNode; ordenado?: ReactNode; extra?: Partial<Acciones> } = {}) => (
-    <SeccionTarjeta key={c.clave} c={c} ident={ident} ahora={ahora} acciones={acciones(c, opciones.extra)} cuerpo={opciones.cuerpo} ordenado={opciones.ordenado} />
+  const etapa = (key: string) => barra.find((e) => e.key === key) ?? null;
+  const hay = (key: string) => etapa(key) !== null;
+  const num = (...keys: string[]) => numeroTarjeta(keys.flatMap((k) => (etapa(k) ? [etapa(k)!.numero] : [])));
+  const estado = (...keys: string[]) => estadoTarjeta(keys.flatMap((k) => (etapa(k) ? [{ estado: etapa(k)!.estado, pendientes: pendientesEtapa(k, datos.insumos.etapas) }] : [])));
+
+  type Opciones = { estado?: EstadoTarjeta; filas?: FilaSeccion[]; cuerpo?: ReactNode; detalle?: ReactNode; controles?: { etiqueta: string; contenido: ReactNode }; extra?: Partial<Acciones> };
+  const tarjeta = (c: ContenidoSeccion, o: Opciones = {}) => (
+    <SeccionTarjeta key={c.clave} c={c} ident={ident} ahora={ahora} acciones={acciones(c, o.extra)} estado={o.estado} filas={o.filas} cuerpo={o.cuerpo} detalle={o.detalle} controles={o.controles} />
   );
 
-  const secciones = barra.map((e) => {
-    const num = dosCifras(e.numero);
-    switch (e.key) {
-      case "potencial":
-        return tarjeta(seccionPotencial(datos, num));
-      case "me":
-        return tarjeta(seccionNeurologico(datos, num));
-      case "certificacion":
-        return tarjeta(seccionMetodos(datos, num));
-      case "comMuerte":
-      case "comDonacion":
-        return tarjeta(seccionComunicacion(datos, num, e.key));
-      case "muestras":
-        return tarjeta(seccionMuestras(datos, num));
-      case "medidas":
-        return tarjeta(seccionMedidas(datos, num));
-      case "labImagenes":
-        return (
-          <div key="lab" style={{ display: "contents" }}>
-            {tarjeta(seccionLaboratorios(datos, num, ahora))}
-            {tarjeta(seccionImagenes(datos, num))}
-          </div>
-        );
-      case "cultivos":
-        return tarjeta(seccionCultivos(datos, num));
-      case "documentacion":
-        return tarjeta(seccionDocumentacion(num));
-      case "mantenimiento": {
-        const c = seccionMantenimiento(datos, num, ahora);
-        const grilla = grillaMantenimiento(datos, ahora);
-        return tarjeta(c, {
-          cuerpo: (
-            <>
-              <ContenidoVista c={c} />
+  // ---- columna 1
+  const col1: ReactNode[] = [];
+  if (hay("potencial")) {
+    const c = seccionPotencial(datos, num("potencial"));
+    const doc = etapa("documentacion");
+    col1.push(
+      tarjeta(c, {
+        estado: estado("potencial"),
+        cuerpo: (
+          <>
+            <ContenidoCompacto c={c} />
+            {doc && (
+              <FilaCompacta
+                f={{ etiqueta: `Documentación (${dosCifras(doc.numero)})`, valor: textoEstadoEtapa(doc.estado), detalle: datos.insumos.etapas.marcas.documentacion?.marca === "completo" ? "✓ a mano" : null }}
+                color={doc.estado === "gray" ? COLOR.mu : colorEtapa(doc.estado)}
+              />
+            )}
+          </>
+        ),
+      })
+    );
+  }
+  const cert = [
+    ...(hay("me") ? [{ c: seccionNeurologico(datos, num("me")), subtitulo: "Examen neurológico" }] : []),
+    ...(hay("certificacion") ? [{ c: seccionMetodos(datos, num("certificacion")), subtitulo: "Método auxiliar" }] : []),
+  ];
+  if (cert.length) col1.push(tarjeta(unirSecciones("certificacion", num("me", "certificacion"), "Certificación de muerte", cert), { estado: estado("me", "certificacion") }));
+  const com = [
+    ...(hay("comMuerte") ? [{ c: seccionComunicacion(datos, num("comMuerte"), "comMuerte"), subtitulo: "Comunicación de muerte" }] : []),
+    ...(hay("comDonacion") ? [{ c: seccionComunicacion(datos, num("comDonacion"), "comDonacion"), subtitulo: "Comunicación de donación" }] : []),
+    ...(hay("muestras") ? [{ c: seccionMuestras(datos, num("muestras")), subtitulo: "Muestras" }] : []),
+  ];
+  if (com.length) col1.push(tarjeta(unirSecciones("comunicacion", num("comMuerte", "comDonacion", "muestras"), "Comunicación y muestras", com), { estado: estado("comMuerte", "comDonacion", "muestras") }));
+  if (hay("medidas")) col1.push(tarjeta(seccionMedidas(datos, num("medidas")), { estado: estado("medidas") }));
+
+  // ---- columna 2
+  const col2: ReactNode[] = [];
+  if (hay("labImagenes")) {
+    col2.push(tarjeta(seccionLaboratorios(datos, num("labImagenes"), ahora), { estado: estado("labImagenes"), filas: laboratorioCondensado(datos, ahora) }));
+    col2.push(tarjeta(seccionImagenes(datos, num("labImagenes"))));
+  }
+  if (hay("cultivos")) col2.push(tarjeta(seccionCultivos(datos, num("cultivos")), { estado: estado("cultivos") }));
+  col2.push(<div key="linea">{lineaDeTiempo}</div>);
+
+  // ---- columna 3
+  const col3: ReactNode[] = [];
+  if (hay("mantenimiento")) {
+    const c = seccionMantenimiento(datos, num("mantenimiento"), ahora);
+    const grilla = grillaMantenimiento(datos, ahora);
+    col3.push(
+      tarjeta(c, {
+        estado: estado("mantenimiento"),
+        cuerpo: (
+          <>
+            <ContenidoCompacto c={c} />
+            {/* gráficas fuera de pantalla: salen como imagen al compartir */}
+            <div className={styles.fueraDePantalla} aria-hidden>
               <MantenimientoVivo grilla={grilla} ahora={ahora} idGraficas={ID_GRAFICAS} />
-            </>
-          ),
-          ordenado: (
-            <>
-              <MantenimientoVivo grilla={grilla} ahora={ahora} />
-              <div style={{ padding: "0 16px 16px" }}>{sistemasOrdenado}</div>
-            </>
-          ),
-          extra: {
-            // las gráficas van como imagen al compartir (las genera la app: sin aviso)
-            archivosExtra: async () => {
-              const svgs = [...document.querySelectorAll(`#${ID_GRAFICAS} svg`)] as SVGSVGElement[];
-              return Promise.all(svgs.map(async (s) => new File([await svgAPng(s)], nombreArchivo(`${ident}_${s.getAttribute("data-grafica") ?? "grafica"}`, "png"), { type: "image/png" })));
-            },
+            </div>
+          </>
+        ),
+        detalle: (
+          <>
+            <MantenimientoVivo grilla={grilla} ahora={ahora} />
+            <div style={{ padding: "0 16px 16px" }}>{sistemasOrdenado}</div>
+          </>
+        ),
+        extra: {
+          // las gráficas van como imagen al compartir (las genera la app: sin aviso)
+          archivosExtra: async () => {
+            const svgs = [...document.querySelectorAll(`#${ID_GRAFICAS} svg`)] as SVGSVGElement[];
+            return Promise.all(svgs.map(async (s) => new File([await svgAPng(s)], nombreArchivo(`${ident}_${s.getAttribute("data-grafica") ?? "grafica"}`, "png"), { type: "image/png" })));
           },
-        });
-      }
-      case "judicial": {
-        const c = seccionJudicial(datos, num, ahora);
-        return tarjeta(c, {
-          cuerpo: (
-            <>
-              <ContenidoVista c={c} />
-              <ControlesJudicial datos={datos} fuente={fuente} donanteId={donanteId} accion={accion} numero={num} />
-            </>
-          ),
-        });
-      }
-      case "quirofano": {
-        const c = seccionQuirofano(datos, num, ahora);
-        return tarjeta(c, {
-          cuerpo: (
-            <>
-              <ContenidoVista c={c} />
-              <ControlesQuirofano datos={datos} fuente={fuente} donanteId={donanteId} accion={accion} numero={num} />
-            </>
-          ),
-        });
-      }
-      default:
-        return null;
-    }
-  });
+        },
+      })
+    );
+  }
+  if (hay("judicial")) {
+    const n = num("judicial");
+    col3.push(
+      tarjeta(seccionJudicial(datos, n, ahora), {
+        estado: estado("judicial"),
+        controles: { etiqueta: "Marcar autorización o subir la foto del juez", contenido: <ControlesJudicial datos={datos} fuente={fuente} donanteId={donanteId} accion={accion} numero={n} /> },
+      })
+    );
+  }
+  if (hay("quirofano")) {
+    const n = num("quirofano");
+    col3.push(
+      tarjeta(seccionQuirofano(datos, n, ahora), {
+        estado: estado("quirofano"),
+        controles: { etiqueta: "Marcar órganos, hora de quirófano o equipo avisado", contenido: <ControlesQuirofano datos={datos} fuente={fuente} donanteId={donanteId} accion={accion} numero={n} /> },
+      })
+    );
+  }
+  col3.push(<div key="solicitudes">{solicitudes}</div>);
+  col3.push(<div key="chat">{chat}</div>);
 
   return (
     <>
@@ -457,7 +492,11 @@ export default function SeccionesExpediente({
           {error}
         </div>
       )}
-      {secciones}
+      <div className={styles.tresColumnas}>
+        <div className={styles.columnaC}>{col1}</div>
+        <div className={styles.columnaC}>{col2}</div>
+        <div className={styles.columnaC}>{col3}</div>
+      </div>
     </>
   );
 }

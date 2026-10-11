@@ -27,10 +27,13 @@ export default function ChatBase({
   const [texto, setTexto] = useState("");
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const finRef = useRef<HTMLDivElement>(null);
+  const cajaRef = useRef<HTMLDivElement>(null);
 
+  // Baja solo la caja de mensajes (no la página: el chat queda abajo en el
+  // expediente compacto y scrollIntoView movía toda la pantalla).
   useEffect(() => {
-    finRef.current?.scrollIntoView({ block: "nearest" });
+    const caja = cajaRef.current;
+    if (caja) caja.scrollTop = caja.scrollHeight;
   }, [mensajes.length]);
 
   async function enviar() {
@@ -55,7 +58,7 @@ export default function ChatBase({
         <span>Chat con el procurador</span>
       </div>
       <div style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: 8 }}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 320, overflowY: "auto" }}>
+        <div ref={cajaRef} style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 320, overflowY: "auto" }}>
           {mensajes.length === 0 && <span className={`${styles.chico} ${styles.mu}`}>Sin mensajes todavía.</span>}
           {mensajesOrdenados(mensajes).map((m) => {
             const base = m.rol === "base";
@@ -72,7 +75,6 @@ export default function ChatBase({
               </div>
             );
           })}
-          <div ref={finRef} />
         </div>
         {error && (
           <div className={styles.error} role="alert">

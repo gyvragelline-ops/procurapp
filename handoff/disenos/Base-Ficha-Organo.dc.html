@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Base operativa · Ficha por órgano</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+.num{font-family:'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums}
+button{font-family:'IBM Plex Sans',sans-serif;cursor:pointer}
+</style>
+</helmet>
+<div style="width:1100px;min-height:860px;box-sizing:border-box;padding:18px 20px;background:#F3F6F7;color:#1B2A2E;font-family:'IBM Plex Sans',sans-serif;display:flex;flex-direction:column;gap:12px">
+
+<div style="display:flex;align-items:center;gap:10px">
+<span style="font-size:18px;font-weight:600">Distribución · ficha por órgano</span>
+<span style="font-size:11px;font-weight:600;color:#FFFFFF;background:#5E7378;border-radius:5px;padding:2px 7px">Solo Base</span>
+<span style="font-size:12px;color:#5E7378">Se abre al tocar "Editar ficha" en el órgano. Dos ejemplos: renal y pulmonar.</span>
+</div>
+
+<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:start">
+<sc-for list="{{fichas}}" as="f" hint-placeholder-count="2">
+<div style="background:#FFFFFF;border:1px solid #D9E1E3;border-radius:12px;overflow:hidden;display:flex;flex-direction:column">
+
+<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:#E6EEF0">
+<span style="width:30px;height:30px;background-image:{{f.img}};background-size:contain;background-repeat:no-repeat;background-position:center;flex:none"></span>
+<span style="font-size:15px;font-weight:600;flex:1">Ficha · {{f.equipo}}</span>
+<span style="font-size:11px;color:#5E7378">{{f.estado}}</span>
+</div>
+
+<div style="padding:8px 14px 4px;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#5E7378">Qué se incluye (tildá o destildá)</div>
+<sc-for list="{{f.lista}}" as="r" hint-placeholder-count="8">
+<div style="display:grid;grid-template-columns:18px minmax(0,1fr) auto;gap:8px;padding:3px 14px;font-size:12.5px;align-items:center;min-height:25px;box-sizing:border-box;border-top:1px solid #F0F4F5">
+<span style="width:14px;height:14px;border-radius:4px;border:1.5px solid {{r.bc}};background:{{r.bg}};color:#FFFFFF;font-size:10px;line-height:11px;text-align:center;font-weight:700">{{r.t}}</span>
+<span style="color:{{r.nc}}">{{r.n}}</span>
+<span class="num" style="font-size:11.5px;color:{{r.vc}}">{{r.v}}</span>
+</div>
+</sc-for>
+
+<div style="padding:12px 14px 6px;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#5E7378;display:flex;justify-content:space-between"><span>Así se ve en WhatsApp</span><span style="text-transform:none;letter-spacing:0;color:#0F8F83;font-weight:600">Texto editable ✎</span></div>
+
+<div style="margin:0 14px;padding:8px;background:#E8EFEA;border-radius:10px">
+<div style="background:#DCF8C6;border-radius:10px;overflow:hidden;border:1px dashed #8FBF7A">
+<div style="height:108px;background:{{f.bg}};display:flex;align-items:center;gap:14px;padding:0 16px">
+<span style="width:78px;height:78px;background-image:{{f.img}};background-size:contain;background-repeat:no-repeat;background-position:center;flex:none"></span>
+<div style="display:flex;flex-direction:column;gap:2px">
+<span style="font-size:11px;letter-spacing:.08em;color:#FFFFFFD0;font-weight:600">PROCURAPP · FICHA</span>
+<span style="font-size:20px;font-weight:600;color:#FFFFFF">{{f.equipo}}</span>
+<span class="num" style="font-size:12px;color:#FFFFFFE0">PD 900001 · PRUEBA · datos hasta 13:00</span>
+</div>
+</div>
+<div style="padding:9px 12px 10px;display:flex;flex-direction:column;gap:2px">
+<sc-for list="{{f.lineas}}" as="l" hint-placeholder-count="12">
+<span style="font-size:12.5px;line-height:1.4;font-weight:{{l.w}};color:{{l.c}};padding-top:{{l.pt}}">{{l.t}}</span>
+</sc-for>
+<span class="num" style="font-size:10.5px;color:#6B8A66;align-self:flex-end;padding-top:4px">13:20 ✓✓</span>
+</div>
+</div>
+</div>
+
+<div style="display:flex;align-items:center;gap:8px;padding:12px 14px">
+<button style="min-height:34px;padding:0 12px;border:1px solid #C9D5D8;border-radius:8px;background:#FFFFFF;color:#1B2A2E;font-size:13px;font-weight:600">Copiar texto</button>
+<button style="min-height:34px;padding:0 12px;border:1px solid #C9D5D8;border-radius:8px;background:#FFFFFF;color:#1B2A2E;font-size:13px;font-weight:600">Descargar imagen</button>
+<button style="min-height:34px;padding:0 16px;border:0;border-radius:8px;background:#128C5A;color:#FFFFFF;font-size:13px;font-weight:600;margin-left:auto">Enviar por WhatsApp</button>
+</div>
+<div style="padding:0 14px 12px;font-size:11px;color:#5E7378">Cada envío queda en la línea de tiempo: quién, hora y equipo. Lo que falta sale como "Pendiente". No incluye nombre ni DNI.</div>
+
+</div>
+</sc-for>
+</div>
+
+<span style="font-size:11px;color:#5E7378;line-height:1.4">Propuesta de diseño con datos de ejemplo. La lista de lo que pide cada equipo debe validarse con el protocolo de CUCAIBA/INCUCAI. La imagen de cabecera con el órgano se genera sola con el nombre del equipo y el PD. La aptitud la decide cada equipo.</span>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1100,"height":860}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const G = '#1F9D6B', A = '#C98512', T = '#1B2A2E', M = '#5E7378';
+    const svgs = {
+      pulmon: (c) => '<path d="M17 12C10 12 4 22 5 32c0 3 3 4 6 3 4-1 6-5 6-9z" fill="' + c + '"/><path d="M23 12c7 0 13 10 12 20 0 3-3 4-6 3-4-1-6-5-6-9z" fill="' + c + '"/><path d="M20 3v15M20 18l-5 5M20 18l5 5" stroke="' + c + '" stroke-width="3" fill="none" stroke-linecap="round"/>',
+      rinon: (c) => '<path d="M22 4C12 3 5 11 6 22c1 10 8 15 14 12 3-2 1-6 3-8 2-2 6-2 7-6C32 12 29 4 22 4z" fill="' + c + '"/><path d="M24 27c2 1 4 3 4 6" stroke="#FFFFFF" stroke-width="2" fill="none" stroke-linecap="round"/>'
+    };
+    const oimg = (k, c) => "url('data:image/svg+xml;utf8," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40">' + svgs[k](c) + '</svg>') + "')";
+    const it = (ok, n, v) => ({
+      t: ok ? '✓' : '', n: n, v: v,
+      bc: ok ? G : A, bg: ok ? G : '#FFFFFF', nc: ok ? T : '#8A5A00', vc: ok ? M : A
+    });
+    const ln = (t, w, pt) => ({ t: t, w: w ? 600 : 400, c: T, pt: pt ? '6px' : '0' });
+
+    const renal = {
+      equipo: 'Equipo renal', estado: 'Aceptado · lleva anestesista', bg: 'linear-gradient(135deg,#8A3B28,#C4694F)', img: oimg('rinon', '#F6D9CF'),
+      lista: [
+        it(true, 'Datos del donante y antropometría', '78 kg · 175 cm'), it(true, 'Creatinina y urea evolutivas', '1,2 · 38'),
+        it(true, 'Diuresis horaria y balance', '0,7 · +1.180'), it(true, 'Ionograma (Na, K)', '152 · 3,9'),
+        it(true, 'Antecedentes (HTA, diabetes)', 'HTA'), it(true, 'Vasoactivos (dosis)', 'NA 0,34 γ'),
+        it(false, 'Sedimento urinario y proteinuria', 'pendiente'), it(false, 'Ecografía renal', 'pendiente'),
+        it(true, 'Quirófano y anestesista', '23:00 · sí')
+      ],
+      lineas: [
+        ln('Donante masculino · 41 años · 78 kg · 175 cm · A+', false, false),
+        ln('Función renal', true, true),
+        ln('Creatinina 0,9 (10/10 18:00) → 1,2 (11/10 08:10)', false, false),
+        ln('Urea 38 · Na 152 · K 3,9', false, false),
+        ln('Diuresis 0,7 mL/kg/h (2,1 hace 12 h) · balance +1.180 mL', false, false),
+        ln('Soporte', true, true),
+        ln('Noradrenalina 0,34 γ · PAM 62', false, false),
+        ln('Antecedentes: HTA, tabaquismo', false, false),
+        ln('Pendiente', true, true),
+        ln('Sedimento urinario y proteinuria · ecografía renal', false, false),
+        ln('Quirófano 11/10 23:00 · lleva anestesista', false, true),
+        ln('La aptitud la decide cada equipo.', false, false)
+      ]
+    };
+    const pulmon = {
+      equipo: 'Equipo pulmonar', estado: 'Pendiente de aceptación', bg: 'linear-gradient(135deg,#2D6E91,#6FA8C9)', img: oimg('pulmon', '#E3F1F8'),
+      lista: [
+        it(true, 'PaO₂/FiO₂ con FiO₂ y PEEP', '350 · 40 % · 8'), it(false, 'Prueba de desafío (FiO₂ 100 %, PEEP 5)', 'sin marcar'),
+        it(true, 'Rx de tórax actualizada', '07:20'), it(false, 'Fibrobroncoscopia', 'pendiente'),
+        it(true, 'Talla y perímetro torácico', '175 · 96 cm'), it(true, 'Parámetros del respirador', 'VCV · 450 · 14'),
+        it(false, 'Cultivo de aspirado traqueal', 'pendiente'), it(true, 'Antecedentes (tabaquismo)', 'sí'),
+        it(true, 'Quirófano y anestesista', '23:00')
+      ],
+      lineas: [
+        ln('Donante masculino · 41 años · 78 kg · 175 cm · A+', false, false),
+        ln('Oxigenación', true, true),
+        ln('PaO₂/FiO₂ 350 (11:20) · FiO₂ 40 % · PEEP 8', false, false),
+        ln('Prueba de desafío: pendiente', false, false),
+        ln('Respirador', true, true),
+        ln('VCV · VT 450 · FR 14 · plateau 22', false, false),
+        ln('Medidas', true, true),
+        ln('Talla 175 cm · perímetro torácico 96 cm', false, false),
+        ln('Rx de tórax 07:20 (adjunta) · antecedentes: tabaquismo', false, false),
+        ln('Pendiente', true, true),
+        ln('Fibrobroncoscopia · cultivo de aspirado traqueal', false, false),
+        ln('La aptitud la decide cada equipo.', false, true)
+      ]
+    };
+    return { fichas: [renal, pulmon] };
+  }
+}
+</script>
+</body>
+</html>
