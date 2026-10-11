@@ -165,3 +165,47 @@ export const ITEMS_COMUNES = {
 
 // Cierre de todos los mensajes.
 export const CIERRE_FICHA = "La aptitud la decide cada equipo.";
+
+// ---------------------------------------------------------------------
+// Estudios cargados -> órganos (A VALIDAR). Lo que no está acá no entra en
+// ninguna ficha: "Laboratorio" (foto del informe) y "Fotos del cuerpo"
+// pueden mostrar nombre o DNI. Incluye los tipos que suma la Fase 3.
+export const ESTUDIOS_POR_ORGANO: Record<string, OrganoDistribucion[]> = {
+  Rx_torax: ["pulmon", "corazon"],
+  TAC_torax: ["pulmon"],
+  Broncoscopia: ["pulmon"],
+  Ecocardiograma: ["corazon"],
+  ECG: ["corazon"],
+  Coronariografia: ["corazon"],
+  Ecografia: ["higado", "rinon", "pancreas"],
+  Eco_abdominal: ["higado", "rinon", "pancreas"],
+  TAC_abdomen: ["higado", "rinon", "pancreas"],
+  Eco_renal: ["rinon"],
+};
+
+// Sección del PDF de cada requisito (los que no figuran van a "Otros").
+export const SECCION_REQUISITO: Record<string, string> = {
+  pafi: "Oxigenación",
+  desafio: "Oxigenación",
+  respirador: "Respirador",
+  talla_perimetros: "Medidas",
+  peso_talla: "Medidas",
+  antecedentes: "Antecedentes",
+  cultivo_aspirado: "Cultivos",
+  hemocultivos: "Cultivos",
+  vasoactivos: "Hemodinamia",
+  pam: "Hemodinamia",
+  troponina_cpkmb: "Laboratorio",
+  hepatograma: "Laboratorio",
+  tp_kptt: "Laboratorio",
+  sodio: "Laboratorio",
+  amilasa_lipasa: "Laboratorio",
+  glucemias: "Laboratorio",
+  creatinina_urea: "Función renal",
+  diuresis_balance: "Función renal",
+  sedimento_proteinuria: "Función renal",
+  diabetes_previa: "Antecedentes",
+  hla: "Informativo",
+  biopsia: "Informativo",
+  aspecto: "Informativo",
+};

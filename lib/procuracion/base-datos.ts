@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { guardarConReintento } from "./guardar";
 import { ME_CAMPO_KEYS } from "./constants";
-import { armarInsumos, filasVacias, type CambiosSolicitud, type ExpedienteDatos, type FilasDonante, type FuenteBase } from "./base-armado";
+import { armarInsumos, filasVacias, type CambiosSolicitud, type EnvioFichaFila, type ExpedienteDatos, type FilasDonante, type FuenteBase } from "./base-armado";
 import type { DonanteTablero, InsumosTablero } from "./base-tablero";
 import type { Solicitud } from "./base-solicitudes";
 import type { DonanteExportacion } from "./base-exportar";
@@ -307,6 +307,26 @@ export function fuenteSupabase(supabase: SupabaseClient, opciones: { iniciales?:
 
     async subirFotoJudicial(donanteId, archivo) {
       await subirFotoDocumentacion(supabase, donanteId, "autorizacion_juez", archivo, "base");
+    },
+
+    async cargarEnviosFicha(donanteId, organo) {
+      const r = await supabase
+        .from("ficha_envios")
+        .select("id, organo_key, version, valores, editados, incluye, creado_por, creado_en, vence_en, estado, anulado")
+        .eq("donante_id", donanteId)
+        .eq("organo_key", organo)
+        .order("version", { ascending: false });
+      if (r.error) {
+        // tabla nueva: sin el SQL aplicado la ficha funciona igual (sin versiones guardadas)
+        if (/ficha_envios|does not exist|schema cache/i.test(r.error.message)) return null;
+        throw new Error(`No se pudieron cargar las versiones de la ficha: ${r.error.message}`);
+      }
+      return (r.data as EnvioFichaFila[]) ?? [];
+    },
+
+    async crearEnvioFicha(donanteId, datos) {
+      const r = await guardarConReintento(() => supabase.from("ficha_envios").insert({ ...datos, donante_id: donanteId }));
+      if (!r.ok) throw new Error(r.mensaje);
     },
 
     async cambiarEstadoProtocolo(donanteId, estado, textoLinea) {

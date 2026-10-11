@@ -136,4 +136,23 @@ export interface FuenteBase {
   crearEquipo(donanteId: string, datos: DatosEquipo): Promise<void>;
   guardarHoraQuirofano(donanteId: string, horaIso: string): Promise<void>;
   subirFotoJudicial(donanteId: string, archivo: File): Promise<void>;
+  // Ficha por equipo: versiones enviadas (tabla ficha_envios; null = la
+  // tabla todavía no existe, falta handoff/ficha_envios.sql).
+  cargarEnviosFicha(donanteId: string, organo: string): Promise<EnvioFichaFila[] | null>;
+  crearEnvioFicha(donanteId: string, datos: NuevoEnvioFicha): Promise<void>;
 }
+
+export type EnvioFichaFila = {
+  id: string;
+  organo_key: string;
+  version: number;
+  valores: Record<string, { etiqueta: string; valor: string }>;
+  editados: string[];
+  incluye: { campos?: string[]; estudios?: Record<string, string> } | null;
+  creado_por: string | null;
+  creado_en: string;
+  vence_en: string | null;
+  estado: string;
+  anulado: boolean;
+};
+export type NuevoEnvioFicha = Pick<EnvioFichaFila, "organo_key" | "version" | "valores" | "editados" | "incluye" | "creado_por" | "estado">;

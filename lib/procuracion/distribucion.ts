@@ -50,17 +50,17 @@ export type Evaluado = {
   nota: string | null;
 };
 
-type Datos = Pick<ExpedienteDatos, "donante" | "fuentes" | "cultivos" | "estudios" | "planillas" | "equipos" | "organosAceptados" | "insumos">;
+export type Datos = Pick<ExpedienteDatos, "donante" | "fuentes" | "cultivos" | "estudios" | "planillas" | "equipos" | "organosAceptados" | "insumos">;
 
 // ------------------------------------------------------------ formatos
 const p2 = (n: number) => String(n).padStart(2, "0");
 const hhmm = (t: number) => `${p2(new Date(t).getHours())}:${p2(new Date(t).getMinutes())}`;
-const num = (v: number | string, dec = 0) => (typeof v === "number" ? textoValor(v, dec) : v);
+export const num = (v: number | string, dec = 0) => (typeof v === "number" ? textoValor(v, dec) : v);
 const PARAMETROS = new Map(SISTEMAS.flatMap((s) => s.parametros.map((x) => [x.clave, x] as const)));
 const mayor = (xs: (string | null | undefined)[]) => xs.filter((x): x is string => !!x).sort().pop() ?? null;
 
 // Último valor de un parámetro del expediente, con su unidad y su hora.
-function ultimo(d: Datos, clave: string, ahora: number): { texto: string; en: string; etiqueta: string } | null {
+export function ultimo(d: Datos, clave: string, ahora: number): { texto: string; en: string; etiqueta: string } | null {
   const par = PARAMETROS.get(clave);
   if (!par) return null;
   const f = filaParametro(par, d.fuentes, ahora);
@@ -91,7 +91,7 @@ function deVarios(r: Requisito, v: ReturnType<typeof varios>, ahora: number): Ev
 }
 
 // Último estudio de alguno de esos tipos.
-function estudio(d: Datos, tipos: string[]) {
+export function estudio(d: Datos, tipos: string[]) {
   return [...d.estudios].filter((e) => tipos.includes(e.tipo_estudio)).sort((a, b) => b.created_at.localeCompare(a.created_at))[0] ?? null;
 }
 function deEstudio(r: Requisito, d: Datos, tipos: string[], nombre: string, ahora: number): Evaluado {
