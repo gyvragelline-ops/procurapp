@@ -11,6 +11,13 @@
 > enchufar la autenticación ahí. El navegador solo tiene la clave pública
 > anon; nunca claves secretas. La Base muestra solo datos reales; los datos
 > de prueba viven únicamente en `lib/procuracion/__tests__/fixtures/`.
+> El Tablero y el Expediente no le piden nombre ni DNI al navegador:
+> muestran iniciales calculadas en el servidor (`/api/base/iniciales`).
+> Nombre y DNI se piden solo al tildar "Incluir nombre y DNI (uso
+> interno)" para exportar. Ojo: sin RLS, la clave anon igual puede leer
+> esas columnas directo; esto no reemplaza la autenticación.
+> Donantes de prueba: columna `donantes.es_prueba` (`handoff/es_prueba.sql`),
+> cartel PRUEBA en pantalla y en el texto copiado o compartido.
 
 ## ESTADO AL 01/10 -- proyecto pausado
 

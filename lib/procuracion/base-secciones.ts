@@ -62,10 +62,11 @@ const fechaSola = (v: string | null) => {
 const lleno = (x: string | null | undefined): x is string => !!x && x.trim() !== "";
 
 // Identificación para compartir: PD; si no hay, folio; nunca nombre ni DNI.
-export function identificacionCorta(d: { id: string; pd_numero: string | null; folio_numero: string | null }): string {
-  if (lleno(d.pd_numero)) return `PD ${d.pd_numero}`;
-  if (lleno(d.folio_numero)) return `Folio ${d.folio_numero}`;
-  return `Donante ${d.id.slice(0, 8)}`;
+// Donante de prueba: "PRUEBA · PD 1234" (así sale en el texto copiado o
+// compartido y en la línea de tiempo).
+export function identificacionCorta(d: { id: string; pd_numero: string | null; folio_numero: string | null; es_prueba?: boolean | null }): string {
+  const base = lleno(d.pd_numero) ? `PD ${d.pd_numero}` : lleno(d.folio_numero) ? `Folio ${d.folio_numero}` : `Donante ${d.id.slice(0, 8)}`;
+  return d.es_prueba === true ? `PRUEBA · ${base}` : base;
 }
 
 // ------------------------------------------------------- texto y línea

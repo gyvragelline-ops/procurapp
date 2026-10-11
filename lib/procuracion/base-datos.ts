@@ -14,6 +14,8 @@ import { cargarMensajes, enviarMensaje } from "./chat";
 import { PLANILLA_MEDIDAS } from "./medidas-campos";
 import { crearEquipo, guardarHoraQuirofano } from "./quirofano";
 import { subirFotoDocumentacion } from "./subir-foto-doc";
+import type { Iniciales } from "./base-iniciales";
+import type { Familiar } from "./base-expediente-etapas";
 
 // Base operativa: acceso a datos. Lee las MISMAS tablas que el resto de la
 // app (no duplica datos). Escrituras con guardarConReintento: si fallan,
@@ -21,8 +23,16 @@ import { subirFotoDocumentacion } from "./subir-foto-doc";
 //
 // ATENCIÓN: sin login ni RLS todavía. NO usar con donantes reales.
 
+// Sin nombre_completo ni dni: la Base muestra iniciales (las calcula el
+// servidor, /api/base/iniciales). Nombre y DNI se piden solo al exportar
+// "con nombre y DNI (uso interno)" (cargarIdentidad).
 const COLS_DONANTE =
-  "id, pd_numero, folio_numero, nombre_completo, dni, edad, sexo, peso, talla, grupo_sanguineo, institucion, localidad, servicio, cama, fecha_nacimiento, fecha_ingreso, me_hora, causa_muerte, estado_general, tipo_procuracion, created_at";
+  "id, pd_numero, folio_numero, edad, sexo, peso, talla, grupo_sanguineo, institucion, localidad, servicio, cama, fecha_nacimiento, fecha_ingreso, me_hora, causa_muerte, estado_general, tipo_procuracion, created_at";
+// Columnas de SQL recientes: si alguna todavía no existe, se carga sin ella.
+const COLS_OPCIONALES = ["procurador_nombre", "antecedentes", "es_prueba"] as const;
+const SQL_DE_COLUMNA: Record<string, string> = { procurador_nombre: "handoff/base_operativa.sql", antecedentes: "handoff/antecedentes.sql", es_prueba: "handoff/es_prueba.sql" };
+const avisoColumnas = (faltan: string[]) => `Falta aplicar SQL: ${faltan.map((c) => `donantes.${c} (${SQL_DE_COLUMNA[c]})`).join(", ")}. Se muestra lo que hay.`;
+const AVISO_INICIALES = "No se pudieron cargar las iniciales: se muestra «—».";
 const CATEGORIAS_ESTADO = ["judicial", "certificacion", "comMuerte", "comDonacion", "labImagenes", "medidas", "mantenimiento"];
 const AVISO_SQL = "Falta aplicar el SQL de la Base operativa (handoff/base_operativa.sql): se muestra lo que hay.";
 
@@ -53,24 +63,28 @@ function normalizarSolicitud(r: Record<string, unknown>): Solicitud {
   } as Solicitud;
 }
 
-async function cargarDonantes(supabase: SupabaseClient, filtro: { activos: true } | { id: string }): Promise<{ donantes: DonanteFila[]; sinColumnas: boolean }> {
+// Columna que falta, según el error de PostgREST ("column donantes.x does
+// not exist"); null si el error es otro.
+export function columnaFaltante(mensaje: string): string | null {
+  return /column \w+\.(\w+) does not exist/.exec(mensaje)?.[1] ?? null;
+}
+
+async function cargarDonantes(supabase: SupabaseClient, filtro: { activos: true } | { id: string }): Promise<{ donantes: DonanteFila[]; faltan: string[] }> {
   const consulta = (cols: string) => {
     const q = supabase.from("donantes").select(cols);
     return "id" in filtro ? q.eq("id", filtro.id) : q.or("estado_general.is.null,estado_general.neq.cerrado").order("created_at");
   };
-  // Columnas nuevas (procurador_nombre, antecedentes): si el SQL todavía no
-  // se aplicó, se cargan sin ellas y la pantalla lo avisa.
-  const intentos = [`${COLS_DONANTE}, procurador_nombre, antecedentes`, `${COLS_DONANTE}, antecedentes`, `${COLS_DONANTE}, procurador_nombre`, COLS_DONANTE];
-  let ultimoError = "";
-  for (const [i, cols] of intentos.entries()) {
-    const r = await consulta(cols);
+  const opcionales: string[] = [...COLS_OPCIONALES];
+  for (;;) {
+    const r = await consulta([COLS_DONANTE, ...opcionales].join(", "));
     if (!r.error) {
-      const donantes = ((r.data as unknown as DonanteFila[]) ?? []).map((d) => ({ procurador_nombre: null, antecedentes: null, ...d }));
-      return { donantes, sinColumnas: i > 0 };
+      const donantes = ((r.data as unknown as DonanteFila[]) ?? []).map((d) => ({ procurador_nombre: null, antecedentes: null, es_prueba: false, ...d, nombre_completo: null, dni: null }));
+      return { donantes, faltan: COLS_OPCIONALES.filter((c) => !opcionales.includes(c)) };
     }
-    ultimoError = r.error.message;
+    const falta = columnaFaltante(r.error.message);
+    if (!falta || !opcionales.includes(falta)) throw new Error(`No se pudieron cargar los donantes: ${r.error.message}`);
+    opcionales.splice(opcionales.indexOf(falta), 1);
   }
-  throw new Error(`No se pudieron cargar los donantes: ${ultimoError}`);
 }
 
 async function cargarFilas(supabase: SupabaseClient, ids: string[]): Promise<{ filas: Map<string, FilasDonante>; sinColumnas: boolean }> {
@@ -130,20 +144,32 @@ async function cargarFilas(supabase: SupabaseClient, ids: string[]): Promise<{ f
   return { filas, sinColumnas };
 }
 
-export function fuenteSupabase(supabase: SupabaseClient): FuenteBase {
+// iniciales: lo inyecta la pantalla (pedirIniciales, al servidor); sin él
+// las iniciales quedan "—".
+export function fuenteSupabase(supabase: SupabaseClient, opciones: { iniciales?: (ids: string[]) => Promise<Iniciales> } = {}): FuenteBase {
+  async function conIniciales(ids: string[]): Promise<{ ini: Iniciales; aviso: string | null }> {
+    try {
+      return { ini: opciones.iniciales ? await opciones.iniciales(ids) : { donantes: {}, familiares: {} }, aviso: null };
+    } catch {
+      return { ini: { donantes: {}, familiares: {} }, aviso: AVISO_INICIALES };
+    }
+  }
   return {
 
     async cargarTablero() {
-      const { donantes, sinColumnas: a } = await cargarDonantes(supabase, { activos: true });
-      const { filas, sinColumnas: b } = await cargarFilas(supabase, donantes.map((d) => d.id));
-      const insumos: InsumosTablero[] = donantes.map((d) => armarInsumos(d as DonanteTablero & DonanteFila, filas.get(d.id)!));
-      return { insumos, avisos: a || b ? [AVISO_SQL] : [] };
+      const { donantes, faltan } = await cargarDonantes(supabase, { activos: true });
+      const ids = donantes.map((d) => d.id);
+      const [{ filas, sinColumnas: b }, { ini, aviso }] = await Promise.all([cargarFilas(supabase, ids), conIniciales(ids)]);
+      const insumos: InsumosTablero[] = donantes.map((d) => armarInsumos({ ...d, iniciales: ini.donantes[d.id] ?? null } as DonanteTablero & DonanteFila, filas.get(d.id)!));
+      return { insumos, avisos: [...(faltan.length ? [avisoColumnas(faltan)] : []), ...(b ? [AVISO_SQL] : []), ...(aviso ? [aviso] : [])] };
     },
 
     async cargarExpediente(donanteId) {
       const { donantes } = await cargarDonantes(supabase, { id: donanteId });
-      const donante = donantes[0];
-      if (!donante) throw new Error("No se encontró el donante.");
+      const encontrado = donantes[0];
+      if (!encontrado) throw new Error("No se encontró el donante.");
+      const { ini } = await conIniciales([donanteId]);
+      const donante = { ...encontrado, iniciales: ini.donantes[donanteId] ?? null };
       const [{ filas }, mant, lab, cultivos, equipos, estudios, fotos, linea, mensajes, muestras, planillas, certAux, familiar, analisis, config, antibioticos, revisiones, autorizacion, organosAcept, comunicaciones] = await Promise.all([
         cargarFilas(supabase, [donanteId]),
         cargarMantenimiento(supabase, donanteId),
@@ -157,7 +183,7 @@ export function fuenteSupabase(supabase: SupabaseClient): FuenteBase {
         supabase.from("muestras").select("paquete_key, nombre, obtenida, retirada").eq("donante_id", donanteId),
         supabase.from("planilla_valores").select("planilla_key, campo_pdf, valor").eq("donante_id", donanteId).in("planilla_key", ["neuro", "certificado", "doppler", PLANILLA_MEDIDAS]),
         supabase.from("documentacion_estado").select("item_key, estado, meta").eq("donante_id", donanteId).eq("categoria", "certificacion"),
-        supabase.from("familiares").select("nombre, dni, parentesco, direccion, telefono").eq("donante_id", donanteId).limit(1).maybeSingle(),
+        supabase.from("familiares").select("parentesco, direccion, telefono").eq("donante_id", donanteId).limit(1).maybeSingle(),
         supabase.from("comunicacion_donacion_analisis").select("id, texto, etapa_detectada, created_at").eq("donante_id", donanteId).order("created_at", { ascending: false }),
         supabase.from("mantenimiento_config").select("corazon_candidato, pulmon_candidato, monitoreo_avanzado_activo, updated_at").eq("donante_id", donanteId).maybeSingle(),
         // tabla nueva: si el SQL no se aplicó, la Base sigue (sin antibióticos)
@@ -197,7 +223,10 @@ export function fuenteSupabase(supabase: SupabaseClient): FuenteBase {
         mensajes,
         planillas: { neuro: porPlanilla("neuro"), certificado: porPlanilla("certificado"), doppler: porPlanilla("doppler"), medidas: porPlanilla(PLANILLA_MEDIDAS) },
         certAux: (certAux.data as ExpedienteDatos["certAux"]) ?? [],
-        familiar: (familiar.data as ExpedienteDatos["familiar"]) ?? null,
+        familiar:
+          familiar.data || ini.familiares[donanteId]
+            ? { iniciales: ini.familiares[donanteId] ?? null, parentesco: null, direccion: null, telefono: null, ...((familiar.data as Omit<Familiar, "iniciales"> | null) ?? {}) }
+            : null,
         analisisComunicacion: (analisis.data as ExpedienteDatos["analisisComunicacion"]) ?? [],
         fotosDocumentacion: todasLasFotos.filter((f) => f.tipo === "dni" || f.tipo === "grupo_factor"),
         antibioticos: antibioticos.error ? null : ((antibioticos.data as ExpedienteDatos["antibioticos"]) ?? []),
@@ -207,6 +236,14 @@ export function fuenteSupabase(supabase: SupabaseClient): FuenteBase {
         comunicaciones: { comMuerte: regCom("comMuerte"), comDonacion: regCom("comDonacion") },
       };
       return datos;
+    },
+
+    // Solo para exportar "con nombre y DNI (uso interno)": lo pide la
+    // pantalla cuando se tilda esa opción.
+    async cargarIdentidad(donanteId) {
+      const r = await supabase.from("donantes").select("nombre_completo, dni").eq("id", donanteId).maybeSingle();
+      if (r.error) throw new Error(`No se pudo cargar nombre y DNI: ${r.error.message}`);
+      return { nombre_completo: r.data?.nombre_completo ?? null, dni: r.data?.dni ?? null };
     },
 
     async crearSolicitud(donanteId, datos) {

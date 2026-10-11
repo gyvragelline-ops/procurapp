@@ -21,10 +21,11 @@ import ChatBase from "./chat-base";
 import Impresion from "./impresion";
 import SeccionesExpediente from "./secciones-expediente";
 import { metaDonante } from "./tablero";
-import { COLOR, colorEtapa, descargar, dosCifras, horaCorta, hhmm, textoActualizado, textoEstadoEtapa, useConsultaPeriodica } from "./ui";
+import { COLOR, colorEtapa, descargar, dosCifras, horaCorta, hhmm, textoEstadoEtapa, useConsultaPeriodica } from "./ui";
+import { AvisoSinConexion, MarcaActualizado, useConexion } from "./conexion";
+import { CONSULTA_BASE_MS } from "@/lib/procuracion/base-actualizacion";
 import styles from "./base.module.css";
 
-const CONSULTA_MS = 30_000;
 
 // Ancla de cada etapa del índice: su sección si tiene una; si no, su
 // renglón en "Etapas".
@@ -56,9 +57,11 @@ export default function Expediente({
 }) {
   const [datos, setDatos] = useState<ExpedienteDatos | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [cargadoEn, setCargadoEn] = useState<number | null>(null);
+  const conexion = useConexion();
   const [equipo, setEquipo] = useState<EquipoExportacion>("todo");
   const [conIdentidad, setConIdentidad] = useState(false);
+  // Nombre y DNI: se piden solo al tildar "Incluir nombre y DNI (uso interno)".
+  const [identidad, setIdentidad] = useState<{ nombre_completo: string | null; dni: string | null } | null>(null);
   const [imprimir, setImprimir] = useState<{ momento: number; modo: "impresión" | "PDF" } | null>(null);
   const [cierre, setCierre] = useState(false);
   const [resultado, setResultado] = useState<ResultadoCierre | null>(null);
@@ -72,13 +75,14 @@ export default function Expediente({
       setDatos(d);
       setError(null);
       const t = Date.now();
-      setCargadoEn(t);
+      conexion.ok(t);
       onAhora(t);
     } catch (e) {
+      conexion.fallo();
       setError(e instanceof Error ? e.message : "No se pudo cargar el expediente.");
     }
   }
-  useConsultaPeriodica(cargar, CONSULTA_MS, `exp-${donanteId}`);
+  useConsultaPeriodica(cargar, CONSULTA_BASE_MS, `exp-${donanteId}`);
 
   // Imprimir / PDF: se arma la vista de impresión y después se abre el diálogo.
   useEffect(() => {
@@ -97,9 +101,10 @@ export default function Expediente({
   const f = filaTablero(datos.insumos, ahora);
   const sistemas = mantenimientoPorSistema(datos.fuentes, ahora);
   const activo = esActivo(d);
-  const opciones: OpcionesExportacion = { equipo, destino: equipo === "todo" ? "base" : "equipo", incluirNombreYDni: equipo === "todo" && conIdentidad };
+  const conNombre = equipo === "todo" && conIdentidad && identidad !== null;
+  const opciones: OpcionesExportacion = { equipo, destino: equipo === "todo" ? "base" : "equipo", incluirNombreYDni: conNombre };
   const exportacion: DatosExportacion = {
-    donante: d,
+    donante: conNombre ? { ...d, ...identidad } : d,
     fuentes: datos.fuentes,
     cultivos: datos.cultivos,
     estudios: datos.estudios,
@@ -108,6 +113,18 @@ export default function Expediente({
     muestras: datos.muestras,
     corazonCandidato: datos.corazonCandidato,
   };
+
+  async function tildarIdentidad(si: boolean) {
+    setConIdentidad(si);
+    if (!si) return setIdentidad(null);
+    setErrorAccion(null);
+    try {
+      setIdentidad(await fuente.cargarIdentidad(donanteId));
+    } catch (e) {
+      setConIdentidad(false);
+      setErrorAccion(e instanceof Error ? e.message : "No se pudo cargar nombre y DNI.");
+    }
+  }
 
   async function accion(fn: () => Promise<void>) {
     setErrorAccion(null);
@@ -215,15 +232,18 @@ export default function Expediente({
               {f.iniciales} (cerrado)
             </button>
           )}
-          <span className={`${styles.chico} ${styles.mu}`} style={{ marginLeft: "auto" }}>
-            {textoActualizado(cargadoEn, ahora)}
+          <span style={{ marginLeft: "auto" }}>
+            <MarcaActualizado estado={conexion.estado} />
           </span>
         </div>
 
         {/* encabezado del donante + exportación */}
         <div className={styles.cabExp}>
           <div style={{ display: "flex", alignItems: "baseline", gap: 18, flexWrap: "wrap" }}>
-            <span className={styles.nombre}>{f.iniciales}</span>
+            <span className={styles.nombre}>
+              {f.iniciales}
+              {f.esPrueba && <span className={styles.prueba}>PRUEBA</span>}
+            </span>
             <span className={styles.mu}>
               {[metaDonante(f), d.grupo_sanguineo ? `Grupo ${d.grupo_sanguineo}` : null, f.hospital, `Procurador: ${f.procurador ?? "sin cargar"}`, f.identificador].filter(Boolean).join(" · ")}
             </span>
@@ -238,7 +258,7 @@ export default function Expediente({
               </button>
             ))}
             <label className={styles.chico} title="Solo para uso interno de la Base. Nunca sale para un equipo." style={{ opacity: equipo === "todo" ? 1 : 0.5 }}>
-              <input type="checkbox" disabled={equipo !== "todo"} checked={equipo === "todo" && conIdentidad} onChange={(e) => setConIdentidad(e.target.checked)} /> Incluir nombre y DNI (uso interno)
+              <input type="checkbox" disabled={equipo !== "todo"} checked={equipo === "todo" && conIdentidad} onChange={(e) => void tildarIdentidad(e.target.checked)} /> Incluir nombre y DNI (uso interno)
             </label>
             <button type="button" className={styles.btn} onClick={() => imprimirAhora("impresión")}>
               Imprimir
@@ -260,6 +280,8 @@ export default function Expediente({
             )}
           </div>
         </div>
+        <AvisoSinConexion estado={conexion.estado} />
+        {f.esPrueba && <div className={`${styles.aviso} ${styles.avisoDemo}`}>Donante de PRUEBA: el texto copiado o compartido sale con «PRUEBA».</div>}
         {aviso && <div className={`${styles.aviso} ${styles.avisoDemo}`}>{aviso}</div>}
         {errorAccion && (
           <div className={styles.error} role="alert">
@@ -291,7 +313,7 @@ export default function Expediente({
           </div>
         )}
 
-        <div className={styles.columnas}>
+        <div className={`${styles.columnas} ${conexion.estado.tipo === "sin_conexion" ? styles.desactualizado : ""}`}>
           {/* índice: orden Procurapp */}
           <nav className={styles.indice} aria-label="Índice del expediente">
             <span className={`${styles.chico} ${styles.mu}`} style={{ letterSpacing: ".06em", textTransform: "uppercase", marginBottom: 6 }}>

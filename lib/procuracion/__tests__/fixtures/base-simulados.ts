@@ -375,7 +375,7 @@ export function donantesSimulados(ahora: number): DonanteSimulado[] {
         { id: "a-ab1", antibiotico: "Piperacilina-tazobactam (simulado)", desde: iso(ahora, 20 * 60), foco: "Respiratorio", creado_en: iso(ahora, 20 * 60), anulado: false },
         { id: "a-ab2", antibiotico: "Vancomicina (simulado)", desde: iso(ahora, 10 * 60), foco: null, creado_en: iso(ahora, 10 * 60), anulado: false },
       ],
-      familiar: { nombre: "Familiar Simulado", dni: "DNI-FAM-0001", parentesco: "Hermana", direccion: "Calle Simulada 123", telefono: "000-000-0000" },
+      familiar: { iniciales: "FS", parentesco: "Hermana", direccion: "Calle Simulada 123", telefono: "000-000-0000" },
       analisisComunicacion: [{ id: "a-ca1", texto: "La familia pregunta si puede despedirse antes del quirófano (simulado).", etapa_detectada: 2, created_at: iso(ahora, 5 * 60) }],
       fotosDocumentacion: [
         { tipo: "dni", created_at: iso(ahora, 11 * 60), cargado_por_rol: "procurador", archivo_url: null },

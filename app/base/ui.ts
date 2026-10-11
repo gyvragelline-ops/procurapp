@@ -41,11 +41,6 @@ export function hace(minutos: number): string {
   const m = minutos % 60;
   return m ? `hace ${h} h ${p2(m)}` : `hace ${h} h`;
 }
-export function textoActualizado(cargadoEn: number | null, ahora: number): string {
-  if (cargadoEn === null) return "cargando…";
-  const s = Math.max(0, Math.round((ahora - cargadoEn) / 1000));
-  return s < 60 ? `actualizado hace ${s} s` : `actualizado hace ${Math.floor(s / 60)} min`;
-}
 export const letraSexo = (s: string | null) => (s === "masculino" ? "M" : s === "femenino" ? "F" : null);
 
 // Consulta periódica (sin Realtime): enseguida, después cada `ms`, solo con

@@ -100,12 +100,12 @@ export function metodosAuxiliares(estados: FilaCertAux[], neuro: Campos, doppler
 }
 
 // ------------------------------------ 05 familiar y comunicación
-export type Familiar = { nombre: string | null; dni: string | null; parentesco: string | null; direccion: string | null; telefono: string | null };
+// Familiar de contacto: iniciales (del servidor), nunca nombre ni DNI.
+export type Familiar = { iniciales: string | null; parentesco: string | null; direccion: string | null; telefono: string | null };
 export function familiarDeContacto(f: Partial<Familiar> | null) {
   const x = (k: keyof Familiar) => (f && f[k] && String(f[k]).trim() ? String(f[k]) : null);
   return [
-    { etiqueta: "Nombre y apellido", valor: x("nombre") },
-    { etiqueta: "DNI", valor: x("dni") },
+    { etiqueta: "Iniciales", valor: x("iniciales") },
     { etiqueta: "Parentesco", valor: x("parentesco") },
     { etiqueta: "Dirección", valor: x("direccion") },
     { etiqueta: "Celular", valor: x("telefono") },

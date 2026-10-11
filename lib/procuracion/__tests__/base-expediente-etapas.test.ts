@@ -100,7 +100,8 @@ test("03 métodos auxiliares con su estado e informe", () => {
 
 test("05 familiar y análisis; 06 muestras; 07 medidas; 10 fotos", () => {
   const s = sim("sim-a").expediente;
-  assert.deepEqual(familiarDeContacto(s.familiar).map((x) => x.etiqueta), ["Nombre y apellido", "DNI", "Parentesco", "Dirección", "Celular"]);
+  assert.deepEqual(familiarDeContacto(s.familiar).map((x) => x.etiqueta), ["Iniciales", "Parentesco", "Dirección", "Celular"]);
+  assert.equal(familiarDeContacto(s.familiar)[0].valor, "FS");
   assert.equal(familiarDeContacto(null)[0].valor, null);
   assert.equal(analisisComunicacion(s.analisisComunicacion)[0].etapa, "2. Aceptación, dudas, explicaciones");
   const mu = muestrasPorPaquete(s.muestras);

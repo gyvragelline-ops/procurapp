@@ -121,6 +121,8 @@ export type CambiosSolicitud = Partial<Pick<Solicitud, "estado" | "respuesta" | 
 export interface FuenteBase {
   cargarTablero(): Promise<{ insumos: InsumosTablero[]; avisos: string[] }>;
   cargarExpediente(donanteId: string): Promise<ExpedienteDatos>;
+  // Nombre y DNI: solo para exportar "con nombre y DNI (uso interno)".
+  cargarIdentidad(donanteId: string): Promise<{ nombre_completo: string | null; dni: string | null }>;
   crearSolicitud(donanteId: string, datos: NuevaSolicitud): Promise<Solicitud>;
   cambiarSolicitud(id: string, cambios: CambiosSolicitud): Promise<void>;
   enviarMensaje(donanteId: string, datos: { rol: RolChat; autor: string | null; texto: string }): Promise<MensajeCaso>;

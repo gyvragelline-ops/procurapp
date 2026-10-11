@@ -3,7 +3,9 @@
 import { filaTablero, ordenarPorUrgencia, resumenTarjetas, type FilaTablero, type InsumosTablero } from "@/lib/procuracion/base-tablero";
 import { urgenteVencida } from "@/lib/procuracion/base-solicitudes";
 import { exportarTableroCsv } from "@/lib/procuracion/base-exportar";
-import { COLOR, colorEtapa, descargar, diaYHora, dosCifras, hace, letraSexo, textoActualizado } from "./ui";
+import { COLOR, colorEtapa, descargar, diaYHora, dosCifras, hace, letraSexo } from "./ui";
+import { MarcaActualizado } from "./conexion";
+import type { EstadoActualizacion } from "@/lib/procuracion/base-actualizacion";
 import styles from "./base.module.css";
 
 const DIAS = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
@@ -34,9 +36,12 @@ function Fila({ f, i, ahora, onAbrir }: { f: FilaTablero; i: InsumosTablero; aho
     ...f.falta.pendientes.map((t) => ({ t, c: COLOR.tx, w: 400 })),
   ];
   return (
-    <button type="button" className={styles.fila} onClick={() => onAbrir(f.id)} aria-label={`Abrir expediente ${f.iniciales} ${f.identificador}`}>
+    <button type="button" className={styles.fila} onClick={() => onAbrir(f.id)} aria-label={`Abrir expediente ${f.esPrueba ? "de prueba " : ""}${f.iniciales} ${f.identificador}`}>
       <div className={styles.apilado}>
-        <span className={styles.donante}>{f.iniciales}</span>
+        <span className={styles.donante}>
+          {f.iniciales}
+          {f.esPrueba && <span className={styles.prueba}>PRUEBA</span>}
+        </span>
         <span className={`${styles.chico} ${styles.mu}`}>{metaDonante(f)}</span>
         <span className={`${styles.chico} ${styles.mu} ${styles.num}`}>{f.identificador}</span>
       </div>
@@ -80,12 +85,12 @@ function Fila({ f, i, ahora, onAbrir }: { f: FilaTablero; i: InsumosTablero; aho
 export default function Tablero({
   insumos,
   ahora,
-  cargadoEn,
+  actualizacion,
   onAbrir,
 }: {
   insumos: InsumosTablero[] | null;
   ahora: number;
-  cargadoEn: number | null;
+  actualizacion: EstadoActualizacion;
   onAbrir: (id: string) => void;
 }) {
   const lista = insumos ? ordenarPorUrgencia(insumos, ahora) : [];
@@ -115,7 +120,7 @@ export default function Tablero({
         </div>
         <div className={styles.acciones}>
           <span className={`${styles.num} ${styles.mu}`}>{reloj(ahora)}</span>
-          <span className={`${styles.chico} ${styles.mu} ${styles.noImprimir}`}>{textoActualizado(cargadoEn, ahora)}</span>
+          <MarcaActualizado estado={actualizacion} />
           <button type="button" className={`${styles.btn} ${styles.noImprimir}`} onClick={() => window.print()}>
             Imprimir tablero
           </button>
@@ -136,7 +141,7 @@ export default function Tablero({
         ))}
       </div>
 
-      <div className={styles.tabla}>
+      <div className={`${styles.tabla} ${actualizacion.tipo === "sin_conexion" ? styles.desactualizado : ""}`}>
         <div className={`${styles.fila} ${styles.filaTitulos}`}>
           <span>Donante</span>
           <span>Hospital · procurador</span>

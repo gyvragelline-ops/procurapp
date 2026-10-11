@@ -34,6 +34,12 @@ export type DonanteTablero = {
   tipo_procuracion: "multiorganico" | "corneas" | null;
   created_at: string;
   procurador_nombre?: string | null;
+  // Iniciales calculadas en el servidor (/api/base/iniciales): la Base no
+  // le pide el nombre completo ni el DNI al navegador.
+  iniciales?: string | null;
+  // Donante de prueba (donantes.es_prueba): cartel PRUEBA en pantalla y en
+  // el texto copiado o compartido.
+  es_prueba?: boolean | null;
 };
 
 export type EquipoTablero = { equipo: string; organos: string[]; organo_otro: string | null; anulado: boolean };
@@ -75,10 +81,14 @@ export function iniciales(nombre: string | null): string {
   return partes.map((p) => p[0]!.toLocaleUpperCase("es")).join("") || "—";
 }
 
+// Iniciales para mostrar: las que vienen del servidor; si no, del nombre
+// (solo cuando ya está cargado, p. ej. en los tests).
+export const inicialesDe = (d: Pick<DonanteTablero, "nombre_completo" | "iniciales">): string => (d.iniciales && d.iniciales.trim()) || iniciales(d.nombre_completo);
+
 // Identificador para exportar a equipos: PD / folio (nunca nombre ni DNI).
-export function identificador(d: Pick<DonanteTablero, "id" | "pd_numero" | "folio_numero" | "nombre_completo">): string {
+export function identificador(d: Pick<DonanteTablero, "id" | "pd_numero" | "folio_numero" | "nombre_completo" | "iniciales">): string {
   const partes = [d.pd_numero ? `PD ${d.pd_numero}` : null, d.folio_numero ? `Folio ${d.folio_numero}` : null].filter(Boolean);
-  return partes.length ? partes.join(" · ") : `${iniciales(d.nombre_completo)} · ${d.id.slice(0, 8)}`;
+  return partes.length ? partes.join(" · ") : `${inicialesDe(d)} · ${d.id.slice(0, 8)}`;
 }
 
 // ------------------------------------------------------- Mantenimiento
@@ -311,8 +321,9 @@ export function filaTablero(i: InsumosTablero, ahora: number) {
   const barra = barraEtapas(i, ahora);
   return {
     id: d.id,
-    iniciales: iniciales(d.nombre_completo),
+    iniciales: inicialesDe(d),
     identificador: identificador(d),
+    esPrueba: d.es_prueba === true,
     edad: d.edad,
     sexo: d.sexo,
     peso: d.peso,
