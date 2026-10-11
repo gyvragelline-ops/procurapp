@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { BLOQUE_COMUN, BOM, COLUMNAS, SECCIONES, armarCsv, campoCsv, exportarCsv, seccionesDeEquipo, textoTimelineExportacion } from "../base-exportar.ts";
-import { donantesSimulados, registroDemo } from "../base-demo.ts";
+import { donantesSimulados, registroDemo } from "./fixtures/base-simulados.ts";
 
 const AHORA = new Date(2026, 9, 10, 14, 5).getTime();
 

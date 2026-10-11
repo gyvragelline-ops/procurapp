@@ -21,7 +21,7 @@ import {
   validarCierre,
   type InsumosTablero,
 } from "../base-tablero.ts";
-import { datosEtapasVacios, donanteDemo, donantesSimulados, solicitudDemo } from "../base-demo.ts";
+import { datosEtapasVacios, donanteDemo, donantesSimulados, solicitudDemo } from "./fixtures/base-simulados.ts";
 
 const AHORA = new Date(2026, 9, 10, 14, 0).getTime();
 const hace = (min: number) => new Date(AHORA - min * 60_000).toISOString();

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { antibioticosVigentes, validarAntibiotico, type Antibiotico } from "../antibioticos-calculos.ts";
 import { fotosFaltantesPotencial, pendientesEtapa, barraEtapas } from "../base-tablero.ts";
 import { estadoCalculadoEtapa, etapasVisibles } from "../estado-etapas.ts";
-import { datosEtapasVacios, donanteDemo, donantesSimulados } from "../base-demo.ts";
+import { datosEtapasVacios, donanteDemo, donantesSimulados } from "./fixtures/base-simulados.ts";
 import { fotosDocumentacion } from "../base-expediente-etapas.ts";
 import { armarInsumos, filasVacias } from "../base-armado.ts";
 

@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { armarInsumos, filasVacias } from "../base-armado.ts";
-import { crearFuenteDemo, donanteDemo, donantesSimulados } from "../base-demo.ts";
+import { donanteDemo, donantesSimulados } from "./fixtures/base-simulados.ts";
 import { estadoCalculadoEtapa } from "../estado-etapas.ts";
 import { exportarTableroCsv } from "../base-exportar.ts";
 import { esActivo, filaTablero, ordenarPorUrgencia } from "../base-tablero.ts";
@@ -32,21 +32,6 @@ test("de las filas crudas a los insumos: mismo criterio que la pantalla del proc
   assert.equal(estadoCalculadoEtapa("certificacion", i.etapas), "green");
   assert.equal(estadoCalculadoEtapa("documentacion", i.etapas), "green");
   assert.deepEqual(i.etapas.marcas, { cultivos: { marca: "completo", en: "2026-10-10T10:00:00Z" } });
-});
-
-test("modo demo: 5 activos, lo que se guarda queda en memoria (nada va a la base)", async () => {
-  const f = crearFuenteDemo(AHORA);
-  assert.equal(f.demo, true);
-  const t = await f.cargarTablero();
-  assert.equal(t.insumos.length, 5);
-  assert.ok(t.insumos.every((x) => esActivo(x.donante)));
-  const s = await f.crearSolicitud("sim-e", { titulo: "Peso y talla", detalle: null, origen: "base", destino: "procurador", organo_key: null, prioridad: "normal", pedido_por: null });
-  assert.equal((await f.cargarExpediente("sim-e")).insumos.solicitudes.length, 1);
-  await f.cambiarSolicitud(s.id, { estado: "completado", completed_at: "2026-10-10T14:10:00Z" });
-  assert.equal((await f.cargarExpediente("sim-e")).insumos.solicitudes[0].estado, "completado");
-  await f.cambiarEstadoProtocolo("sim-e", "cerrado", "Protocolo cerrado — Otro: prueba (14:10)");
-  assert.equal((await f.cargarTablero()).insumos.length, 4);
-  assert.equal((await f.cargarExpediente("sim-e")).linea[0].texto, "Protocolo cerrado — Otro: prueba (14:10)");
 });
 
 test("datos simulados del expediente: 12 h de series, dosis de noradrenalina con hora y origen", () => {

@@ -4,7 +4,6 @@ import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { fuenteSupabase } from "@/lib/procuracion/base-datos";
-import { crearFuenteDemo } from "@/lib/procuracion/base-demo";
 import type { FuenteBase } from "@/lib/procuracion/base-armado";
 import type { InsumosTablero } from "@/lib/procuracion/base-tablero";
 import { puedeVerBase, rolActual } from "@/lib/procuracion/rol";
@@ -14,18 +13,16 @@ import { useConsultaPeriodica } from "./ui";
 import styles from "./base.module.css";
 
 const CONSULTA_MS = 30_000;
-// El modo demo (datos simulados en memoria) solo existe en desarrollo.
-const DEMO_PERMITIDO = process.env.NODE_ENV !== "production";
 
+// Siempre la base real (sin modo demo ni datos de ejemplo).
 export default function BaseApp() {
   const params = useSearchParams();
-  const demo = params.get("demo") === "1" && DEMO_PERMITIDO;
-  return <BaseConFuente key={demo ? "demo" : "real"} demo={demo} pidioDemo={params.get("demo") === "1"} donanteId={params.get("d")} />;
+  return <BaseConFuente donanteId={params.get("d")} />;
 }
 
-function BaseConFuente({ demo, pidioDemo, donanteId }: { demo: boolean; pidioDemo: boolean; donanteId: string | null }) {
+function BaseConFuente({ donanteId }: { donanteId: string | null }) {
   const router = useRouter();
-  const [fuente] = useState<FuenteBase>(() => (demo ? crearFuenteDemo(Date.now()) : fuenteSupabase(createClient())));
+  const [fuente] = useState<FuenteBase>(() => fuenteSupabase(createClient()));
   const [insumos, setInsumos] = useState<InsumosTablero[] | null>(null);
   const [avisos, setAvisos] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -52,7 +49,6 @@ function BaseConFuente({ demo, pidioDemo, donanteId }: { demo: boolean; pidioDem
   const irA = (id: string | null) => {
     const q = new URLSearchParams();
     if (id) q.set("d", id);
-    if (demo) q.set("demo", "1");
     const s = q.toString();
     router.push(s ? `/base?${s}` : "/base");
   };
@@ -66,12 +62,6 @@ function BaseConFuente({ demo, pidioDemo, donanteId }: { demo: boolean; pidioDem
         <strong>Sin login todavía:</strong> esta pantalla muestra datos de varios donantes y no tiene autenticación por rol. No usar con donantes
         reales.
       </div>
-      {demo && (
-        <div className={`${styles.aviso} ${styles.avisoDemo} ${styles.noImprimir}`}>
-          <strong>Modo demo:</strong> datos simulados en memoria. Nada se guarda en la base; al recargar vuelve al inicio.
-        </div>
-      )}
-      {pidioDemo && !demo && <div className={`${styles.aviso} ${styles.noImprimir}`}>El modo demo solo funciona en desarrollo: se muestran los datos reales.</div>}
       {avisos.map((a) => (
         <div key={a} className={`${styles.aviso} ${styles.avisoDemo} ${styles.noImprimir}`}>
           {a}

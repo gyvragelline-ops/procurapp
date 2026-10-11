@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { exportarCsv, seccionesDeEquipo } from "../base-exportar.ts";
 import { textoAntecedentes } from "../base-expediente-etapas.ts";
-import { donantesSimulados } from "../base-demo.ts";
+import { donantesSimulados } from "./fixtures/base-simulados.ts";
 
 const AHORA = new Date(2026, 9, 10, 14, 0).getTime();
 const sim = (id: string) => donantesSimulados(AHORA).find((x) => x.donante.id === id)!;

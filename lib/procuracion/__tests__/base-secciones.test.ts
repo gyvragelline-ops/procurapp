@@ -20,7 +20,7 @@ import {
   textoLineaAccion,
   textoWhatsApp,
 } from "../base-secciones.ts";
-import { donantesSimulados } from "../base-demo.ts";
+import { donantesSimulados } from "./fixtures/base-simulados.ts";
 
 const AHORA = new Date(2026, 9, 10, 14, 32).getTime();
 const exp = (id: string) => donantesSimulados(AHORA).find((x) => x.donante.id === id)!.expediente;

@@ -9,8 +9,8 @@
 > autenticación por rol. Muestra datos de VARIOS donantes a la vez y hoy
 > no hay login ni RLS. La entrada pasa por `lib/procuracion/rol.ts` para
 > enchufar la autenticación ahí. El navegador solo tiene la clave pública
-> anon; nunca claves secretas. Para probar: datos simulados de
-> `lib/procuracion/base-demo.ts` (no se escriben en la base).
+> anon; nunca claves secretas. La Base muestra solo datos reales; los datos
+> de prueba viven únicamente en `lib/procuracion/__tests__/fixtures/`.
 
 ## ESTADO AL 01/10 -- proyecto pausado
 

@@ -1,17 +1,17 @@
-// DATOS SIMULADOS — SOLO PARA TESTS Y PARA EL MODO DEMO LOCAL DE /base.
-// Nada de esto se escribe en la base de datos. Todos los momentos son
+// DATOS SIMULADOS — SOLO PARA LOS TESTS (lib/procuracion/__tests__).
+// La app no los usa en ninguna pantalla. Nada de esto se escribe en la base. Todos los momentos son
 // relativos a `ahora`, para que los escenarios no venzan.
 
-import type { DatosEtapas } from "./estado-etapas.ts";
-import type { InsumosTablero, DonanteTablero } from "./base-tablero.ts";
-import type { Solicitud } from "./base-solicitudes.ts";
-import type { FuentesExpediente } from "./base-expediente.ts";
-import type { DatosExportacion, DonanteExportacion } from "./base-exportar.ts";
-import type { ExpedienteDatos, FuenteBase } from "./base-armado.ts";
-import type { MarcaEtapa } from "./marca-etapa.ts";
-import type { Cultivo } from "./cultivos-calculos.ts";
-import type { EquipoQuirofano } from "./quirofano-calculos.ts";
-import type { MensajeCaso } from "./chat-calculos.ts";
+import type { DatosEtapas } from "../../estado-etapas.ts";
+import type { InsumosTablero, DonanteTablero } from "../../base-tablero.ts";
+import type { Solicitud } from "../../base-solicitudes.ts";
+import type { FuentesExpediente } from "../../base-expediente.ts";
+import type { DatosExportacion, DonanteExportacion } from "../../base-exportar.ts";
+import type { ExpedienteDatos } from "../../base-armado.ts";
+import type { MarcaEtapa } from "../../marca-etapa.ts";
+import type { Cultivo } from "../../cultivos-calculos.ts";
+import type { EquipoQuirofano } from "../../quirofano-calculos.ts";
+import type { MensajeCaso } from "../../chat-calculos.ts";
 
 const MIN = 60_000;
 const iso = (ahora: number, minutosAtras: number) => new Date(ahora - minutosAtras * MIN).toISOString();
@@ -469,80 +469,4 @@ export function donantesSimulados(ahora: number): DonanteSimulado[] {
   // Cerrado: no cuenta como activo.
   const f = armar(base("sim-f", "000106", 3000, { nombre_completo: "Pedro Luna", estado_general: "cerrado" }), {}, fuentesVacias(), []);
   return [a, b, c, d, e, f];
-}
-
-// ------------------------------------------------------------ modo demo
-// Fuente en memoria para /base?demo=1 (solo en desarrollo): lo que se
-// "guarda" vive en esta pestaña y se pierde al recargar. Nunca toca la base.
-export function crearFuenteDemo(ahora: number): FuenteBase {
-  const sims = donantesSimulados(ahora);
-  const porId = new Map(sims.map((s) => [s.donante.id, s]));
-  let n = 0;
-  const nuevoId = (p: string) => `${p}-demo-${++n}`;
-  const ahoraIso = () => new Date().toISOString();
-  const sim = (id: string) => {
-    const s = porId.get(id);
-    if (!s) throw new Error("No se encontró el donante (demo).");
-    return s;
-  };
-  const anotar = (id: string, texto: string) => sim(id).expediente.linea.unshift({ id: nuevoId("t"), ocurrido_en: ahoraIso(), texto });
-  return {
-    demo: true,
-    async cargarTablero() {
-      return { insumos: sims.filter((s) => s.donante.estado_general !== "cerrado").map((s) => ({ ...s, solicitudes: [...s.solicitudes] })), avisos: [] };
-    },
-    async cargarExpediente(id) {
-      const s = sim(id);
-      return { ...s.expediente, insumos: { ...s.expediente.insumos, solicitudes: [...s.solicitudes] }, linea: [...s.expediente.linea], mensajes: [...s.expediente.mensajes] };
-    },
-    async crearSolicitud(id, datos) {
-      const nueva = solicitudDemo(nuevoId("s"), id, Date.now(), { ...datos, created_at: ahoraIso() });
-      sim(id).solicitudes.push(nueva);
-      anotar(id, `Solicitud: ${datos.titulo}`);
-      return nueva;
-    },
-    async cambiarSolicitud(solId, cambios) {
-      for (const s of sims) {
-        const i = s.solicitudes.findIndex((x) => x.id === solId);
-        if (i >= 0) s.solicitudes[i] = { ...s.solicitudes[i], ...cambios };
-      }
-    },
-    async enviarMensaje(id, datos) {
-      const m = { id: nuevoId("m"), ...datos, creado_en: ahoraIso(), anulado: false };
-      sim(id).expediente.mensajes.push(m);
-      return m;
-    },
-    async registrarEnLinea(id, texto) {
-      anotar(id, texto);
-    },
-    async cambiarEstadoProtocolo(id, estado, texto) {
-      sim(id).donante.estado_general = estado;
-      anotar(id, texto);
-    },
-    async marcarRevision(id, seccion, quien) {
-      (sim(id).expediente.revisiones ??= []).push({ id: nuevoId("r"), seccion, revisado_por: quien, revisado_en: ahoraIso(), anulado: false });
-    },
-    async anularRevision(revId) {
-      for (const s of sims) for (const r of s.expediente.revisiones ?? []) if (r.id === revId) r.anulado = true;
-    },
-    async marcarAutorizacion(id, autorizado, quien, vigenteId) {
-      const xs = (sim(id).expediente.autorizacionJudicial ??= []);
-      for (const x of xs) if (x.id === vigenteId) x.anulado = true;
-      xs.push({ id: nuevoId("j"), autorizado, marcado_por: quien, marcado_en: ahoraIso(), anulado: false });
-    },
-    async marcarOrgano(id, organo, aceptado, equipoId, quien, vigenteId) {
-      const xs = (sim(id).expediente.organosAceptados ??= []);
-      for (const x of xs) if (x.id === vigenteId) x.anulado = true;
-      xs.push({ id: nuevoId("o"), organo, aceptado, equipo_id: equipoId, marcado_por: quien, marcado_en: ahoraIso(), anulado: false });
-    },
-    async crearEquipo(id, datos) {
-      sim(id).expediente.equipos.push({ id: nuevoId("e"), ...datos, creado_en: ahoraIso(), modificado_en: null, anulado: false });
-    },
-    async guardarHoraQuirofano(id, horaIso) {
-      sim(id).expediente.insumos.etapas.horariosQx.push({ id: nuevoId("q"), hora: horaIso, registrado_en: ahoraIso(), anulado: false });
-    },
-    async subirFotoJudicial(id, archivo) {
-      sim(id).expediente.fotosJudiciales.push({ tipo: "autorizacion_juez", created_at: ahoraIso(), cargado_por_rol: "base", archivo_url: URL.createObjectURL(archivo) });
-    },
-  };
 }

@@ -14,14 +14,14 @@ function reloj(ahora: number) {
 }
 
 export function metaDonante(f: Pick<FilaTablero, "edad" | "sexo" | "peso">): string {
-  return [f.edad !== null ? `${f.edad} a` : null, letraSexo(f.sexo), f.peso !== null ? `${f.peso} kg` : null].filter(Boolean).join(" · ") || "—";
+  return [f.edad !== null ? `${f.edad} a` : null, letraSexo(f.sexo), f.peso !== null ? `${f.peso} kg` : null].filter(Boolean).join(" · ") || "Sin cargar";
 }
 
 export function textoUltimoDato(f: FilaTablero): { texto: string; color: string } {
   const u = f.ultimoDato;
   if (u.tipo === "con_datos") return { texto: hace(u.minutos), color: u.color === "verde" ? COLOR.g : u.color === "ambar" ? COLOR.a : COLOR.r };
   if (u.tipo === "sin_datos") return u.noIniciado ? { texto: "no iniciado", color: COLOR.a } : { texto: "sin datos", color: COLOR.mu };
-  return { texto: "—", color: COLOR.mu };
+  return { texto: "No aplica", color: COLOR.mu };
 }
 
 function Fila({ f, i, ahora, onAbrir }: { f: FilaTablero; i: InsumosTablero; ahora: number; onAbrir: (id: string) => void }) {
@@ -41,7 +41,7 @@ function Fila({ f, i, ahora, onAbrir }: { f: FilaTablero; i: InsumosTablero; aho
         <span className={`${styles.chico} ${styles.mu} ${styles.num}`}>{f.identificador}</span>
       </div>
       <div className={styles.apilado}>
-        <span>{f.hospital ?? "—"}</span>
+        <span>{f.hospital ?? "Sin cargar"}</span>
         <span className={`${styles.chico} ${styles.mu}`}>{f.procurador ?? "procurador sin cargar"}</span>
       </div>
       <span className={`${styles.num} ${styles.nw}`}>{f.tiempoEnProtocolo}</span>
@@ -71,7 +71,7 @@ function Fila({ f, i, ahora, onAbrir }: { f: FilaTablero; i: InsumosTablero; aho
         <span className={styles.num} style={{ fontWeight: 600 }}>
           {f.quirofano ? diaYHora(f.quirofano, ahora) : "sin definir"}
         </span>
-        <span className={`${styles.chico} ${styles.mu}`}>{organos.join(" · ") || "—"}</span>
+        <span className={`${styles.chico} ${styles.mu}`}>{organos.join(" · ") || "Sin equipos"}</span>
       </div>
     </button>
   );

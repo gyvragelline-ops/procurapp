@@ -88,6 +88,9 @@ function MantenimientoVivo({ grilla, ahora, idGraficas }: { grilla: FilaGrilla[]
   const n = (v: number | null, dec = 0) => (v === null ? "—" : v.toFixed(dec).replace(".", ","));
   return (
     <div>
+      <div className={`${styles.chico} ${styles.mu}`} style={{ padding: "6px 16px 0" }}>
+        Hoja de enfermería, hora a hora (últimas 12 h). «—» = sin cargar en esa hora.
+      </div>
       <div style={{ overflowX: "auto" }}>
         <table className={styles.grilla}>
           <thead>

@@ -1,7 +1,7 @@
 // Base operativa: de las filas crudas de la base a los insumos de cada
 // donante (mismo criterio que la pantalla del procurador). Lógica pura,
 // con tests. También define la "fuente" de datos de la Base, para poder
-// usar la base real o los datos simulados del modo demo sin cambiar la UI.
+// la base real en la app y datos de prueba solo en los tests.
 
 import { METODOS_CERT_AUX, type EstadoEtapa } from "./constants.ts";
 import { esMarca, type MarcaEtapa } from "./marca-etapa.ts";
@@ -117,10 +117,8 @@ export type ExpedienteDatos = {
 
 export type CambiosSolicitud = Partial<Pick<Solicitud, "estado" | "respuesta" | "respondida_por" | "respondida_en" | "completed_at" | "anulado">>;
 
-// Lo que la Base lee y escribe. La base real (base-datos.ts) o el modo
-// demo en memoria (base-demo.ts): la pantalla no distingue.
+// Lo que la Base lee y escribe (implementación: base-datos.ts, la base real).
 export interface FuenteBase {
-  demo: boolean;
   cargarTablero(): Promise<{ insumos: InsumosTablero[]; avisos: string[] }>;
   cargarExpediente(donanteId: string): Promise<ExpedienteDatos>;
   crearSolicitud(donanteId: string, datos: NuevaSolicitud): Promise<Solicitud>;

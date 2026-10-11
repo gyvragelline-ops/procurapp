@@ -20,6 +20,9 @@ import { ORGANOS_EQUIPO, horaVigente, ANESTESISTA } from "./quirofano-calculos.t
 import { TIPOS_ESTUDIO_INFO } from "./estudios-imagenes-tipos.ts";
 import { comunicadaEn } from "./comunicacion-hora.ts";
 
+// Lo que no tiene dato real se muestra así (nunca un valor inventado).
+export const SIN_CARGAR = "Sin cargar";
+
 // ------------------------------------------------------------- tipos
 export type FilaSeccion = { etiqueta: string; valor: string; detalle?: string | null };
 export type GrupoSeccion = { titulo: string | null; filas: FilaSeccion[] };
@@ -130,12 +133,12 @@ export function seccionPotencial(d: ExpedienteDatos, numero: string): ContenidoS
       {
         titulo: null,
         filas: [
-          { etiqueta: "Edad", valor: x.edad !== null ? `${x.edad} años` : "—" },
-          { etiqueta: "Servicio", valor: x.servicio ?? "—" },
-          { etiqueta: "Cama", valor: (x as { cama?: string | null }).cama ?? "—" },
+          { etiqueta: "Edad", valor: x.edad !== null ? `${x.edad} años` : SIN_CARGAR },
+          { etiqueta: "Servicio", valor: x.servicio ?? SIN_CARGAR },
+          { etiqueta: "Cama", valor: (x as { cama?: string | null }).cama ?? SIN_CARGAR },
           { etiqueta: "Antecedentes", valor: textoAntecedentes(x.antecedentes) },
-          { etiqueta: "Fecha de nacimiento", valor: fechaSola((x as { fecha_nacimiento?: string | null }).fecha_nacimiento ?? null) ?? "—" },
-          { etiqueta: "Fecha de ingreso", valor: x.fecha_ingreso ? `${fechaSola(x.fecha_ingreso)} ${hhmm(x.fecha_ingreso)}` : "—" },
+          { etiqueta: "Fecha de nacimiento", valor: fechaSola((x as { fecha_nacimiento?: string | null }).fecha_nacimiento ?? null) ?? SIN_CARGAR },
+          { etiqueta: "Fecha de ingreso", valor: x.fecha_ingreso ? `${fechaSola(x.fecha_ingreso)} ${hhmm(x.fecha_ingreso)}` : SIN_CARGAR },
         ],
       },
     ],
@@ -206,7 +209,7 @@ export function hechaComunicacion(d: Pick<ExpedienteDatos, "comunicaciones" | "i
 
 export function seccionComunicacion(d: ExpedienteDatos, numero: string, cual: "comMuerte" | "comDonacion"): ContenidoSeccion {
   const titulo = cual === "comMuerte" ? "Comunicación de muerte" : "Comunicación de donación";
-  const familia = cual === "comDonacion" ? [{ titulo: "Familiar de contacto", filas: familiarDeContacto(d.familiar).map((f) => ({ etiqueta: f.etiqueta, valor: f.valor ?? "—" })) }] : [];
+  const familia = cual === "comDonacion" ? [{ titulo: "Familiar de contacto", filas: familiarDeContacto(d.familiar).map((f) => ({ etiqueta: f.etiqueta, valor: f.valor ?? SIN_CARGAR })) }] : [];
   return base(cual, numero, titulo, { grupos: [{ titulo: null, filas: [hechaComunicacion(d, cual)] }], soloBase: familia });
 }
 
@@ -222,7 +225,7 @@ export function seccionMuestras(d: ExpedienteDatos, numero: string): ContenidoSe
 // 07
 export function seccionMedidas(d: ExpedienteDatos, numero: string): ContenidoSeccion {
   return base("medidas", numero, "Medidas antropométricas", {
-    grupos: [{ titulo: null, filas: medidas(d.planillas.medidas, d.donante.talla, d.donante.peso).map((x) => ({ etiqueta: x.etiqueta, valor: x.valor ?? "—" })) }],
+    grupos: [{ titulo: null, filas: medidas(d.planillas.medidas, d.donante.talla, d.donante.peso).map((x) => ({ etiqueta: x.etiqueta, valor: x.valor ?? SIN_CARGAR })) }],
   });
 }
 

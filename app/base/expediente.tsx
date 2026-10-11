@@ -166,7 +166,7 @@ export default function Expediente({
                               {x.ultimo && <span className={`${styles.chico} ${styles.mu}`}>{ETIQUETA_ORIGEN[x.ultimo.origen]}</span>}
                             </span>
                             <span className={styles.dosRenglones}>
-                              <span className={`${styles.num} ${styles.valor}`}>{x.ultimo ? `${textoValor(x.ultimo.valor, x.decimales)}${x.unidad ? ` ${x.unidad}` : ""}` : "—"}</span>
+                              <span className={`${styles.num} ${styles.valor}`}>{x.ultimo ? `${textoValor(x.ultimo.valor, x.decimales)}${x.unidad ? ` ${x.unidad}` : ""}` : "Sin cargar"}</span>
                               {x.ultimo && <span className={`${styles.num} ${styles.chico} ${styles.mu}`}>{horaCorta(x.ultimo.en, ahora)}</span>}
                             </span>
                             <span className={`${styles.num} ${styles.mu} ${styles.dosRenglones}`}>

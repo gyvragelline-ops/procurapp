@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { estadoCalculadoEtapa, estadoEtapa, etapasVisibles } from "../estado-etapas.ts";
-import { datosEtapasVacios } from "../base-demo.ts";
+import { datosEtapasVacios } from "./fixtures/base-simulados.ts";
 import { REFLEJOS_ME, reflejoKey } from "../constants.ts";
 
 test("etapas visibles: 12 sin judicial, 13 con judicial (anteúltima); córneas aparte", () => {

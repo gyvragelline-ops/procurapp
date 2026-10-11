@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { cambio12h, filaParametro, mantenimientoPorSistema, SISTEMAS, type Dato } from "../base-expediente.ts";
 import { exportarCsv } from "../base-exportar.ts";
-import { donantesSimulados } from "../base-demo.ts";
+import { donantesSimulados } from "./fixtures/base-simulados.ts";
 import { analisisComunicacion, familiarDeContacto, fotosDocumentacion, medidas, metodosAuxiliares, muestrasPorPaquete, neurologico } from "../base-expediente-etapas.ts";
 
 const AHORA = new Date(2026, 9, 10, 14, 0).getTime();

@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { cambio12h, mantenimientoPorSistema, serie, textoCambio, textoValor, type FuentesExpediente } from "../base-expediente.ts";
-import { fuentesVacias, registroDemo } from "../base-demo.ts";
+import { fuentesVacias, registroDemo } from "./fixtures/base-simulados.ts";
 
 const AHORA = new Date(2026, 9, 10, 14, 0).getTime();
 const hace = (min: number) => new Date(AHORA - min * 60_000).toISOString();

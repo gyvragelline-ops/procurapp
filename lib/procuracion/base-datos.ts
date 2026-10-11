@@ -132,7 +132,6 @@ async function cargarFilas(supabase: SupabaseClient, ids: string[]): Promise<{ f
 
 export function fuenteSupabase(supabase: SupabaseClient): FuenteBase {
   return {
-    demo: false,
 
     async cargarTablero() {
       const { donantes, sinColumnas: a } = await cargarDonantes(supabase, { activos: true });
