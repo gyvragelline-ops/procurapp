@@ -139,7 +139,9 @@ export interface FuenteBase {
   // Ficha por equipo: versiones enviadas (tabla ficha_envios; null = la
   // tabla todavía no existe, falta handoff/ficha_envios.sql).
   cargarEnviosFicha(donanteId: string, organo: string): Promise<EnvioFichaFila[] | null>;
-  crearEnvioFicha(donanteId: string, datos: NuevoEnvioFicha): Promise<void>;
+  // Guarda el envío con la versión siguiente (la más alta + 1, contando
+  // anuladas); si otra Base guardó a la vez, reintenta. Devuelve la versión.
+  crearEnvioFicha(donanteId: string, datos: NuevoEnvioFicha): Promise<number>;
 }
 
 export type EnvioFichaFila = {
@@ -155,4 +157,4 @@ export type EnvioFichaFila = {
   estado: string;
   anulado: boolean;
 };
-export type NuevoEnvioFicha = Pick<EnvioFichaFila, "organo_key" | "version" | "valores" | "editados" | "incluye" | "creado_por" | "estado">;
+export type NuevoEnvioFicha = Pick<EnvioFichaFila, "organo_key" | "valores" | "editados" | "incluye" | "creado_por" | "estado">;

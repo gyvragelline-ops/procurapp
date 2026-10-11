@@ -176,25 +176,27 @@ export default function FichaPanel({ datos, ficha, fuente, donanteId, ahora, rec
     if (conImagenes && !confirmado) return setPidiendoConfirmacion("descargar");
     setOcupado(true);
     try {
-      const { generarPdfFicha } = await import("./ficha-pdf");
-      const b = await generarPdfFicha(armada, jpegs);
-      descargarBlob(b, nombreArchivo(`${armada.pd.replace(/\s/g, "_")}_ficha_${cfg.etiqueta}_v${armada.version}`, "pdf"));
-      const adjuntos = armada.imagenes.filter((i) => i.enPdf).length;
+      // primero se guarda la versión (si es nueva); el PDF lleva ESA versión
+      let final = armada;
       if (envios !== null && ver.nueva) {
-        await fuente.crearEnvioFicha(donanteId, {
+        const version = await fuente.crearEnvioFicha(donanteId, {
           organo_key: cfg.clave,
-          version: ver.version,
           valores: inst.valores,
           editados: editadosTexto(valores),
           incluye: { campos: Object.keys(inst.valores), estudios: inst.estudios },
           creado_por: quien,
           estado: "descargado",
         });
+        final = { ...armada, version };
         setEnvios(await fuente.cargarEnviosFicha(donanteId, cfg.clave));
       }
-      await fuente.registrarEnLinea(donanteId, lineaAccionFicha("descargó", armada, adjuntos, editadosTexto(valores), quien, reloj()));
+      const { generarPdfFicha } = await import("./ficha-pdf");
+      const b = await generarPdfFicha(final, jpegs);
+      descargarBlob(b, nombreArchivo(`${final.pd.replace(/\s/g, "_")}_ficha_${cfg.etiqueta}_v${final.version}`, "pdf"));
+      const adjuntos = final.imagenes.filter((i) => i.enPdf).length;
+      await fuente.registrarEnLinea(donanteId, lineaAccionFicha("descargó", final, adjuntos, editadosTexto(valores), quien, reloj()));
       await recargar();
-      setAviso(envios === null ? `PDF v${armada.version} descargado. La versión no se guardó: falta aplicar handoff/ficha_envios.sql.` : `PDF v${armada.version} descargado.`);
+      setAviso(envios === null ? `PDF v${final.version} descargado. La versión no se guardó: falta aplicar handoff/ficha_envios.sql.` : `PDF v${final.version} descargado.`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo descargar el PDF.");
     } finally {

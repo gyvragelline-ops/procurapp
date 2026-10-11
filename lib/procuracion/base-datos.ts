@@ -17,6 +17,7 @@ import { subirFotoDocumentacion } from "./subir-foto-doc";
 import type { Iniciales } from "./base-iniciales";
 import type { Familiar } from "./base-expediente-etapas";
 import { lineaBaseValida } from "./base-nombre";
+import { REINTENTOS_VERSION, esChoqueDeVersion, versionSiguiente } from "./ficha";
 
 // Base operativa: acceso a datos. Lee las MISMAS tablas que el resto de la
 // app (no duplica datos). Escrituras con guardarConReintento: si fallan,
@@ -325,8 +326,17 @@ export function fuenteSupabase(supabase: SupabaseClient, opciones: { iniciales?:
     },
 
     async crearEnvioFicha(donanteId, datos) {
-      const r = await guardarConReintento(() => supabase.from("ficha_envios").insert({ ...datos, donante_id: donanteId }));
-      if (!r.ok) throw new Error(r.mensaje);
+      let ultimo = "";
+      for (let i = 0; i < REINTENTOS_VERSION; i++) {
+        const v = await supabase.from("ficha_envios").select("version").eq("donante_id", donanteId).eq("organo_key", datos.organo_key);
+        if (v.error) throw new Error(`No se pudo leer la última versión: ${v.error.message}`);
+        const version = versionSiguiente(((v.data as { version: number }[]) ?? []).map((x) => x.version));
+        const r = await guardarConReintento(() => supabase.from("ficha_envios").insert({ ...datos, version, donante_id: donanteId }), esChoqueDeVersion(ultimo) ? 1 : 3);
+        if (r.ok) return version;
+        ultimo = r.mensaje;
+        if (!esChoqueDeVersion(r.mensaje)) throw new Error(r.mensaje);
+      }
+      throw new Error(`No se pudo guardar la versión: otra Base guardó al mismo tiempo ${REINTENTOS_VERSION} veces. Probá de nuevo. (${ultimo})`);
     },
 
     async cambiarEstadoProtocolo(donanteId, estado, textoLinea) {

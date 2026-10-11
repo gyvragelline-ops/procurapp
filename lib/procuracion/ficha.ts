@@ -308,6 +308,12 @@ export function diffFichas(antes: Instantanea, ahora: Instantanea): string[] {
   return out;
 }
 
+// Versión nueva = la más alta existente (contando anuladas) + 1.
+export const versionSiguiente = (versiones: number[]) => versiones.reduce((m, v) => Math.max(m, v), 0) + 1;
+// El insert chocó con ficha_envios_version_unica (dos Bases a la vez).
+export const esChoqueDeVersion = (mensaje: string) => /ficha_envios_version_unica|duplicate key|23505/i.test(mensaje);
+export const REINTENTOS_VERSION = 3;
+
 export type EnvioPrevio = { version: number; creado_en: string; anulado: boolean; valores: Instantanea["valores"]; incluye: { estudios?: Instantanea["estudios"] } | null };
 
 // Versión de lo que se va a mandar: si no cambió nada respecto de la

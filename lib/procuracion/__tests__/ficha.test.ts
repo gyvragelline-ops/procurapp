@@ -7,6 +7,7 @@ import {
   diffFichas,
   donanteFicha,
   editadosTexto,
+  esChoqueDeVersion,
   instantanea,
   lineaDescargaFicha,
   lineaEdicionFicha,
@@ -15,6 +16,7 @@ import {
   validarEdicion,
   valoresCampos,
   versionPropuesta,
+  versionSiguiente,
   type Ediciones,
   type EnvioPrevio,
 } from "../ficha.ts";
@@ -173,4 +175,12 @@ test("línea de tiempo: cada edición con original, editado y quién; la descarg
   assert.ok(lineaBaseValida(l));
   const { f, vs } = ficha("pulmon", { pao2: ed("160", 160) });
   assert.equal(lineaDescargaFicha(f, 1, editadosTexto(vs), "Ana", AHORA), "Base · Ana · descargó la ficha v1 de Pulmón para Equipo pulmonar · 1 imagen · editados: PaO₂ 140 → 160 (14:32)");
+});
+
+test("guardado de versión: la más alta existente (contando anuladas) + 1; el choque de dos Bases se reconoce para reintentar", () => {
+  assert.equal(versionSiguiente([]), 1);
+  assert.equal(versionSiguiente([1, 3, 2]), 4); // la 3 puede estar anulada: igual cuenta
+  assert.ok(esChoqueDeVersion('duplicate key value violates unique constraint "ficha_envios_version_unica"'));
+  assert.ok(esChoqueDeVersion("No se pudo guardar -- revisá tu conexión e intentá de nuevo. (duplicate key value violates unique constraint \"ficha_envios_version_unica\")"));
+  assert.equal(esChoqueDeVersion("No se pudo guardar -- revisá tu conexión e intentá de nuevo. (Failed to fetch)"), false);
 });
