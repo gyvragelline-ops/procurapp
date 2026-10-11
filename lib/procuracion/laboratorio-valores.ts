@@ -107,7 +107,8 @@ export const GRUPOS_LAB: { grupo: string; parametros: ParametroLab[] }[] = [
 // (hoy la FiO2 de la PaFi sale del respirador).
 export const PARAMETROS_LAB_MANTENIMIENTO: ParametroLab[] = [
   ...GRUPOS_LAB.flatMap((g) => g.parametros),
-  { parametro: "fio2", etiqueta: "FiO2 de la gasometría", unidad: "%" },
+  // fracción 0,21–1 (FIO2_RANGO), nunca %
+  { parametro: "fio2", etiqueta: "FiO₂ de la gasometría", unidad: null },
 ];
 
 const COLUMNAS = "id, toma_id, parametro, valor, valor_texto, unidad, medido_en, origen, anulado";

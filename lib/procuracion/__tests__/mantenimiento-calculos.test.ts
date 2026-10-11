@@ -140,14 +140,15 @@ test("superficie corporal, IC calculado/medido y RVS (solo con los datos necesar
   assert.equal(resistenciaVascularSistemica(70, null, 5), null);
 });
 
-test("PaFi = PaO2 / (FiO2/100), con la FiO2 de la misma extracción", () => {
-  assert.equal(pafi(100, 50), 200);
+test("PaFi = PaO2 / FiO2 (fracción), con la FiO2 de la misma extracción", () => {
+  assert.equal(pafi(100, 0.5), 200);
   assert.equal(pafi(100, null), null);
+  assert.equal(pafi(100, 50), null); // en %: inválida
   const ahora = new Date("2026-10-06T12:00:00Z").getTime();
   const lab: ValorLab[] = [
     { parametro: "pao2", valor: 100, medido_en: "2026-10-06T10:00:00Z", anulado: false, toma_id: "t1" },
-    { parametro: "fio2", valor: 40, medido_en: "2026-10-06T10:00:00Z", anulado: false, toma_id: "t1" },
-    { parametro: "fio2", valor: 100, medido_en: "2026-10-06T11:00:00Z", anulado: false, toma_id: "t2" }, // otra toma: no se usa
+    { parametro: "fio2", valor: 0.4, medido_en: "2026-10-06T10:00:00Z", anulado: false, toma_id: "t1" },
+    { parametro: "fio2", valor: 1, medido_en: "2026-10-06T11:00:00Z", anulado: false, toma_id: "t2" }, // otra toma: no se usa
   ];
   cerca(ultimaPafi(lab, ahora)!.valor, 250);
 });

@@ -84,7 +84,7 @@ export const CAMPOS_REGISTRO: { campo: CampoNumericoRegistro; etiqueta: string; 
   { campo: "pam", etiqueta: "PAM", unidad: "mmHg" },
   { campo: "temperatura", etiqueta: "Temperatura", unidad: "°C" },
   { campo: "sat_o2", etiqueta: "Sat O2", unidad: "%" },
-  { campo: "fio2", etiqueta: "FiO2", unidad: "%" },
+  { campo: "fio2", etiqueta: "FiO₂ (fracción 0,21–1)", unidad: "" },
   { campo: "peep", etiqueta: "PEEP", unidad: "cmH2O" },
   { campo: "volumen_corriente", etiqueta: "Volumen corriente", unidad: "mL" },
   { campo: "diuresis_ml", etiqueta: "Diuresis", unidad: "mL" },

@@ -4,8 +4,14 @@ import {
   avisosDeEnfermeria,
   disfuncionMiocardica,
   dosisPorFila,
+  fio2Valida,
+  leerFio2,
+  pafi,
   pafiConRespirador,
+  pafiGasometria,
   respiradorVigenteEn,
+  textoFio2,
+  textoFio2Despues,
   serieMedico,
   ultimoLabConRespaldo,
   ultimoValorLab,
@@ -26,7 +32,7 @@ const h = (hora: number, min = 0) => new Date(2026, 9, 6, hora, min).getTime();
 const iso = (hora: number, min = 0) => new Date(h(hora, min)).toISOString();
 
 const ev = (id: string, hora: number, min: number, extra: Partial<EventoRespirador> = {}): EventoRespirador => ({
-  id, registrado_en: iso(hora, min), modo: "VCV", modo_otro: null, fio2: 40, peep: 5, volumen_corriente: 450, frecuencia: 14,
+  id, registrado_en: iso(hora, min), modo: "VCV", modo_otro: null, fio2: 0.4, peep: 5, volumen_corriente: 450, frecuencia: 14,
   presion_plateau: null, presion_pico: null, anulado: false, ...extra,
 });
 const lab = (parametro: string, valor: number | null, hora: number, min = 0, toma = "t1", extra: Partial<ValorLab> = {}): ValorLab => ({
@@ -38,47 +44,107 @@ const med = (id: string, hora: number, extra: Partial<MedicionMedico> = {}): Med
 });
 
 // ---------------------------------------------------------------- respirador y PaFi
+// FiO2: FRACCIÓN 0,21–1 en todo el sistema (nunca %).
 test("respirador vigente: el último evento no anulado hasta ese momento", () => {
-  const eventos = [ev("a", 8, 0, { fio2: 40 }), ev("b", 10, 0, { fio2: 60 }), ev("c", 11, 0, { fio2: 100, anulado: true })];
+  const eventos = [ev("a", 8, 0, { fio2: 0.4 }), ev("b", 10, 0, { fio2: 0.6 }), ev("c", 11, 0, { fio2: 1, anulado: true })];
   assert.equal(respiradorVigenteEn(eventos, h(9))?.id, "a");
   assert.equal(respiradorVigenteEn(eventos, h(10, 30))?.id, "b");
   assert.equal(respiradorVigenteEn(eventos, h(12))?.id, "b"); // el anulado no cuenta
   assert.equal(respiradorVigenteEn(eventos, h(7)), null);
 });
 
-test("PaFi con la FiO2 y PEEP vigentes a la hora de la gasometría ('FiO2 de las HH:MM')", () => {
-  const eventos = [ev("a", 8, 0, { fio2: 40, peep: 5 }), ev("b", 10, 15, { fio2: 60, peep: 8 })];
-  const p = pafiConRespirador([lab("pao2", 240, 11)], eventos, [], h(11, 30))!;
-  assert.equal(p.origen, "respirador");
+test("PaFi = PaO2 / FiO2 en fracción: 0,4 con PaO2 140 -> 350", () => {
+  assert.equal(pafi(140, 0.4), 350);
+  const p = pafiConRespirador([lab("pao2", 140, 11)], [ev("a", 10, 0, { fio2: 0.4, peep: 8 })], h(11, 30))!;
+  assert.deepEqual([p.valor, p.fio2, p.peep, p.origen, p.minutosDespues], [350, 0.4, 8, "respirador", null]);
+});
+
+test("FiO2: 1 y 0,21 válidos; 0,2 y 1,01 inválidos; 40, 21 y 100 inválidos y sin PaFi", () => {
+  assert.ok(fio2Valida(1));
+  assert.ok(fio2Valida(0.21));
+  for (const v of [0.2, 1.01, 40, 21, 100, 0.1, 0]) {
+    assert.equal(fio2Valida(v), false, `${v}`);
+    assert.equal(pafi(140, v), null, `${v}`);
+    const r = pafiGasometria([lab("pao2", 140, 11)], [ev("a", 10, 0, { fio2: v })], h(11, 30));
+    assert.deepEqual(r, { ok: false, motivo: "FiO₂ inválida (esperado 0,21–1)", medido_en: iso(11) }, `${v}`);
+  }
+  assert.equal(pafi(140, 1), 140);
+  assert.equal(pafi(105, 0.21), 500);
+});
+
+test("formulario: coma y punto decimal valen igual; 40, 21, 100 o 0,1 se rechazan (no se convierten)", () => {
+  assert.deepEqual(leerFio2("0,4"), { ok: true, valor: 0.4 });
+  assert.deepEqual(leerFio2("0.4"), { ok: true, valor: 0.4 });
+  assert.deepEqual(leerFio2(" 1 "), { ok: true, valor: 1 });
+  assert.deepEqual(leerFio2("0,21"), { ok: true, valor: 0.21 });
+  for (const t of ["40", "21", "100", "0,1", "0,2", "1,01", "abc", "0,4 %"]) assert.deepEqual(leerFio2(t), { ok: false, error: "FiO₂ va de 0,21 a 1 (ej.: 0,40)" }, t);
+  assert.equal(leerFio2("").ok, false);
+  assert.equal(textoFio2(0.4), "0,40");
+  assert.equal(textoFio2(1), "1,00");
+});
+
+test("PaFi con la FiO2 y PEEP del último ajuste ANTERIOR a la gasometría; un ajuste posterior no la cambia", () => {
+  const eventos = [ev("a", 8, 0, { fio2: 0.4, peep: 5 }), ev("b", 10, 15, { fio2: 0.6, peep: 8 })];
+  const p = pafiConRespirador([lab("pao2", 240, 11)], eventos, h(11, 30))!;
   assert.equal(p.valor, 400); // 240 / 0,60
-  assert.deepEqual([p.fio2, p.peep, p.fio2Desde], [60, 8, iso(10, 15)]);
-  assert.equal(p.respiradorViejo, false);
+  assert.deepEqual([p.fio2, p.peep, p.fio2Desde], [0.6, 8, iso(10, 15)]);
+  // gasometría de las 09: FiO2 0,4 aunque después se subió
+  assert.equal(pafiConRespirador([lab("pao2", 120, 9)], eventos, h(9, 30))!.valor, 300);
 });
 
-test("PaFi: cambio de FiO2 entre dos gasometrías -> cada una usa la suya; un evento posterior no la afecta", () => {
-  const eventos = [ev("a", 8, 0, { fio2: 40 }), ev("b", 10, 0, { fio2: 80 })];
-  // gasometría de las 09: FiO2 40 aunque después se subió a 80
-  assert.equal(pafiConRespirador([lab("pao2", 120, 9)], eventos, [], h(9, 30))!.valor, 300);
-  // gasometría de las 11: FiO2 80
-  assert.equal(pafiConRespirador([lab("pao2", 120, 9, 0, "t1"), lab("pao2", 240, 11, 0, "t2")], eventos, [], h(11, 30))!.valor, 300);
+test("sin ajuste anterior: el primero dentro de los 30 min posteriores, marcado", () => {
+  const r = pafiGasometria([lab("pao2", 140, 9)], [ev("x", 9, 2, { fio2: 0.4 }), ev("y", 9, 20, { fio2: 0.8 })], h(10));
+  assert.ok(r.ok);
+  assert.deepEqual([r.valor, r.fio2, r.minutosDespues], [350, 0.4, 2]);
+  assert.equal(textoFio2Despues(2), "FiO₂ tomada 2 min después de la gasometría");
 });
 
-test("PaFi: respaldos (fila vieja, después la toma); sin ninguno no se calcula", () => {
-  const viejos = [{ registrado_en: iso(8), anulado: false, fio2: 50, peep: 6 }];
-  const deFila = pafiConRespirador([lab("pao2", 200, 9)], [], viejos, h(9, 30))!;
-  assert.deepEqual([deFila.origen, deFila.valor, deFila.peep], ["registro", 400, 6]);
-  const deToma = pafiConRespirador([lab("pao2", 200, 9), lab("fio2", 100, 9)], [], [], h(9, 30))!;
-  assert.deepEqual([deToma.origen, deToma.valor], ["toma", 200]);
-  assert.equal(pafiConRespirador([lab("pao2", 200, 9)], [], [], h(9, 30)), null);
-  // un evento del respirador POSTERIOR a la gasometría no sirve: usa el respaldo
-  assert.equal(pafiConRespirador([lab("pao2", 200, 9)], [ev("x", 10, 0)], viejos, h(10, 30))!.origen, "registro");
+test("sin respirador en los 30 min posteriores -> 'FiO₂ no registrada para esta gasometría'", () => {
+  const r = pafiGasometria([lab("pao2", 140, 9)], [ev("x", 9, 31, { fio2: 0.4 })], h(10));
+  assert.deepEqual(r, { ok: false, motivo: "FiO₂ no registrada para esta gasometría", medido_en: iso(9) });
+  assert.deepEqual(pafiGasometria([lab("pao2", 140, 9)], [], h(10)), { ok: false, motivo: "FiO₂ no registrada para esta gasometría", medido_en: iso(9) });
+});
+
+test("una fila de enfermería de otro día NO se usa (ya no es fuente de FiO2)", () => {
+  // la firma ya no recibe filas de enfermería: solo respirador y la propia gasometría
+  assert.equal(pafiGasometria.length, 3);
+  const r = pafiGasometria([lab("pao2", 96, 14, 33)], [], h(15));
+  assert.equal(r.ok, false);
+});
+
+test("la FiO2 de la propia gasometría vale (misma toma) cuando no hay respirador", () => {
+  const r = pafiGasometria([lab("pao2", 200, 9), lab("fio2", 0.5, 9)], [], h(9, 30));
+  assert.ok(r.ok);
+  assert.deepEqual([r.origen, r.valor], ["toma", 400]);
+});
+
+test("sin PaO2 -> 'falta PaO₂', nunca un número", () => {
+  assert.deepEqual(pafiGasometria([], [ev("a", 8, 0)], h(10)), { ok: false, motivo: "falta PaO₂", medido_en: null });
+  assert.equal(pafiConRespirador([], [ev("a", 8, 0)], h(10)), null);
+});
+
+test("PaFi > 700: se calcula pero queda 'a verificar'", () => {
+  const r = pafiGasometria([lab("pao2", 600, 9)], [ev("a", 8, 0, { fio2: 0.5 })], h(10));
+  assert.ok(r.ok);
+  assert.deepEqual([r.valor, r.aVerificar], [1200, true]);
+  const ok = pafiGasometria([lab("pao2", 140, 9)], [ev("a", 8, 0, { fio2: 0.4 })], h(10));
+  assert.ok(ok.ok && !ok.aVerificar);
+});
+
+test("caso real PD 1234 tras la corrección: gasometría 14:33 (PaO2 96), respirador 14:35 (0,30) -> 320, tomada 2 min después", () => {
+  const r = pafiGasometria([lab("pao2", 96, 14, 33)], [ev("r", 14, 35, { fio2: 0.3, peep: 5 })], h(15));
+  assert.ok(r.ok);
+  assert.deepEqual([Math.round(r.valor), r.fio2, r.peep, r.minutosDespues], [320, 0.3, 5, 2]);
+  // antes de la corrección (30, en %): inválida, sin número
+  const antes = pafiGasometria([lab("pao2", 96, 14, 33)], [ev("r", 14, 35, { fio2: 30 })], h(15));
+  assert.deepEqual(antes, { ok: false, motivo: "FiO₂ inválida (esperado 0,21–1)", medido_en: iso(14, 33) });
 });
 
 test("PaFi: aviso de respirador viejo (>12 h del último evento), solo cuando hay PaFi", () => {
-  const eventos = [ev("a", 0, 0, { fio2: 50 })];
-  assert.equal(pafiConRespirador([lab("pao2", 200, 11)], eventos, [], h(12, 30))!.respiradorViejo, true);
-  assert.equal(pafiConRespirador([lab("pao2", 200, 11)], eventos, [], h(11, 30))!.respiradorViejo, false);
-  assert.equal(pafiConRespirador([], eventos, [], h(23)), null); // sin gasometría no hay PaFi ni aviso
+  const eventos = [ev("a", 0, 0, { fio2: 0.5 })];
+  assert.equal(pafiConRespirador([lab("pao2", 200, 11)], eventos, h(12, 30))!.respiradorViejo, true);
+  assert.equal(pafiConRespirador([lab("pao2", 200, 11)], eventos, h(11, 30))!.respiradorViejo, false);
+  assert.equal(pafiConRespirador([], eventos, h(23)), null); // sin gasometría no hay PaFi ni aviso
 });
 
 // ---------------------------------------------------------------- datos del médico

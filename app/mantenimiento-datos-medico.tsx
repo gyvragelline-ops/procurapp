@@ -21,7 +21,11 @@ import {
   ultimoValorLab,
   ultimoValorMedico,
   type CampoMedico,
-  type PafiCalculada,
+  ERROR_FIO2,
+  leerFio2,
+  textoFio2,
+  textoFio2Despues,
+  type ResultadoPafi,
   type EventoRespirador,
   type MedicionMedico,
 } from "@/lib/procuracion/mantenimiento-calculos";
@@ -37,8 +41,9 @@ const aTexto = (n: number | null | undefined) => (n === null || n === undefined 
 // Respirador
 // ---------------------------------------------------------------------
 type CampoResp = "fio2" | "peep" | "volumen_corriente" | "frecuencia" | "presion_plateau" | "presion_pico";
-const CAMPOS_RESP: { campo: CampoResp; etiqueta: string; unidad: string; opcional?: true }[] = [
-  { campo: "fio2", etiqueta: "FiO2", unidad: "%" },
+// FiO2: fracción 0,21–1 (nunca %).
+const CAMPOS_RESP: { campo: CampoResp; etiqueta: string; unidad: string; opcional?: true; ayuda?: string }[] = [
+  { campo: "fio2", etiqueta: "FiO₂", unidad: "fracción", ayuda: "0,21 – 1" },
   { campo: "peep", etiqueta: "PEEP", unidad: "cmH2O" },
   { campo: "volumen_corriente", etiqueta: "Volumen corriente", unidad: "mL" },
   { campo: "frecuencia", etiqueta: "Frecuencia", unidad: "/min" },
@@ -50,7 +55,7 @@ export function textoRespirador(e: EventoRespirador): string {
   const modo = e.modo === "otro" ? e.modo_otro || "Otro" : e.modo ?? "—";
   const partes = [
     modo,
-    `FiO2 ${num(e.fio2, 0)} %`,
+    e.fio2 !== null ? `FiO₂ ${textoFio2(e.fio2)}` : null,
     `PEEP ${num(e.peep, 0)}`,
     `VT ${num(e.volumen_corriente, 0)} mL`,
     `FR ${num(e.frecuencia, 0)}`,
@@ -96,13 +101,19 @@ function Respirador({
     if (!modo) return setError("Elegí el modo.");
     if (modo === "otro" && !modoOtro.trim()) return setError("Escribí cuál es el modo.");
     const nums: Partial<Record<CampoResp, number | null>> = {};
+    // FiO2: solo 0,21–1, con coma o punto; 40, 21 o 100 se rechazan.
+    const f = leerFio2(valores.fio2 ?? "");
+    if (!f.ok) return setError(f.error === ERROR_FIO2 ? ERROR_FIO2 : f.error);
     for (const c of CAMPOS_RESP) {
+      if (c.campo === "fio2") {
+        nums.fio2 = f.valor;
+        continue;
+      }
       const n = aNumero(valores[c.campo] ?? "");
       if (n !== null && (Number.isNaN(n) || n < 0)) return setError(`Valor inválido en ${c.etiqueta}.`);
       if (n === null && !c.opcional) return setError(`Falta ${c.etiqueta}.`);
       nums[c.campo] = n;
     }
-    if (nums.fio2! < 21 || nums.fio2! > 100) return setError("La FiO2 va de 21 a 100 %.");
     if (!horaTexto) return setError("Falta la hora del cambio.");
     const iso = new Date(horaTexto).toISOString();
     if (esFutura(iso)) return setError("La hora no puede ser futura.");
@@ -186,6 +197,8 @@ function Respirador({
               <input
                 className="mini-input"
                 inputMode="decimal"
+                placeholder={c.ayuda}
+                aria-label={c.etiqueta}
                 style={{ width: 80 }}
                 value={valores[c.campo] ?? ""}
                 onChange={(e) => setValores((v) => ({ ...v, [c.campo]: e.target.value }))}
@@ -457,7 +470,7 @@ export default function DatosDelMedico({
   registros: RegistroMantenimiento[];
   config: ConfigMantenimiento | null;
   lab: ValorLaboratorio[];
-  pafi: PafiCalculada | null;
+  pafi: ResultadoPafi;
   ahora: number;
   onRespiradorChange: (e: EventoRespirador[]) => void;
   onMedicionesChange: (m: MedicionMedico[]) => void;
@@ -534,16 +547,18 @@ export default function DatosDelMedico({
         <div className="field-row">
           <span className="field-label">PaFi</span>
           <span className="field-value">
-            {pafi ? (
+            {pafi.ok ? (
               <>
-                <span className={styles.num}>{num(pafi.valor, 0)}</span>{" "}
-                <span className={`${styles.chico} ${pafi.desactualizado ? styles.fuera : styles.apagado}`}>
+                <span className={styles.num}>{pafi.aVerificar ? "a verificar" : num(pafi.valor, 0)}</span>{" "}
+                <span className={`${styles.chico} ${pafi.desactualizado || pafi.aVerificar ? styles.fuera : styles.apagado}`}>
                   {edad(pafi.medido_en, ahora)}
-                  {pafi.desactualizado ? " · vencido" : ""} · FiO₂ {num(pafi.fio2, 0)} % de las {hora(pafi.fio2Desde)}
+                  {pafi.desactualizado ? " · vencido" : ""} · FiO₂ {textoFio2(pafi.fio2)} {pafi.origen === "toma" ? "de la gasometría" : `de las ${hora(pafi.fio2Desde)}`}
+                  {pafi.minutosDespues !== null ? ` · ${textoFio2Despues(pafi.minutosDespues)}` : ""}
+                  {pafi.aVerificar ? ` · PaFi ${num(pafi.valor, 0)} fuera de lo verosímil` : ""}
                 </span>
               </>
             ) : (
-              <span className={styles.apagado}>sin dato</span>
+              <span className={pafi.medido_en ? styles.fuera : styles.apagado}>{pafi.motivo}</span>
             )}
           </span>
         </div>

@@ -81,7 +81,7 @@ export const ORGANOS_DISTRIBUCION: ConfigOrgano[] = [
     fondo: ["#2D6E91", "#6FA8C9"],
     requisitos: [
       { clave: "pafi", etiqueta: "PaO₂/FiO₂ con FiO₂ y PEEP", tipo: "dato", dato: "pafi" },
-      { clave: "desafio", etiqueta: "Prueba de desafío (FiO₂ 100 %, PEEP 5, 20 min)", tipo: "texto" },
+      { clave: "desafio", etiqueta: "Prueba de desafío (FiO₂ 1,0 y PEEP 5)", tipo: "texto" },
       { clave: "rx_torax", etiqueta: "Rx de tórax actualizada", tipo: "dato", dato: "rx_torax" },
       { clave: "fibrobroncoscopia", etiqueta: "Fibrobroncoscopia", tipo: "dato", dato: "fibrobroncoscopia" },
       { clave: "talla_perimetros", etiqueta: "Talla y perímetro torácico", tipo: "dato", dato: "talla_perimetros" },

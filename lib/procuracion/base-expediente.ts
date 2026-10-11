@@ -96,7 +96,7 @@ export const SISTEMAS: { key: string; titulo: string; parametros: Parametro[] }[
     parametros: [
       p("sat_o2", "SatO2", "%", 0, "sat_o2"),
       p("modo", "Modo", null),
-      p("fio2", "FiO2", "%", 0),
+      p("fio2", "FiO₂ (fracción)", null, 2),
       p("peep", "PEEP", "cmH2O", 0),
       p("volumen_corriente", "Volumen corriente", "mL", 0),
       p("frecuencia", "Frecuencia respiratoria", "rpm", 0),
@@ -224,7 +224,7 @@ export function serie(clave: string, f: FuentesExpediente, ahora: number): Dato[
     return r;
   }
   if (clave === "pafi") {
-    const x = pafiConRespirador(f.lab, f.respirador, f.registros as never, ahora);
+    const x = pafiConRespirador(f.lab, f.respirador, ahora);
     if (x) r.push({ valor: x.valor, en: x.medido_en, origen: "laboratorio" });
     return r;
   }

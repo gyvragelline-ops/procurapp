@@ -30,6 +30,9 @@ import {
   MINUTOS_INTERVALO_LARGO,
   MINUTOS_PRIMER_REGISTRO,
   RANGOS_PLAUSIBLES,
+  RANGOS_A_VERIFICAR,
+  FIO2_RANGO,
+  MINUTOS_FIO2_DESPUES,
   SCORE_GLUCEMIA_DESDE,
   SCORE_GLUCEMIA_HASTA,
   SCORE_PAFI_MAYOR_A,
@@ -273,10 +276,30 @@ export function resistenciaVascularSistemica(pam: number | null, pvc: number | n
   return (FACTOR_RVS * (pam - pvc)) / gc;
 }
 
-// PaFi = PaO2 / (FiO2 / 100), con la FiO2 en % de la misma extracción.
-export function pafi(pao2: number | null, fio2Porcentaje: number | null): number | null {
-  if (pao2 === null || fio2Porcentaje === null || pao2 === undefined || fio2Porcentaje === undefined || !(fio2Porcentaje > 0)) return null;
-  return pao2 / (fio2Porcentaje / 100);
+// ---------------------------------------------------------------------
+// FiO2: FRACCIÓN 0,21–1 en todo el sistema (FIO2_RANGO). Nunca %.
+// ---------------------------------------------------------------------
+export const fio2Valida = (v: number | null | undefined): v is number => typeof v === "number" && Number.isFinite(v) && v >= FIO2_RANGO.min && v <= FIO2_RANGO.max;
+export const ERROR_FIO2 = "FiO₂ va de 0,21 a 1 (ej.: 0,40)";
+
+// Lo que se escribe en el formulario: "0,4" y "0.4" valen igual. 40, 21,
+// 100 o 0,1 se RECHAZAN (no se convierten en silencio).
+export function leerFio2(texto: string): { ok: true; valor: number } | { ok: false; error: string } {
+  const t = texto.trim().replace(",", ".");
+  if (!t) return { ok: false, error: "Falta la FiO₂." };
+  if (!/^\d+(\.\d+)?$/.test(t)) return { ok: false, error: ERROR_FIO2 };
+  const v = Number(t);
+  return fio2Valida(v) ? { ok: true, valor: v } : { ok: false, error: ERROR_FIO2 };
+}
+
+// "0,40": siempre dos decimales, con coma.
+export const textoFio2 = (v: number) => v.toFixed(2).replace(".", ",");
+
+// PaFi = PaO2 / FiO2, con la FiO2 en fracción. Fuera de 0,21–1 no se
+// calcula (null).
+export function pafi(pao2: number | null, fio2: number | null): number | null {
+  if (pao2 === null || pao2 === undefined || !(pao2 > 0) || !fio2Valida(fio2)) return null;
+  return pao2 / fio2;
 }
 
 // =====================================================================
@@ -1187,53 +1210,87 @@ export type PafiCalculada = {
   valor: number;
   medido_en: string; // hora de la gasometría (PaO2)
   desactualizado: boolean; // gasometría de más de HORAS_LAB_DESACTUALIZADO
-  fio2: number;
+  fio2: number; // fracción 0,21–1
   peep: number | null;
   fio2Desde: string; // "FiO2 de las HH:MM"
-  origen: "respirador" | "registro" | "toma";
+  origen: "respirador" | "toma";
+  minutosDespues: number | null; // FiO2 de un ajuste POSTERIOR a la gasometría (≤ MINUTOS_FIO2_DESPUES)
   respiradorViejo: boolean; // último evento del respirador de más de HORAS_RESPIRADOR_VIEJO
+  aVerificar: boolean; // PaFi inverosímil (RANGOS_A_VERIFICAR.pafi)
 };
 
-// PaFi = PaO2 de la última gasometría / FiO2 vigente EN ESE MOMENTO, con
-// la PEEP vigente. FiO2: el respirador; si no había evento antes de la
-// gasometría, la de las filas horarias viejas; si tampoco, la cargada con
-// esa toma. Sin ninguna, no se calcula.
-export function pafiConRespirador(
-  lab: ValorLab[],
-  eventos: EventoRespirador[],
-  registrosViejos: { registrado_en: string; anulado: boolean; fio2?: number | null; peep?: number | null }[],
-  ahora: number
-): PafiCalculada | null {
+export const MOTIVO_SIN_PAO2 = "falta PaO₂";
+export const MOTIVO_FIO2_INVALIDA = "FiO₂ inválida (esperado 0,21–1)";
+export const MOTIVO_FIO2_NO_REGISTRADA = "FiO₂ no registrada para esta gasometría";
+export const textoFio2Despues = (min: number) => `FiO₂ tomada ${min} min después de la gasometría`;
+
+export type ResultadoPafi = ({ ok: true } & PafiCalculada) | { ok: false; motivo: string; medido_en: string | null };
+
+// PaFi de la última gasometría = PaO2 / FiO2 (fracción), con la PEEP de
+// ese ajuste. De dónde sale la FiO2, en este orden:
+//   1. el último ajuste del respirador ANTERIOR a la gasometría;
+//   2. si no hay, el primero dentro de los MINUTOS_FIO2_DESPUES
+//      posteriores, marcado ("FiO₂ tomada X min después de la gasometría");
+//   3. si no hay, la FiO2 que trae la propia gasometría (misma toma).
+// Nunca una fila de enfermería de otro día. Si no se puede calcular,
+// devuelve el motivo, nunca un número.
+export function pafiGasometria(lab: ValorLab[], eventos: EventoRespirador[], ahora: number): ResultadoPafi {
   const pao2 = ultimoValorLab(lab, "pao2", ahora);
-  if (!pao2) return null;
+  if (!pao2) return { ok: false, motivo: MOTIVO_SIN_PAO2, medido_en: null };
   const t = new Date(pao2.medido_en).getTime();
   const ultimoEvento = respiradorVigenteEn(eventos, Infinity);
   const respiradorViejo = ultimoEvento !== null && ahora - new Date(ultimoEvento.registrado_en).getTime() > HORAS_RESPIRADOR_VIEJO * 3_600_000;
   const base = { medido_en: pao2.medido_en, desactualizado: pao2.desactualizado, respiradorViejo };
 
-  const ev = respiradorVigenteEn(
-    eventos.filter((e) => e.fio2 !== null),
-    t
-  );
-  if (ev) {
-    const valor = pafi(pao2.valor, ev.fio2);
-    if (valor !== null) return { ...base, valor, fio2: ev.fio2!, peep: ev.peep, fio2Desde: ev.registrado_en, origen: "respirador" };
-  }
-  const viejos = ordenarPorHora(registrosViejos).filter(
-    (r) => !r.anulado && r.fio2 !== null && r.fio2 !== undefined && new Date(r.registrado_en).getTime() <= t
-  );
-  const rv = viejos[viejos.length - 1];
-  if (rv) {
-    const valor = pafi(pao2.valor, rv.fio2 ?? null);
-    if (valor !== null) return { ...base, valor, fio2: rv.fio2!, peep: rv.peep ?? null, fio2Desde: rv.registrado_en, origen: "registro" };
-  }
-  const toma = lab.find((v) => v.parametro === "fio2" && !v.anulado && v.toma_id === pao2.toma_id && v.valor !== null);
-  if (toma) {
-    const valor = pafi(pao2.valor, toma.valor);
-    if (valor !== null) return { ...base, valor, fio2: toma.valor!, peep: null, fio2Desde: pao2.medido_en, origen: "toma" };
-  }
-  return null;
+  const conFio2 = ordenarPorHora(eventos.filter((e) => !e.anulado && e.fio2 !== null));
+  const antes = [...conFio2].reverse().find((e) => new Date(e.registrado_en).getTime() <= t) ?? null;
+  const despues = antes
+    ? null
+    : (conFio2.find((e) => {
+        const d = new Date(e.registrado_en).getTime() - t;
+        return d > 0 && d <= MINUTOS_FIO2_DESPUES * 60_000;
+      }) ?? null);
+  const ev = antes ?? despues;
+  const toma = ev ? null : (lab.find((v) => v.parametro === "fio2" && !v.anulado && v.toma_id === pao2.toma_id && v.valor !== null) ?? null);
+
+  const fuente = ev
+    ? {
+        fio2: ev.fio2!,
+        peep: ev.peep,
+        fio2Desde: ev.registrado_en,
+        origen: "respirador" as const,
+        minutosDespues: despues ? Math.round((new Date(despues.registrado_en).getTime() - t) / 60_000) : null,
+      }
+    : toma
+      ? { fio2: toma.valor!, peep: null, fio2Desde: pao2.medido_en, origen: "toma" as const, minutosDespues: null }
+      : null;
+  if (!fuente) return { ok: false, motivo: MOTIVO_FIO2_NO_REGISTRADA, medido_en: pao2.medido_en };
+  if (!fio2Valida(fuente.fio2)) return { ok: false, motivo: MOTIVO_FIO2_INVALIDA, medido_en: pao2.medido_en };
+  const valor = pafi(pao2.valor, fuente.fio2);
+  if (valor === null) return { ok: false, motivo: MOTIVO_SIN_PAO2, medido_en: pao2.medido_en };
+  const r = RANGOS_A_VERIFICAR.pafi;
+  return { ok: true, ...base, ...fuente, valor, aVerificar: !(valor > r.min && valor <= r.max) };
 }
+
+// La misma PaFi, o null si no se puede calcular (para quien solo usa el
+// número: score, tendencias).
+export function pafiConRespirador(lab: ValorLab[], eventos: EventoRespirador[], ahora: number): PafiCalculada | null {
+  const r = pafiGasometria(lab, eventos, ahora);
+  if (!r.ok) return null;
+  return {
+    valor: r.valor,
+    medido_en: r.medido_en,
+    desactualizado: r.desactualizado,
+    fio2: r.fio2,
+    peep: r.peep,
+    fio2Desde: r.fio2Desde,
+    origen: r.origen,
+    minutosDespues: r.minutosDespues,
+    respiradorViejo: r.respiradorViejo,
+    aVerificar: r.aVerificar,
+  };
+}
+
 
 // ---------------------------------------------------------------------
 // Datos del médico (tabla mantenimiento_medico): una fila por carga, solo

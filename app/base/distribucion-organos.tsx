@@ -29,7 +29,7 @@ import styles from "./base.module.css";
 // CUCAIBA/INCUCAI). Se manda SOLO lo tildado; los tildes no se guardan.
 // Cada envío deja su línea en la línea de tiempo (con nombre).
 
-const COLOR_MARCA: Record<Marca, string> = { listo: COLOR.g, falta: COLOR.r, info: COLOR.a };
+const COLOR_MARCA: Record<Marca, string> = { listo: COLOR.g, falta: COLOR.r, info: COLOR.a, verificar: COLOR.a };
 const COLOR_ESTADO = { g: COLOR.g, a: COLOR.a, r: COLOR.r, mu: "#8EA0A4" } as const;
 
 // hora real del envío (no la de la pantalla)

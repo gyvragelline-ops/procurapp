@@ -382,6 +382,10 @@ export const PRESET_NORADRENALINA = {
 // "¿seguro?" antes de guardar). Los marcados del spec son los ejemplos de
 // la usuaria; el resto es PROPUESTO, A VALIDAR.
 // ---------------------------------------------------------------------
+// FiO2: FRACCIÓN entre 0,21 y 1,00 en todo el sistema (escala argentina),
+// nunca porcentaje. Fuera de este rango no se guarda ni se calcula PaFi.
+export const FIO2_RANGO = { min: 0.21, max: 1 } as const;
+
 export const RANGOS_PLAUSIBLES: Record<string, { min: number; max: number }> = {
   // del spec
   na: { min: 100, max: 200 },
@@ -394,7 +398,7 @@ export const RANGOS_PLAUSIBLES: Record<string, { min: number; max: number }> = {
   k: { min: 1, max: 10 },
   pao2: { min: 20, max: 700 },
   hb: { min: 2, max: 25 },
-  fio2: { min: 21, max: 100 },
+  fio2: { min: 0.21, max: 1 }, // fracción (FIO2_RANGO)
   sat_o2: { min: 40, max: 100 },
   peep: { min: 0, max: 30 },
   volumen_corriente: { min: 50, max: 1500 },
@@ -439,6 +443,19 @@ export const RANGOS_PLAUSIBLES: Record<string, { min: number; max: number }> = {
   egr_sng_drenajes_ml: { min: 0, max: 3000 },
   perdidas_insensibles_ml: { min: 0, max: 300 },
 };
+// Valores inverosímiles: en la ficha por órgano (y su WhatsApp) se muestran
+// "a verificar" y NO se mandan como dato. Un solo lugar para los rangos.
+// PROPUESTO, A VALIDAR (PaFi > 700: indicado por la usuaria).
+export const RANGOS_A_VERIFICAR = {
+  pafi: { min: 0, max: 700 },
+  fio2: FIO2_RANGO,
+  diuresis_ml: RANGOS_PLAUSIBLES.diuresis_ml, // mL de una fila horaria
+} as const;
+
+// FiO2 de un ajuste del respirador POSTERIOR a la gasometría: vale solo
+// dentro de estos minutos (y se marca).
+export const MINUTOS_FIO2_DESPUES = 30;
+
 
 // ---------------------------------------------------------------------
 // Planilla de enfermería (OP2, grilla horaria) -- vista de Enfermería

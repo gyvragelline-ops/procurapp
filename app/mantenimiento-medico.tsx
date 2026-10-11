@@ -17,7 +17,7 @@ import {
   indiceCardiaco,
   minutosDesdeUltimoRegistro,
   ordenarPorHora,
-  pafiConRespirador,
+  pafiGasometria,
   ultimoLabConRespaldo,
   ultimoValorLab,
   ultimoValorMedico,
@@ -132,7 +132,11 @@ export default function MantenimientoMedico({
   const na = labDe("na");
   const glu = labDe("glucemia");
   const ph = labDe("ph");
-  const pafi = pafiConRespirador(lab, respirador, registros, ahora);
+  // PaFi con la FiO2 (fracción) del ajuste del respirador de esa
+  // gasometría; si no se puede calcular, el motivo. Una PaFi inverosímil
+  // ("a verificar") no entra en alertas ni en las reglas.
+  const pafiRes = pafiGasometria(lab, respirador, ahora);
+  const pafi = pafiRes.ok && !pafiRes.aVerificar ? pafiRes : null;
   const disfuncion = disfuncionMiocardica(mediciones);
   const gc = ultimoValorMedico("gc", mediciones, registros);
   const icMedido = ultimoValorMedico("ic_medido", mediciones, registros);
@@ -490,7 +494,7 @@ export default function MantenimientoMedico({
         registros={registros}
         config={config}
         lab={lab}
-        pafi={pafi}
+        pafi={pafiRes}
         ahora={ahora}
         onRespiradorChange={onRespiradorChange}
         onMedicionesChange={onMedicionesChange}

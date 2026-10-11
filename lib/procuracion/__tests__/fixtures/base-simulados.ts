@@ -212,7 +212,7 @@ const respiradorDemo = (pref: string, ahora: number, minutos: number) => ({
   registrado_en: iso(ahora, minutos),
   modo: "VCV" as const,
   modo_otro: null,
-  fio2: 40,
+  fio2: 0.4,
   peep: 8,
   volumen_corriente: 450,
   frecuencia: 14,
@@ -351,7 +351,7 @@ export function donantesSimulados(ahora: number): DonanteSimulado[] {
       respirador: [respiradorDemo("a", ahora, 8 * 60)],
       lab: [
         ...tomaLab("a", ahora, 7 * 60, { na: 148, k: 3.9, glucemia: 170, hb: 10.4, plaquetas: 172000, creatinina: 1.1, urea: 38, tgo: 45, tgp: 38, ph: 7.38, pao2: 150, fio2: 40 }),
-        ...tomaLab("a", ahora, 60, { na: 152, k: 3.6, glucemia: 128, hb: 10.2, ph: 7.41, pao2: 140, fio2: 40 }),
+        ...tomaLab("a", ahora, 60, { na: 152, k: 3.6, glucemia: 128, hb: 10.2, ph: 7.41, pao2: 140, fio2: 0.4 }),
         // troponina: el procurador eligió ng/L (la unidad tiene que verse siempre)
         { ...tomaLab("a", ahora, 3 * 60, { troponina: 45 })[0], unidad: "ng/L" },
         { ...tomaLab("a", ahora, 6 * 60, { cpk_mb: 3.1 })[0], unidad: "ng/mL" },

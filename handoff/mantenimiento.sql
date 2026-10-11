@@ -41,7 +41,7 @@ create table mantenimiento_registros (
   pam                       numeric,
   temperatura               numeric,
   sat_o2                    numeric,
-  fio2                      numeric,          -- en %
+  fio2                      numeric,          -- fracción 0,21–1 (nunca %)
   peep                      numeric,
   volumen_corriente         numeric,
   diuresis_ml               numeric,          -- mL desde el registro anterior

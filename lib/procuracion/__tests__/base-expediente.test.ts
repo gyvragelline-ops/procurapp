@@ -28,7 +28,7 @@ function fuentes(): FuentesExpediente {
       { ...registroDemo("r3", hace(30), { fc: 150 }), anulado: true },
     ] as never,
     mediciones: [{ id: "m1", registrado_en: hace(20), disfuncion_miocardica: null, anulado: false, pvc: 9, gc: null, ic_medido: 3.1, sat_venosa: null, delta_pp: null, delta_vs: null, delta_co2_espirado: null, indice_vena_cava: null, resultado_pasivo_miembros: null }],
-    respirador: [{ id: "v1", registrado_en: hace(90), modo: "VCV", modo_otro: null, fio2: 40, peep: 8, volumen_corriente: 480, frecuencia: 16, presion_plateau: 24, presion_pico: 30, anulado: false }],
+    respirador: [{ id: "v1", registrado_en: hace(90), modo: "VCV", modo_otro: null, fio2: 0.4, peep: 8, volumen_corriente: 480, frecuencia: 16, presion_plateau: 24, presion_pico: 30, anulado: false }],
     lab: [
       lab("l1", "na", 148, 300),
       lab("l2", "na", 152, 45),
@@ -60,7 +60,7 @@ test("serie: junta las fuentes por hora con su origen; anulados afuera", () => {
   assert.deepEqual(serie("glucemia", f, AHORA).map((d) => d.origen), ["enfermeria"]);
   assert.deepEqual(serie("sedimento", f, AHORA).map((d) => d.valor), ["leucocitos 2-4/campo"]);
   assert.deepEqual(serie("modo", f, AHORA).map((d) => [d.valor, d.origen]), [["VCV", "medico"]]);
-  assert.deepEqual(serie("fio2", f, AHORA).map((d) => [d.valor, d.origen]), [[40, "medico"]]);
+  assert.deepEqual(serie("fio2", f, AHORA).map((d) => [d.valor, d.origen]), [[0.4, "medico"]]);
   assert.deepEqual(serie("hb", f, AHORA), []);
   assert.deepEqual(serie("pafi", f, AHORA).map((d) => [d.valor, d.origen]), [[500, "laboratorio"]]);
 });

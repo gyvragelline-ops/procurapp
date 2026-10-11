@@ -12,8 +12,8 @@
 import type { ExpedienteDatos } from "./base-armado.ts";
 import { SISTEMAS, filaParametro, serie, textoValor } from "./base-expediente.ts";
 import { horaTexto, organosVigentes } from "./base-secciones.ts";
-import { pafiConRespirador, respiradorVigenteEn } from "./mantenimiento-calculos.ts";
-import { DROGAS_INFUSION, MODOS_RESPIRADOR, type DrogaInfusion } from "./mantenimiento-metas.ts";
+import { fio2Valida, pafiGasometria, respiradorVigenteEn, textoFio2, textoFio2Despues } from "./mantenimiento-calculos.ts";
+import { DROGAS_INFUSION, MODOS_RESPIRADOR, RANGOS_A_VERIFICAR, type DrogaInfusion } from "./mantenimiento-metas.ts";
 import { ANESTESISTA, horaVigente, type EquipoQuirofano } from "./quirofano-calculos.ts";
 import { TIPOS_CULTIVO } from "./cultivos-calculos.ts";
 import { CAMPOS_PLANILLA } from "./medidas-campos.ts";
@@ -33,8 +33,11 @@ import {
 export { ORGANOS_DISTRIBUCION, CIERRE_FICHA };
 
 // ✓ listo · ○ falta · ! informativo (o aviso, como la Rx de más de 12 h)
-export type Marca = "listo" | "falta" | "info";
-export const SIMBOLO: Record<Marca, string> = { listo: "✓", falta: "○", info: "!" };
+// · "a verificar": valor inverosímil (RANGOS_A_VERIFICAR); se muestra así
+// y NO se manda como dato.
+export type Marca = "listo" | "falta" | "info" | "verificar";
+export const SIMBOLO: Record<Marca, string> = { listo: "✓", falta: "○", info: "!", verificar: "!" };
+export const A_VERIFICAR = "a verificar";
 
 export type Evaluado = {
   clave: string;
@@ -111,10 +114,19 @@ function evaluarDato(r: Requisito, dato: ClaveDato, d: Datos, ahora: number): Ev
   const f = d.fuentes;
   switch (dato) {
     case "pafi": {
-      const x = pafiConRespirador(f.lab as never, f.respirador, f.registros as never, ahora);
-      if (!x) return ev(r, { marca: "falta", valor: "falta" });
-      const extra = [`FiO₂ ${num(x.fio2)} %`, x.peep !== null ? `PEEP ${num(x.peep)}` : null].filter(Boolean).join(" · ");
-      return ev(r, { marca: "listo", valor: `${num(x.valor)} · ${extra}`, linea: `PaO₂/FiO₂ ${num(x.valor)} (${horaTexto(x.medido_en, ahora)}) · ${extra}`, hora: x.medido_en });
+      // FiO2 en fracción; si no se puede calcular, el motivo (nunca un número)
+      const x = pafiGasometria(f.lab as never, f.respirador, ahora);
+      if (!x.ok) return ev(r, { marca: "falta", valor: x.motivo, linea: x.medido_en ? `PaO₂/FiO₂: ${x.motivo}` : null, hora: x.medido_en });
+      if (x.aVerificar) return ev(r, { marca: "verificar", valor: A_VERIFICAR, hora: x.medido_en, nota: `PaO₂/FiO₂ ${num(x.valor)}: fuera de lo verosímil (hasta ${RANGOS_A_VERIFICAR.pafi.max})` });
+      const extra = [`FiO₂ ${textoFio2(x.fio2)}`, x.peep !== null ? `PEEP ${num(x.peep)}` : null].filter(Boolean).join(" · ");
+      const despues = x.minutosDespues !== null ? textoFio2Despues(x.minutosDespues) : null;
+      return ev(r, {
+        marca: "listo",
+        valor: `${num(x.valor)} · ${extra}`,
+        linea: [`PaO₂/FiO₂ ${num(x.valor)}`, extra, despues].filter(Boolean).join(" · "),
+        hora: x.medido_en,
+        nota: despues,
+      });
     }
     case "rx_torax": {
       const e = estudio(d, ["Rx_torax"]);
@@ -165,7 +177,7 @@ function evaluarDato(r: Requisito, dato: ClaveDato, d: Datos, ahora: number): Ev
         e.volumen_corriente !== null ? `VT ${num(e.volumen_corriente)} mL` : null,
         e.frecuencia !== null ? `FR ${num(e.frecuencia)}` : null,
         e.peep !== null ? `PEEP ${num(e.peep)}` : null,
-        e.fio2 !== null ? `FiO₂ ${num(e.fio2)} %` : null,
+        e.fio2 !== null ? (fio2Valida(e.fio2) ? `FiO₂ ${textoFio2(e.fio2)}` : `FiO₂ ${A_VERIFICAR}`) : null,
         e.presion_plateau !== null ? `plateau ${num(e.presion_plateau)}` : null,
         e.presion_pico !== null ? `pico ${num(e.presion_pico)}` : null,
       ].filter((x): x is string => !!x);
@@ -203,8 +215,15 @@ function evaluarDato(r: Requisito, dato: ClaveDato, d: Datos, ahora: number): Ev
       return deVarios(r, varios(d, ["tp", "kptt"], ahora, { tp: "TP", kptt: "KPTT" }), ahora);
     case "amilasa_lipasa":
       return deVarios(r, varios(d, ["amilasa", "lipasa"], ahora), ahora);
-    case "diuresis_balance":
+    case "diuresis_balance": {
+      // diuresis inverosímil de una fila horaria: "a verificar", no se manda
+      const dz = serie("diuresis_ml", f, ahora);
+      const d0 = dz[dz.length - 1];
+      const rg = RANGOS_A_VERIFICAR.diuresis_ml;
+      if (d0 && typeof d0.valor === "number" && (d0.valor < rg.min || d0.valor > rg.max))
+        return ev(r, { marca: "verificar", valor: A_VERIFICAR, hora: d0.en, nota: `Diuresis ${num(d0.valor)} mL: fuera de lo verosímil (${rg.min}–${rg.max} mL por fila)` });
       return deVarios(r, varios(d, ["diuresis_ml", "balance_acumulado"], ahora, { diuresis_ml: "Diuresis", balance_acumulado: "Balance acumulado" }), ahora);
+    }
     case "creatinina_urea": {
       const cr = serie("creatinina", f, ahora);
       const urea = ultimo(d, "urea", ahora);
@@ -330,13 +349,15 @@ export function itemsElegidos(f: FichaOrgano, e: EleccionFicha) {
   const elegidos = f.requisitos.filter((r) => e.tildes[r.clave]);
   const lineas: string[] = [];
   const pendientes: string[] = [];
+  const aVerificar: string[] = [];
   for (const r of elegidos) {
     const t = escrito(e, r.clave);
     if (t) lineas.push(`${r.etiqueta.replace(/\s*\(.*\)$/, "")}: ${t}${r.linea && r.marca !== "falta" ? ` · ${r.linea}` : ""}`);
+    else if (r.marca === "verificar") aVerificar.push(r.etiqueta);
     else if (r.linea) lineas.push(r.linea);
     else pendientes.push(r.etiqueta);
   }
-  return { elegidos, lineas, pendientes };
+  return { elegidos, lineas, pendientes, aVerificar };
 }
 
 // "Datos hasta": la hora del dato más nuevo de lo que se manda.
@@ -345,12 +366,13 @@ export function datosHastaFicha(f: FichaOrgano, e: EleccionFicha): string | null
 }
 
 export function mensajeFicha(f: FichaOrgano, e: EleccionFicha, ident: string, ahora: number): string {
-  const { lineas, pendientes } = itemsElegidos(f, e);
+  const { lineas, pendientes, aVerificar } = itemsElegidos(f, e);
   const hasta = datosHastaFicha(f, e);
   const out = [`*${ident} · Ficha ${f.nombreEquipo}*`, hasta ? `Datos hasta ${horaTexto(hasta, ahora)}` : `Generado ${horaTexto(ahora, ahora)}`];
   if (e.tildes[f.donante.clave] && f.donante.linea) out.push(f.donante.linea);
   if (lineas.length) out.push("", ...lineas.map((l) => `• ${l}`));
   if (pendientes.length) out.push("", "*Pendiente*", ...pendientes.map((p) => `• ${p}`));
+  if (aVerificar.length) out.push("", "*A verificar* (no se envía el valor)", ...aVerificar.map((p) => `• ${p}`));
   if (e.tildes[f.quirofano.clave] && f.quirofano.linea) out.push("", f.quirofano.linea);
   out.push("", CIERRE_FICHA);
   return out.join("\n");
