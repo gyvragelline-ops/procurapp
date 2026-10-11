@@ -1,5 +1,7 @@
-const CACHE_NAME = "procuracion-shell-v1";
-const SHELL_URLS = ["/", "/manifest.webmanifest", "/icon.svg"];
+// v2: iconos nuevos de Procurapp (public/brand/); cambiar el nombre borra
+// la caché vieja al activarse.
+const CACHE_NAME = "procurapp-shell-v2";
+const SHELL_URLS = ["/", "/manifest.webmanifest", "/brand/icon-192.png", "/brand/icon-512.png"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(

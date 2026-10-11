@@ -1,5 +1,6 @@
 "use client";
 
+import { MapaArgentina, Simbolo } from "./marca";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { guardarConReintento } from "@/lib/procuracion/guardar";
@@ -417,18 +418,9 @@ export default function Home() {
     <>
       <div className="topbar">
         <div className="brand">
-          <div className="brand-mark">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
-              <path
-                d="M12 21s-7.5-4.6-10-9.5C.3 7.8 2.6 4 6.2 4c2 0 3.4 1 4.8 2.6C12.4 5 13.8 4 15.8 4c3.6 0 5.9 3.8 4.2 7.5C17.5 16.4 12 21 12 21z"
-                stroke="currentColor"
-                strokeWidth="1.6"
-                strokeLinejoin="round"
-              />
-            </svg>
-          </div>
+          <Simbolo alto={34} />
           <div>
-            <div className="brand-text">Procuración</div>
+            <div className="brand-text">Procurapp</div>
             <div className="brand-sub">vista procurador</div>
           </div>
         </div>
@@ -443,9 +435,17 @@ export default function Home() {
         )}
       </div>
 
-      <main className="app-shell flex-1">
+      <main className={`app-shell flex-1 ${!selectedId && !creating ? "inicio-marca" : ""}`}>
         {!selectedId && !creating && (
           <>
+            {/* inicio: marca y mapa de Argentina de fondo (tenue, detrás del contenido) */}
+            <MapaArgentina className="inicio-mapa" opacidad={0.45} />
+            <div className="inicio-hero">
+              <Simbolo alto={130} />
+              <div className="inicio-nombre">Procurapp</div>
+              <div className="inicio-sub">PROCURACIÓN Y TRASPLANTE</div>
+              <div className="inicio-pais">ARGENTINA</div>
+            </div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
               <div className="section-label" style={{ marginBottom: 0 }}>
                 Potenciales donantes

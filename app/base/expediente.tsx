@@ -22,6 +22,7 @@ import ChatBase from "./chat-base";
 import Impresion from "./impresion";
 import SeccionesExpediente from "./secciones-expediente";
 import DistribucionOrganos from "./distribucion-organos";
+import BarraMarca from "./barra-marca";
 import { metaDonante } from "./tablero";
 import { COLOR, colorEtapa, descargar, dosCifras, horaCorta, hhmm, textoEstadoEtapa, useConsultaPeriodica } from "./ui";
 import { AvisoSinConexion, MarcaActualizado, useConexion } from "./conexion";
@@ -250,8 +251,8 @@ export default function Expediente({
   return (
     <>
       <div className={`${styles.noImprimir} ${styles.expCompacto}`}>
-        {/* barra superior: Tablero + una pestaña por protocolo activo · Actualizado · Excel */}
-        <div className={styles.barraSup}>
+        {/* barra superior (marca): Tablero + una pestaña por protocolo activo · Actualizado · Excel · Más */}
+        <BarraMarca>
           <div className={styles.pestanas}>
             <button type="button" className={styles.btn} onClick={() => irA(null)}>
               ‹ Tablero
@@ -280,7 +281,7 @@ export default function Expediente({
               Más {mas ? "▴" : "▾"}
             </button>
           </div>
-        </div>
+        </BarraMarca>
 
         {/* más opciones: exportar para un equipo, imprimir, PDF, cerrar o reabrir el protocolo */}
         {mas && (

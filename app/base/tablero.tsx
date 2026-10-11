@@ -7,6 +7,7 @@ import { COLOR, colorEtapa, descargar, diaYHora, dosCifras, hace, letraSexo } fr
 import { MarcaActualizado } from "./conexion";
 import type { EstadoActualizacion } from "@/lib/procuracion/base-actualizacion";
 import styles from "./base.module.css";
+import BarraMarca from "./barra-marca";
 
 const DIAS = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
 
@@ -113,11 +114,7 @@ export default function Tablero({
 
   return (
     <>
-      <div className={styles.cabecera}>
-        <div className={styles.titulo}>
-          <span>Base operativa</span>
-          <span className={styles.mu}>Protocolos activos · orden por urgencia</span>
-        </div>
+      <BarraMarca>
         <div className={styles.acciones}>
           <span className={`${styles.num} ${styles.mu}`}>{reloj(ahora)}</span>
           <MarcaActualizado estado={actualizacion} />
@@ -128,6 +125,10 @@ export default function Tablero({
             Exportar (Excel / CSV)
           </button>
         </div>
+      </BarraMarca>
+      <div className={styles.titulo}>
+        <span>Protocolos activos</span>
+        <span className={styles.mu}>orden por urgencia</span>
       </div>
 
       <div className={styles.kpis}>

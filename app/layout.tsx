@@ -33,17 +33,21 @@ const ibmPlexMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "Procuración",
-  description: "Sistema operativo de procuración de órganos — CUCAIBA",
+  title: "Procurapp",
+  description: "Procuración y trasplante — Argentina",
+  icons: {
+    icon: [{ url: "/favicon.ico" }, { url: "/brand/icon-192.png", type: "image/png", sizes: "192x192" }],
+    apple: [{ url: "/brand/apple-touch-icon.png", sizes: "180x180" }],
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "Procuración",
+    title: "Procurapp",
   },
 };
 
 export const viewport: Viewport = {
-  themeColor: "#0f172a",
+  themeColor: "#041821",
   width: "device-width",
   initialScale: 1,
 };
