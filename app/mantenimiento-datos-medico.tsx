@@ -545,12 +545,15 @@ export default function DatosDelMedico({
           );
         })}
         <div className="field-row">
-          <span className="field-label">PaFi</span>
+          {/* la etiqueta no se achica; el detalle va en su propio renglón (celular) */}
+          <span className="field-label" style={{ flex: "none" }}>
+            PaFi
+          </span>
           <span className="field-value">
             {pafi.ok ? (
               <>
                 <span className={styles.num}>{pafi.aVerificar ? "a verificar" : num(pafi.valor, 0)}</span>{" "}
-                <span className={`${styles.chico} ${pafi.desactualizado || pafi.aVerificar ? styles.fuera : styles.apagado}`}>
+                <span className={`${styles.chico} ${pafi.desactualizado || pafi.aVerificar ? styles.fuera : styles.apagado}`} style={{ display: "block" }}>
                   {edad(pafi.medido_en, ahora)}
                   {pafi.desactualizado ? " · vencido" : ""} · FiO₂ {textoFio2(pafi.fio2)} {pafi.origen === "toma" ? "de la gasometría" : `de las ${hora(pafi.fio2Desde)}`}
                   {pafi.minutosDespues !== null ? ` · ${textoFio2Despues(pafi.minutosDespues)}` : ""}
