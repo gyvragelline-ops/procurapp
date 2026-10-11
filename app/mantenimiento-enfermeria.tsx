@@ -428,8 +428,8 @@ function FilaHora({
           {ultimaGlucemia && (
             <span className="tiny muted" style={{ display: "block" }}>
               Última: {num(ultimaGlucemia.valor, 0)} · {fechaHora(ultimaGlucemia.medido_en)} ·{" "}
-              {ultimaGlucemia.origen === "enfermeria" ? "enfermería" : "laboratorio"}{" "}
-              <button className="btn btn-sm" style={{ fontSize: 11 }} onClick={() => corregirGlucemia(ultimaGlucemia)}>
+              {ultimaGlucemia.origen === "enfermeria" ? "enfermería" : "laboratorio"}
+              <button className="btn btn-sm btn-accion" style={{ display: "block", marginTop: 4 }} onClick={() => corregirGlucemia(ultimaGlucemia)}>
                 Corregir
               </button>
             </span>
@@ -537,7 +537,7 @@ function FilaHora({
             {guardando ? "Guardando…" : `Guardar hora ${textoHora(inicio)}`}
           </button>
           {reg && (
-            <button className="btn btn-sm" style={{ fontSize: 11 }} disabled={guardando} onClick={() => setAnulando(true)}>
+            <button className="btn btn-sm btn-accion" disabled={guardando} onClick={() => setAnulando(true)}>
               Anular esta hora
             </button>
           )}

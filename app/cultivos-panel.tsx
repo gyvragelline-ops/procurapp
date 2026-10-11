@@ -248,10 +248,10 @@ export default function CultivosPanel({
             />
           ) : (
             <div className="btn-row" style={{ marginTop: 6 }}>
-              <button className="btn btn-sm" style={{ minHeight: 44 }} onClick={() => abrirResultado(c)}>
+              <button className="btn btn-sm btn-accion" style={{ minHeight: 44 }} onClick={() => abrirResultado(c)}>
                 {c.estado === "pendiente" ? "Cargar resultado" : "Corregir resultado"}
               </button>
-              <button className="btn btn-sm" style={{ minHeight: 44 }} onClick={() => setAnulandoId(c.id)}>
+              <button className="btn btn-sm btn-accion" style={{ minHeight: 44 }} onClick={() => setAnulandoId(c.id)}>
                 Anular
               </button>
             </div>

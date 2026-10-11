@@ -277,7 +277,7 @@ export function Bolos({
         {bolos.length === 0 && <div className="tiny muted">Sin bolos registrados.</div>}
         {bolos.slice(0, 20).map((f) => (
           <div key={f.id}>
-            <div className="field-row" style={{ opacity: f.anulado ? 0.5 : 1 }}>
+            <div className="field-row fila-acciones" style={{ opacity: f.anulado ? 0.5 : 1 }}>
               <span className="field-label" style={{ textDecoration: f.anulado ? "line-through" : undefined }}>
                 {fechaHora(f.registrado_en)} · {etiquetaDroga(f.droga)} · {num(f.dosis_calculada)} {f.unidad_dosis ?? ""}
                 {f.anulado ? " (anulado)" : ""}
@@ -342,7 +342,7 @@ export function HistorialSeteos({
       {historial.length === 0 && <div className="tiny muted">Sin seteos cargados.</div>}
       {historial.map((f) => (
         <div key={f.id}>
-          <div className="field-row" style={{ opacity: f.anulado ? 0.5 : 1 }}>
+          <div className="field-row fila-acciones" style={{ opacity: f.anulado ? 0.5 : 1 }}>
             <span className="field-label" style={{ textDecoration: f.anulado ? "line-through" : undefined }}>
               {fechaHora(f.registrado_en)} · {etiquetaDroga(f.droga)} · {textoInfusion(f)}
               {f.anulado ? " (anulado)" : ""}

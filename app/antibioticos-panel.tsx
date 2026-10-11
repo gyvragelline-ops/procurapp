@@ -126,7 +126,7 @@ export default function AntibioticosPanel({
         </div>
       )}
       {vigentes.map((a) => (
-        <div key={a.id} className="field-row" style={{ alignItems: "flex-start" }}>
+        <div key={a.id} className="field-row fila-acciones" style={{ alignItems: "flex-start" }}>
           <span>
             <span style={{ fontWeight: 600 }}>{a.antibiotico}</span>
             <span className="tiny muted" style={{ display: "block" }}>

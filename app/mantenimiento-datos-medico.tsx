@@ -230,7 +230,7 @@ function Respirador({
             .reverse()
             .map((e) => (
               <div key={e.id}>
-                <div className="field-row" style={{ opacity: e.anulado ? 0.5 : 1 }}>
+                <div className="field-row fila-acciones" style={{ opacity: e.anulado ? 0.5 : 1 }}>
                   <span className="field-label tiny" style={{ textDecoration: e.anulado ? "line-through" : undefined }}>
                     {fechaHora(e.registrado_en)} · {textoRespirador(e)}
                     {e.anulado ? " (anulado)" : ""}
@@ -408,7 +408,7 @@ function MonitoreoAvanzado({
           <summary className="tiny">Cargas anteriores</summary>
           {conDatos.map((m) => (
             <div key={m.id}>
-              <div className="field-row" style={{ opacity: m.anulado ? 0.5 : 1 }}>
+              <div className="field-row fila-acciones" style={{ opacity: m.anulado ? 0.5 : 1 }}>
                 <span className="field-label tiny" style={{ textDecoration: m.anulado ? "line-through" : undefined }}>
                   {fechaHora(m.registrado_en)} ·{" "}
                   {CAMPOS_AVANZADO.filter((c) => m[c.campo] !== null)

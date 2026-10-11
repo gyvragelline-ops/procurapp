@@ -404,6 +404,35 @@ button {
   flex-wrap: wrap;
 }
 
+/* Listas con acciones (celular, 390 px): el texto de los botones no se
+   parte y la altura táctil es de 40 px como mínimo. Si los botones no
+   entran al lado del valor, pasan a una fila propia y se reparten el ancho
+   por igual (el valor crece primero: flex 999). */
+.fila-acciones {
+  flex-wrap: wrap;
+  row-gap: 6px;
+}
+.fila-acciones > :first-child {
+  flex: 999 1 170px;
+  min-width: 0;
+}
+.acciones-fila {
+  display: flex;
+  gap: 6px;
+  flex: 1 1 auto;
+}
+.acciones-fila > .btn,
+.fila-acciones > .btn {
+  flex: 1 1 0;
+}
+.acciones-fila .btn,
+.fila-acciones > .btn,
+.btn-accion {
+  white-space: nowrap;
+  word-break: keep-all;
+  min-height: 40px;
+}
+
 /* ---------- donor list ---------- */
 .donor-list {
   display: flex;

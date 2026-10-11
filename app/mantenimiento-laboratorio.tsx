@@ -210,7 +210,7 @@ export default function MantenimientoLaboratorio({
           <div className="tiny muted">{fechaHora(vs[0].medido_en)}</div>
           {vs.map((v) => (
             <div key={v.id}>
-              <div className="field-row" style={{ opacity: v.anulado ? 0.5 : 1 }}>
+              <div className="field-row fila-acciones" style={{ opacity: v.anulado ? 0.5 : 1 }}>
                 <span className="field-label" style={{ textDecoration: v.anulado ? "line-through" : undefined }}>
                   {etiqueta(v.parametro)}: {textoValor(v)}
                   {v.parametro === "glucemia" && v.origen ? (
@@ -219,7 +219,7 @@ export default function MantenimientoLaboratorio({
                   {v.anulado ? " (anulado)" : ""}
                 </span>
                 {!v.anulado && (
-                  <span style={{ display: "flex", gap: 4 }}>
+                  <span className="acciones-fila">
                     {v.parametro === "glucemia" && (
                       <button className="btn btn-sm" disabled={guardando} onClick={() => corregir(v)}>
                         Corregir

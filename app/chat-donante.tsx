@@ -398,10 +398,10 @@ export default function ChatDonante({
                           {anulandoId === m.id ? (
                             <span className="tiny">
                               ¿Anular?{" "}
-                              <button type="button" className="btn btn-sm" disabled={guardando} onClick={() => anular(m.id)}>
+                              <button type="button" className="btn btn-sm btn-accion" disabled={guardando} onClick={() => anular(m.id)}>
                                 Sí
                               </button>{" "}
-                              <button type="button" className="btn btn-sm" onClick={() => setAnulandoId(null)}>
+                              <button type="button" className="btn btn-sm btn-accion" onClick={() => setAnulandoId(null)}>
                                 No
                               </button>
                             </span>

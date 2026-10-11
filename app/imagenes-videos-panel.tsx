@@ -352,7 +352,8 @@ function FilaCategoria({
           Sin cargas.
         </p>
       ) : (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
+        // separación de 18 px: la ✕ de cada miniatura tiene 40 px de zona táctil sin pisar a la vecina
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 18, marginTop: 18 }}>
           {estudios.map((e) => (
             <Miniatura key={e.id} estudio={e} onAbrir={() => onAbrir(e)} onBorrar={() => onBorrar(e)} />
           ))}
@@ -383,7 +384,7 @@ function Miniatura({
   }
 
   return (
-    <div style={{ position: "relative", width: 44, height: 44 }}>
+    <div style={{ position: "relative", width: 56, height: 56 }}>
       <button
         type="button"
         onClick={onAbrir}
@@ -419,22 +420,37 @@ function Miniatura({
           onClick={() => setConfirmando(true)}
           aria-label="Eliminar"
           style={{
+            // zona táctil de 40 px; el círculo visible sigue chico
             position: "absolute",
-            top: -5,
-            right: -5,
-            width: 16,
-            height: 16,
-            borderRadius: "50%",
-            background: "rgba(0,0,0,0.65)",
-            color: "#fff",
-            border: "1px solid #fff",
-            fontSize: 9,
-            lineHeight: 1,
+            top: -16,
+            right: -16,
+            width: 40,
+            height: 40,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: "none",
+            border: "none",
             cursor: "pointer",
             padding: 0,
           }}
         >
-          ✕
+          <span
+            aria-hidden
+            style={{
+              width: 20,
+              height: 20,
+              borderRadius: "50%",
+              background: "rgba(0,0,0,0.65)",
+              color: "#fff",
+              border: "1px solid #fff",
+              fontSize: 11,
+              lineHeight: "18px",
+              textAlign: "center",
+            }}
+          >
+            ✕
+          </span>
         </button>
       ) : (
         <div
@@ -444,7 +460,7 @@ function Miniatura({
             left: "50%",
             transform: "translateX(-50%)",
             display: "flex",
-            gap: 2,
+            gap: 4,
             background: "var(--bg, #111)",
             border: "1px solid var(--border-soft)",
             borderRadius: 6,
@@ -457,7 +473,7 @@ function Miniatura({
             type="button"
             onClick={confirmar}
             disabled={borrando}
-            style={{ fontSize: 9, padding: "2px 5px", background: "var(--red)", color: "#fff", border: "none", borderRadius: 3, cursor: "pointer" }}
+            style={{ fontSize: 12, fontWeight: 600, minHeight: 40, minWidth: 40, padding: "0 10px", background: "var(--red)", color: "#fff", border: "none", borderRadius: 6, cursor: "pointer" }}
           >
             {borrando ? "…" : "Sí"}
           </button>
@@ -465,7 +481,7 @@ function Miniatura({
             type="button"
             onClick={() => setConfirmando(false)}
             disabled={borrando}
-            style={{ fontSize: 9, padding: "2px 5px", background: "none", border: "1px solid var(--border-soft)", borderRadius: 3, cursor: "pointer" }}
+            style={{ fontSize: 12, fontWeight: 600, minHeight: 40, minWidth: 40, padding: "0 10px", background: "var(--bg-elev-3)", color: "var(--text)", border: "1px solid var(--border)", borderRadius: 6, cursor: "pointer" }}
           >
             No
           </button>

@@ -148,7 +148,7 @@ function HoraQuirofano({ donanteId, horarios, onChange }: { donanteId: string; h
           <summary className="tiny">Cambios de hora ({historial.length})</summary>
           {historial.map((h) => (
             <div key={h.id}>
-              <div className="field-row">
+              <div className="field-row fila-acciones">
                 <span className="field-label tiny">{h.texto}</span>
                 <button className="btn btn-sm" onClick={() => setAnulandoId(h.id)}>
                   Anular
@@ -311,10 +311,10 @@ function AvisoEquipos({ donanteId, equipos, onChange }: { donanteId: string; equ
               <Confirmacion texto="¿Anular este equipo? Va a quedar tachado y no cuenta." textoSi="Sí, anular" ocupado={guardando} onSi={() => anular(e.id)} onNo={() => setAnulandoId(null)} />
             ) : (
               <div className="btn-row" style={{ marginTop: 6 }}>
-                <button className="btn btn-sm" style={{ minHeight: 44 }} onClick={() => abrir(e)}>
+                <button className="btn btn-sm btn-accion" style={{ minHeight: 44 }} onClick={() => abrir(e)}>
                   Editar
                 </button>
-                <button className="btn btn-sm" style={{ minHeight: 44 }} onClick={() => setAnulandoId(e.id)}>
+                <button className="btn btn-sm btn-accion" style={{ minHeight: 44 }} onClick={() => setAnulandoId(e.id)}>
                   Anular
                 </button>
               </div>
