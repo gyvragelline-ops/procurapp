@@ -106,7 +106,10 @@ button {
 
 /* ---------- layout shell ---------- */
 .app-shell {
-  padding: 18px 14px 60px;
+  /* abajo: lugar para los botones flotantes "Pedidos" y "Chat" (16 px del
+     borde + 48 px de alto) para que ningún texto quede detrás al llegar al
+     final, más la zona segura del celular */
+  padding: 18px 14px calc(120px + env(safe-area-inset-bottom, 0px));
   width: 100%;
 }
 .section-label {
